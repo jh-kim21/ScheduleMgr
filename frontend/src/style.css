@@ -1,0 +1,180 @@
+/*
+ * 색은 전부 여기의 토큰으로만 정의한다. 컴포넌트 스코프 스타일에 하드코딩된 색이 하나라도 남으면
+ * 그 자리만 라이트 모드로 남아 다크 모드에서 눈에 튄다.
+ *
+ * `data-theme`은 항상 `light` 또는 `dark`로 확정된 값이 들어온다 (index.html의 부트스트랩 스크립트와
+ * stores/theme.ts가 시스템 설정을 미리 해석해 넣는다). 덕분에 다크 팔레트를 미디어 쿼리용과
+ * 수동 토글용으로 두 번 적을 필요가 없다.
+ */
+:root {
+  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
+
+  /* 면 */
+  --bg: #fff;
+  --surface: #fff;
+  --surface-alt: #fafafa;
+  --surface-sunken: #f6f6f8;
+  --surface-weekend: #fafafb;
+
+  /* 글자 */
+  --text: #333;
+  --text-h: #111;
+  --text-muted: #555;
+  --text-dim: #666;
+  --text-faint: #999;
+
+  /* 선 */
+  --border: #e5e4e7;
+  --border-soft: #eee;
+  --border-softer: #f0f0f0;
+  --border-input: #ccc;
+  --border-dashed: #ddd;
+
+  /* 강조 (기본 동작, 활성 링크, 주요 버튼) */
+  --accent: #1f6feb;
+  --accent-fg: #fff;
+  --accent-weak: #eaf2ff;
+  --accent-border: #c9d6ea;
+
+  /* 비활성 컨트롤 — 배경만 옅게 하면 글자가 묻히므로 글자색도 함께 정의한다. */
+  --disabled-bg: #eceff4;
+  --disabled-fg: #a0a8b4;
+  --disabled-border: #dde3ec;
+
+  /* 위험 (삭제) */
+  --danger: #c62828;
+  --danger-border: #f3c2c2;
+
+  /* 성공 (완료, 재계산 결과) */
+  --success: #1e7d32;
+  --success-weak: #eef8f0;
+  --success-text: #2f6b46;
+
+  /* 경고 (지연 배너, 대기 배지) */
+  --warn: #d98324;
+  --warn-weak: #fff6ea;
+  --warn-strong: #8a3d0c;
+  --warn-badge-bg: #fff4e0;
+  --warn-badge-fg: #a5620a;
+
+  /* 프로젝트 상태 배지 */
+  --badge-planned-bg: #eef2ff;
+  --badge-planned-fg: #3949ab;
+  --badge-neutral-bg: #e8eaed;
+  --badge-neutral-fg: #444;
+
+  /* 선후행 위반 — 지연과 다른 문제라 계열을 분리해 둔 색 */
+  --violation: #7c4dcc;
+  --violation-weak: #f5f0fd;
+  --violation-text: #5a3596;
+
+  /* 지연 상태 팔레트. 막대 채움·배지·범례가 같은 값을 공유한다. */
+  --status-completed: #2f9e5f;
+  --status-on-track: #1f6feb;
+  --status-at-risk: #d98324;
+  --status-delayed: #d93a3d;
+  --status-not-started: #9aa3af;
+  --status-unscheduled: #b8bec9;
+  --status-fg: #fff;
+
+  /* 차트 보조선 */
+  --today-line: #e5484d;
+  --arrow: #8a93a5;
+  --baseline: #3d4351;
+  /*
+   * 임계 경로는 새로운 색상 계열을 쓰지 않는다. 채움은 이미 지연 상태가, 점선 외곽선은 선후행 위반이
+   * 쓰고 있어서 색을 하나 더 얹으면 서로 헷갈린다. 대신 배경과 대비가 가장 큰 중립색으로 외곽선을
+   * 그리고, 나머지 행을 흐리게 만들어 구분한다.
+   */
+  --critical: #101317;
+
+  color-scheme: light;
+  font: 16px/145% var(--sans);
+  color: var(--text);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+:root[data-theme='dark'] {
+  --bg: #14161a;
+  --surface: #1a1d23;
+  --surface-alt: #1f232a;
+  --surface-sunken: #23272f;
+  --surface-weekend: #1d2027;
+
+  --text: #ccd1d9;
+  --text-h: #f2f4f7;
+  --text-muted: #a7aeb9;
+  --text-dim: #99a1ac;
+  --text-faint: #7d858f;
+
+  --border: #2c313a;
+  --border-soft: #2a2f37;
+  --border-softer: #24282f;
+  --border-input: #3c434e;
+  --border-dashed: #3a404a;
+
+  --accent: #58a0ff;
+  --accent-fg: #0b1220;
+  --accent-weak: #16273d;
+  --accent-border: #2f4a70;
+
+  --disabled-bg: #262b33;
+  --disabled-fg: #6b737e;
+  --disabled-border: #333a44;
+
+  --danger: #f0807f;
+  --danger-border: #5d3030;
+
+  --success: #63c98a;
+  --success-weak: #16281d;
+  --success-text: #86d3a5;
+
+  --warn: #e8a44f;
+  --warn-weak: #2b2013;
+  --warn-strong: #f0b979;
+  --warn-badge-bg: #33260f;
+  --warn-badge-fg: #e9b877;
+
+  --badge-planned-bg: #1c2340;
+  --badge-planned-fg: #9fb0f5;
+  --badge-neutral-bg: #262a31;
+  --badge-neutral-fg: #b3bac4;
+
+  --violation: #a687e8;
+  --violation-weak: #241d33;
+  --violation-text: #c1abf0;
+
+  --status-completed: #3fb873;
+  --status-on-track: #58a0ff;
+  --status-at-risk: #e8a44f;
+  --status-delayed: #ee5f62;
+  --status-not-started: #79828f;
+  --status-unscheduled: #5d6673;
+  --status-fg: #12151a;
+
+  --today-line: #ff6b6e;
+  --arrow: #79828f;
+  --baseline: #cfd5de;
+  --critical: #f2f4f7;
+
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+}
+
+h1,
+h2 {
+  font-family: var(--sans);
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+p {
+  margin: 0;
+}

@@ -1,0 +1,9 @@
+# 서버 배포 프로필: 컨테이너 환경 변수로 PostgreSQL에 접속합니다.
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:projectflow}
+    username: ${DB_USERNAME:projectflow}
+    password: ${DB_PASSWORD:projectflow}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect

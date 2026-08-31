@@ -1,0 +1,13 @@
+# 데스크톱 배포 프로필: 설치 없이 로컬 파일 기반 H2로 바로 동작합니다.
+spring:
+  datasource:
+    url: jdbc:h2:file:${user.home}/.project-flow/data/project-flow;AUTO_SERVER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+  h2:
+    console:
+      enabled: true
+      path: /h2-console

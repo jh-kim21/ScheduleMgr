@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>일정관리</title>
+    <!--
+      첫 페인트 전에 테마를 확정해 흰 화면이 번쩍이는 것을 막는다. 저장 키는
+      src/stores/theme.ts의 STORAGE_KEY와 같아야 한다.
+    -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('project-flow.theme') || 'system'
+          var dark =
+            stored === 'dark' ||
+            (stored === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+          document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+        } catch (e) {
+          document.documentElement.dataset.theme = 'light'
+        }
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
