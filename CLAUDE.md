@@ -11,8 +11,8 @@
 ## 현재 상태
 
 기반 개발(백엔드/프론트엔드 프로젝트 생성, DB 연결), **프로젝트 CRUD**, **WBS 기능**, **간트 차트**,
-**지연 업무 자동 판정**, **임계 경로(Critical Path) 표시**, **다크 모드**가 end-to-end로 동작합니다.
-RACI/RAID는 라우트와 폴더만 준비되어 있고 기능은 아직 구현되지 않았습니다 (`설계서/요구사항_WBS.md`의 7·9번 항목).
+**지연 업무 자동 판정**, **임계 경로(Critical Path) 표시**, **다크 모드**, **프로젝트 구성원 관리**,
+**RACI 매트릭스**, **RAID 로그**가 end-to-end로 동작합니다. 설계서의 화면은 모두 채워졌습니다.
 
 - 백엔드: Spring Boot 3.5.16 (Java 21) + Spring Data JPA + Flyway, `desktop`(H2 파일 DB) / `server`(PostgreSQL) 프로필 분리 완료.
 - 프론트엔드: Vue 3 + TypeScript + Vite, `vue-router`로 화면 라우팅.
@@ -55,8 +55,11 @@ backend/
   src/main/java/com/projectflow/
     domain/           # 엔티티, 리포지토리 포트, 도메인 예외,
                        #   WbsTreeAssembler(트리·코드·집계), ScheduleCalculator(FS 일정 계산),
-                       #   DependencyGraph(순환 검증), DelayCalculator(지연 판정)
-    application/       # ProjectService / WbsService / GanttService(유스케이스), dto/
+                       #   DependencyGraph(순환 검증), DelayCalculator(지연 판정),
+                       #   CriticalPathCalculator(임계 경로), RaciValidator(RACI 규칙 검증),
+                       #   RaidAssessor(노출도·기한 초과 판정)
+    application/       # ProjectService / WbsService / GanttService /
+                       #   ProjectMemberService / RaciService / RaidService(유스케이스), dto/
     infrastructure/     # JPA 리포지토리 구현체, CORS 설정
     presentation/       # 컨트롤러, 전역 예외 핸들러
   src/main/resources/
@@ -67,7 +70,7 @@ backend/
 
 frontend/
   src/api/            # REST API 클라이언트 (fetch 기반)
-  src/features/        # projects, wbs, gantt(구현됨) / raci, raid(폴더만 존재)
+  src/features/        # projects, wbs, gantt, raci, raid
   src/shared/          # 여러 feature가 공유하는 도메인 개념 (delay 상태 라벨 등)
   src/stores/          # 화면 간 공유 상태 (선택된 프로젝트, 캐시 무효화 신호)
   src/views/           # 라우트별 화면
@@ -76,7 +79,17 @@ frontend/
 
 - 백엔드는 레이어드 아키텍처(domain → application → infrastructure/presentation)를 따르며, 리포지토리는 도메인 포트로 선언하고 `infrastructure.persistence`가 Spring Data JPA로 구현합니다.
 - 프론트엔드는 feature 단위로 분리되어 있고, 새 기능(간트 등)을 추가할 때는 `src/features/<feature>/`에 컴포넌트·컴포저블을 두고 `src/views/`에 화면을, `src/router/index.ts`에 라우트를 추가하는 패턴을 따릅니다.
-- 개발 중에는 Vite의 `server.proxy`(`vite.config.ts`)가 `/api` 요청을 백엔드(8080)로 전달하므로 별도 CORS 설정 없이 동작합니다. `infrastructure/config/WebConfig`의 CORS 허용은 프록시를 거치지 않는 직접 호출을 위한 보조 설정입니다.
+- 개발 중에는 Vite의 `server.proxy`(`vite.config.ts`)가 `/api` 요청을 백엔드(8080)로 전달합니다. 프록시로 붙는 다른 포트를 쓰려면 `VITE_API_TARGET`으로 대상을 바꿉니다.
+- **CORS 허용 오리진은 프로필 설정값**(`project-flow.cors.allowed-origin-patterns`, 쉼표 구분)이고
+  [`WebConfig`](backend/src/main/java/com/projectflow/infrastructure/config/WebConfig.java)가 읽습니다.
+  `desktop`은 루프백 전 포트(`http://localhost:[*]`, `http://127.0.0.1:[*]`)를 허용하고, `server`는
+  `CORS_ALLOWED_ORIGINS`가 없으면 아무 교차 오리진도 허용하지 않습니다.
+  - **포트를 하나로 고정하지 마세요.** 브라우저는 same-origin이라도 GET 이외의 메서드에는 `Origin`을
+    붙이고, Vite 프록시(`changeOrigin: true`)는 Host만 바꾸고 Origin은 그대로 넘깁니다. 그래서 Vite가
+    5173 대신 다른 포트로 뜨면 **화면은 뜨는데 저장만 403으로 실패**합니다(GET은 Origin이 없어 통과).
+    예전에 `allowedOrigins("http://localhost:5173")`로 고정했다가 이 문제를 겪었으니 되돌리지 마세요.
+  - 목록이 비면 매핑 자체를 등록하지 않습니다 — 값이 없는 것과 빈 문자열 하나가 들어온 것을
+    구분하려고 `List` 대신 문자열로 받아 직접 자릅니다.
 
 ### WBS 설계상 알아둘 점
 
@@ -199,6 +212,70 @@ WBS나 그 위에 얹는 기능(간트, 진행 관리 등)을 건드릴 때 아�
 - **비활성 컨트롤은 배경과 글자색을 함께 지정**합니다(`--disabled-bg`/`--disabled-fg`). 배경만 옅게
   하면 다크에서 글자가 배경에 묻힙니다.
 
+### RACI 설계상 알아둘 점
+
+- **구성원(요구사항 4.2)이 매트릭스의 열입니다.** RACI는 (업무 × 사람) 표라서 사람 없이는 표가
+  성립하지 않습니다. 그래서 RACI를 하려면 구성원 관리가 먼저 필요합니다.
+- **구성원은 프로젝트 스코프**입니다. 로그인이 없고, 한 프로젝트 안에서 뜻이 통하는 이름("PL",
+  "외주 개발")이 시스템 전체에서 유일할 필요도 없습니다. 대신 **프로젝트 안에서 이름은 유일**해야
+  합니다 — 겹치면 매트릭스 열을 구분할 수 없습니다.
+- **한 칸은 글자의 집합입니다.** `(업무, 구성원, 역할)`로 유일성을 잡아 한 사람이 A와 R을 겸할 수
+  있습니다. 담당자가 책임자를 겸하는 흔한 경우를 한 글자로 제한하면 7.4(Responsible 누락) 검증이
+  잘못 걸립니다. UI에서는 칸마다 R·A·C·I 토글 네 개로 보여주고, 눌러서 배정/해제합니다.
+- **규칙 위반은 막지 않고 표시합니다**([`RaciValidator`](backend/src/main/java/com/projectflow/domain/RaciValidator.java)).
+  책임자가 둘인 상태는 인수인계 중에 반드시 지나가는 정상적인 저장 상태이고, 거부하면
+  "지우고 다시 넣기"를 강요하게 됩니다. 일정 쪽과 같은 기준입니다 — 만족 불가능한 구조(순환)는
+  거부하고, 계획이 서로 안 맞는 것은 표시합니다.
+- **검증은 leaf만** 합니다. 하위가 있는 항목에 담당자가 없는 것은 공백이 아니고(일은 하위에 있음),
+  같이 세면 한 누락이 레벨마다 중복 보고됩니다. 단 **Summary에도 배정은 가능**합니다 — 단계 전체의
+  최종 책임자를 적는 것은 정상적인 사용입니다.
+- **모든 변경 API가 매트릭스 전체를 반환**합니다. 글자 하나가 그 행의 위반을 해소하거나 만들 수
+  있는데, 부분 응답으로는 클라이언트가 알 수 없습니다.
+- **구성원 API만 예외로 구성원 하나만 반환**합니다(요구사항 4.2는 프로젝트 기능이라 RACI를 몰라야
+  합니다). 대신 RACI 화면이 구성원 변경 후 매트릭스를 다시 읽습니다.
+- **삭제는 DB 연쇄에 의존합니다.** `raci_assignments`의 `member_id`·`wbs_item_id`가
+  `ON DELETE CASCADE`라서 구성원이나 WBS 항목을 지우면 배정도 함께 사라집니다.
+- **RACI 캐시 키에는 날짜가 들어가지 않습니다**(`raciCacheKeyFor`). 행은 WBS에서 오지만 "오늘"을
+  기준으로 판정하는 값이 없습니다.
+
+### RAID 설계상 알아둘 점
+
+- **네 종류를 한 테이블에 둡니다**(`raid_items.raid_type`). 제목·상태·소유자·기한 등 대부분의 필드를
+  공유하고 한 화면에서 함께 읽히므로, 종류별 테이블은 CRUD를 네 벌로 늘리면서 얻는 것이 없습니다.
+- **상태 수명주기도 하나입니다**(`OPEN`/`IN_PROGRESS`/`CLOSED`). 종류별 표현("확인됨" vs "해소")은
+  라벨 문제라 화면이 처리하고, 저장 상태를 네 갈래로 쪼개면 필터·집계 코드가 네 배가 됩니다.
+- **노출도(exposure)는 저장하지 않고 확률 × 영향으로 계산**합니다
+  ([`RaidAssessor`](backend/src/main/java/com/projectflow/domain/RaidAssessor.java)). 1·2·3 가중치라
+  값은 1~9이고, 6 이상 높음 / 3~4 보통 / 그 아래 낮음으로 묶습니다(1,2,3,4,6,9만 나올 수 있음).
+- **노출도에 종류 제한을 두지 않습니다.** 확률과 영향이 둘 다 있으면 환산합니다 — 이미 발생한 이슈에
+  영향만 적는 것도 정상이고, "이 종류는 숫자를 가질 수 없다"는 규칙을 만들면 입력한 값을 화면이
+  숨기게 됩니다. 대신 **폼이 종류별로 묻는 항목만 보여줍니다**(위험=확률+영향, 이슈=영향).
+- **기한 초과는 지연 판정과 같은 규칙**입니다. 기준일은 서버가 정해 응답에 함께 싣고, 기한 당일은
+  아직 초과가 아니며, **종결된 항목은 기한이 지났어도 초과가 아닙니다**(남은 일이 없으므로).
+- **소유자는 프로젝트 구성원을 가리키고 `ON DELETE SET NULL`입니다.** 구성원이 빠지면 항목은 남고
+  소유자만 비워져야 합니다 — CASCADE면 기록이 사라집니다.
+- **모든 변경 API가 로그 전체를 반환**합니다. WBS와 이유가 다릅니다(행 간 파생 값이 없음) — 기한 초과가
+  응답의 `referenceDate` 기준이라 클라이언트가 자기 시계를 쓰면 안 되고, 둘을 함께 돌려주면
+  클라이언트가 행을 목록에 병합할 필요도 없어집니다.
+- **항목을 WBS 업무에 연결할 수 있습니다**(선택, `raid_items.wbs_item_id`). 소유자와 같은 이유로
+  `ON DELETE SET NULL`입니다 — WBS 항목이 지워져도 위험 기록 자체는 남아야 합니다. 표시용 WBS
+  코드는 트리 위치에서 파생되므로 **서버가 트리를 조립해 코드·이름을 함께 실어 보냅니다**.
+- **RAID 캐시 키는 `(프로젝트, WBS 리비전, 로컬 날짜)`입니다.** WBS 리비전이 들어가는 이유는 위 연결
+  때문입니다 — 업무가 이동·개명되면 목록과 선택기의 코드가 낡습니다. 로컬 날짜는 기한 초과가
+  날짜 기준이라 필요합니다(표시하는 기준일은 항상 서버의 `referenceDate`).
+- **필터·정렬은 클라이언트에서** 합니다([`raidFilter.ts`](frontend/src/features/raid/raidFilter.ts)).
+  로그는 한 화면 분량이고, 이건 데이터가 아니라 "지금 이 화면"에 대한 질문이라 서버로 보내면
+  드롭다운마다 왕복이 생기고 조합마다 캐시 키가 필요해집니다. 순수 함수라 vitest로 검증합니다.
+- **입력 패널은 기본으로 접혀 있습니다.** 이 화면의 주된 행위는 로그를 *읽는* 것이고 항목 입력은
+  간헐적이라, 항상 펼쳐진 폼이 표를 화면 아래로 밀어내면 안 됩니다. 목록 머리말의 `＋ 항목 추가`나
+  행의 `수정`으로 열립니다. 폼이 표 위에 있으므로 아래쪽 행에서 열면 `scrollIntoView`로 이동시킵니다.
+  **수정 저장 후에는 닫고, 추가 후에는 열어 둡니다** — 여러 건을 연달아 기록하는 것이 흔하고,
+  아래 표에 새 행이 나타나는 것이 이미 확인 신호입니다.
+- **상단 배너는 필터를 무시하고 전체를 셉니다.** "기한 초과 2건"은 프로젝트에 대한 사실인데,
+  필터를 걸어서 숫자가 줄면 잘못 읽힙니다. 필터를 따르는 것은 표뿐입니다.
+- **정렬에서 값이 없는 항목은 뒤로 보냅니다.** 기한 없는 위험이 내일 마감보다 급하지 않고,
+  등급 미지정이 가장 노출된 것도 아닙니다. 동점은 id 순이라 편집 중에 행이 튀지 않습니다.
+
 ### 화면 간 상태 유지 (프론트엔드)
 
 탭을 옮겨도 선택과 데이터가 유지되어야 하므로, 컴포저블의 상태를 **모듈 스코프**에 두어 모든 뷰가 하나의
@@ -234,16 +311,21 @@ WBS나 그 위에 얹는 기능(간트, 진행 관리 등)을 건드릴 때 아�
 | `PUT` | `/api/projects/{projectId}/gantt/dependencies/{dependencyId}` | 선후행 관계 수정 (선행·후행·`lagDays` 모두 변경 가능) |
 | `DELETE` | `/api/projects/{projectId}/gantt/dependencies/{dependencyId}` | 선후행 관계 삭제 |
 | `POST` | `/api/projects/{projectId}/gantt/recalculate` | 선후행 제약을 만족하도록 일정 재계산 |
+| `GET` `POST` | `/api/projects/{projectId}/members` | 프로젝트 구성원 목록 / 등록 |
+| `PUT` `DELETE` | `/api/projects/{projectId}/members/{memberId}` | 구성원 수정 / 삭제 (RACI 배정 연쇄 삭제) |
+| `GET` | `/api/projects/{projectId}/raci` | RACI 매트릭스 (열 + 행 + 셀 + 규칙 위반) |
+| `POST` | `/api/projects/{projectId}/raci/assignments` | 역할 배정 (`wbsItemId`, `memberId`, `role`) |
+| `DELETE` | `/api/projects/{projectId}/raci/assignments/{assignmentId}` | 역할 해제 (글자 하나) |
+| `GET` `POST` | `/api/projects/{projectId}/raid` | RAID 로그 조회 / 항목 추가 (`wbsItemId`로 업무 연결 가능) |
+| `PUT` `DELETE` | `/api/projects/{projectId}/raid/{itemId}` | 항목 수정 / 삭제 |
 
 WBS·간트의 모든 변경 API는 부분 응답이 아니라 갱신된 전체 데이터를 반환합니다.
 
 ## 다음 단계 (설계서/요구사항_WBS.md 기준)
 
-- 4.2 프로젝트 구성원 관리, 4.3 프로젝트 상태 관리(세부 규칙)
-- 7. RACI (Accountable 중복 검증, Responsible 누락 검증)
+- 4.3 프로젝트 상태 관리(세부 규칙)
 - 8. 진행 관리 — 8.3 지연 업무 판정은 완료. 남은 것은 8.2 진행률 변경 이력, 8.4 프로젝트 대시보드
   (대시보드는 간트 API의 `delayStatus` 집계를 그대로 쓰면 됩니다)
-- 9. RAID 관리
 - 3.5 Docker 환경 구성 실제 빌드/검증, 10. 테스트 및 배포
 - 일정 기능 확장 후보: 영업일/휴일 달력(지연 일수·기대 진행률이 함께 정확해집니다),
   FS 이외의 관계 종류(SS/FF/SF)
