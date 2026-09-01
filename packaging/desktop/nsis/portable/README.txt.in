@@ -1,0 +1,22 @@
+ProjectFlow @APP_VERSION@ (Windows x64, 설치 없이 쓰는 버전)
+
+실행
+  ProjectFlow.vbs 를 두 번 누르세요. 서버가 뜨고 기본 브라우저가 자동으로 열립니다.
+  콘솔 창을 보면서 실행하려면 ProjectFlow.bat 을 쓰세요.
+
+필요 조건
+  Windows 10 / 11 x64. Java 를 따로 설치할 필요는 없습니다 — runtime 폴더에 Java 21
+  런타임이 함께 들어 있습니다.
+
+데이터 저장 위치
+  %USERPROFILE%\.project-flow\data
+  이 폴더에 H2 파일 DB 가 만들어집니다. 프로그램 폴더를 옮기거나 지워도 데이터는
+  남으며, 데이터까지 지우려면 위 폴더를 삭제하세요.
+
+포트
+  8080 을 사용합니다. 이미 다른 프로그램이 쓰고 있으면 실행에 실패하고 아무 창도
+  뜨지 않습니다. 그때는 ProjectFlow.bat 을 메모장으로 열어 줄 끝에
+  --server.port=8090 을 붙여 실행하세요.
+
+종료
+  브라우저 탭을 닫아도 서버는 계속 돕니다. 작업 관리자에서 javaw.exe 를 종료하세요.

@@ -1,0 +1,6 @@
+@echo off
+rem ProjectFlow launcher. A browser opens automatically once the server is up.
+rem Comments are ASCII on purpose: cmd reads .bat with the console codepage.
+rem To use another port, add --server.port=8090 at the end of the line below.
+cd /d "%~dp0"
+start "" "%~dp0runtime\bin\javaw.exe" -XX:MaxRAMPercentage=70 -Dspring.profiles.active=desktop -Dproject-flow.desktop.enabled=true -Djava.awt.headless=false -jar "%~dp0app\@MAIN_JAR@"
