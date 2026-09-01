@@ -42,7 +42,7 @@ if [[ -z "${JPACKAGE:-}" ]]; then
   if [[ -n "${JAVA_HOME:-}" && -x "$JAVA_HOME/bin/jpackage" ]]; then
     JPACKAGE="$JAVA_HOME/bin/jpackage"
   else
-    JPACKAGE="$(find "$HOME/.gradle/jdks" -name jpackage -type f -path '*/bin/*' 2>/dev/null | head -1 || true)"
+    JPACKAGE="$(find "$HOME/.gradle/jdks" -name 'jpackage*' -type f -path '*/bin/*' 2>/dev/null | head -1 || true)"
     [[ -n "$JPACKAGE" ]] || JPACKAGE="$(command -v jpackage || true)"
   fi
 fi
@@ -52,6 +52,20 @@ if [[ -z "$JPACKAGE" ]]; then
 fi
 echo "jpackage: $JPACKAGE"
 "$JPACKAGE" --version
+
+case "$(uname -s)" in
+  MINGW* | MSYS* | CYGWIN*)
+    # jpackage의 exe/msi 생성은 WiX Toolset 3.x(candle.exe/light.exe)에 의존한다.
+    # 없으면 "Can not find WiX tools" 류의 메시지만 나오므로 미리 확인한다. WiX 4/5는
+    # JDK 21의 jpackage가 쓰지 못한다.
+    if ! command -v candle > /dev/null 2>&1 && ! command -v candle.exe > /dev/null 2>&1; then
+      echo "WiX Toolset 3.x이 PATH에 없습니다. exe/msi 생성에 필요합니다." >&2
+      echo "  choco install wixtoolset  또는 https://github.com/wixtoolset/wix3/releases" >&2
+      echo "  설치 없이 진행하려면 APP_TYPE=app-image 로 실행하세요." >&2
+      exit 1
+    fi
+    ;;
+esac
 
 echo "[1/4] 프론트엔드 빌드"
 (cd "$FRONTEND_DIR" && npm install && npm run build)
@@ -72,12 +86,27 @@ if [[ -z "$MAIN_JAR_NAME" ]]; then
 fi
 echo "main jar: $MAIN_JAR_NAME"
 
-# 지정하지 않으면 jpackage가 메인 클래스의 패키지(org.springframework.boot.loader.launch)를
-# 번들 식별자로 써 버린다 — 앱을 스프링 런처로 오인하게 만드는 값이다.
 PLATFORM_OPTS=()
-if [[ "$(uname -s)" == "Darwin" ]]; then
-  PLATFORM_OPTS+=(--mac-package-identifier com.projectflow.desktop)
-fi
+case "$(uname -s)" in
+  Darwin)
+    # 지정하지 않으면 jpackage가 메인 클래스의 패키지
+    # (org.springframework.boot.loader.launch)를 번들 식별자로 써 버린다 — 앱을 스프링
+    # 런처로 오인하게 만드는 값이다.
+    PLATFORM_OPTS+=(--mac-package-identifier com.projectflow.desktop)
+    ;;
+  MINGW* | MSYS* | CYGWIN*)
+    # --win-upgrade-uuid는 절대 바꾸지 마세요. 이 값이 바뀌면 새 버전이 기존 설치를
+    # 덮어쓰지 않고 나란히 설치됩니다.
+    PLATFORM_OPTS+=(
+      --win-upgrade-uuid ced97718-1b4e-41bf-9cef-25f55252d541
+      --win-menu               # 시작 메뉴 등록
+      --win-menu-group "ProjectFlow"
+      --win-shortcut           # 바탕화면 바로가기
+      --win-dir-chooser        # 설치 위치 선택 허용
+      --win-per-user-install   # 관리자 권한 없이 설치 (사내 배포에 적합)
+    )
+    ;;
+esac
 
 echo "[4/4] jpackage로 $APP_TYPE 생성"
 rm -rf "$OUTPUT_DIR"
@@ -89,16 +118,28 @@ STAGE_DIR="$(mktemp -d)"
 trap 'rm -rf "$STAGE_DIR"' EXIT
 cp "$BACKEND_DIR/build/libs/$MAIN_JAR_NAME" "$STAGE_DIR/"
 
+# Git Bash의 jpackage는 Windows 네이티브 실행 파일이라 /tmp/... 같은 MSYS 경로를 열지
+# 못한다. 인자로 넘기기 전에 Windows 경로로 바꾼다.
+to_native_path() {
+  if command -v cygpath > /dev/null 2>&1; then
+    cygpath -w "$1"
+  else
+    printf '%s' "$1"
+  fi
+}
+STAGE_ARG="$(to_native_path "$STAGE_DIR")"
+DEST_ARG="$(to_native_path "$OUTPUT_DIR")"
+
 "$JPACKAGE" \
   --type "$APP_TYPE" \
   --name "$APP_NAME" \
   --app-version "$APP_VERSION" \
-  --input "$STAGE_DIR" \
+  --input "$STAGE_ARG" \
   --main-jar "$MAIN_JAR_NAME" \
   --main-class org.springframework.boot.loader.launch.JarLauncher \
   --java-options "-Dspring.profiles.active=desktop" \
   --java-options "-Dproject-flow.desktop.open-browser=true" \
-  --dest "$OUTPUT_DIR" \
+  --dest "$DEST_ARG" \
   "${PLATFORM_OPTS[@]}"
 
 echo

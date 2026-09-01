@@ -44,9 +44,26 @@ npm test                    # 단위 테스트 (vitest)
 ### 패키징
 
 ```bash
-packaging/desktop/jpackage/build-desktop.sh   # 프론트 빌드 → backend 정적 리소스로 복사 → jpackage 앱 이미지 생성
+packaging/desktop/jpackage/build-desktop.sh   # 프론트 빌드 → backend 정적 리소스로 복사 → OS별 설치 파일 생성
+APP_TYPE=app-image packaging/desktop/jpackage/build-desktop.sh   # 설치 없이 실행할 앱 폴더
 docker build -f packaging/server/Dockerfile -t project-flow-backend .   # 서버 배포용 이미지
 ```
+
+- **jpackage는 크로스 빌드를 못 합니다.** macOS에서는 `app-image`/`dmg`/`pkg`만 만들 수 있고 `--type exe`는
+  "Invalid or unsupported type"으로 거부됩니다. Windows `.exe`는 Windows에서, `.deb`는 Linux에서 같은
+  스크립트를 실행해야 합니다. 장비가 없으면
+  [`.github/workflows/desktop-installer.yml`](.github/workflows/desktop-installer.yml)을
+  Actions에서 수동 실행하면 windows/macos 러너가 각각 만들어 아티팩트로 올려줍니다.
+- **설치 파일 버전은 프로젝트 버전과 별개**입니다(`APP_VERSION`, 기본 `1.0.0`). macOS는 첫 자리가 0이면
+  거부하고, 설치 파일에는 `SNAPSHOT` 같은 접미사를 넣을 수 없습니다.
+- **`--win-upgrade-uuid`는 절대 바꾸지 마세요.** 값이 바뀌면 새 버전이 기존 설치를 덮어쓰지 않고 나란히
+  설치됩니다.
+- **Windows의 exe/msi 생성은 WiX Toolset 3.x**(candle.exe)에 의존합니다. WiX 4/5는 JDK 21의 jpackage가
+  쓰지 못합니다. 스크립트가 미리 확인해 안내합니다.
+- **데스크톱 빌드는 프론트엔드를 품은 서버**라서 실행해도 창이 없습니다. 그래서
+  [`DesktopBrowserLauncher`](backend/src/main/java/com/projectflow/infrastructure/config/DesktopBrowserLauncher.java)가
+  기동 후 브라우저를 엽니다. 기본값은 꺼져 있고 jpackage의 `--java-options`로만 켜지므로, 개발 중
+  `bootRun`에서는 탭이 열리지 않습니다.
 
 ## 아키텍처
 
