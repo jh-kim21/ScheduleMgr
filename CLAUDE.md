@@ -60,10 +60,22 @@ docker build -f packaging/server/Dockerfile -t project-flow-backend .   # 서버
   설치됩니다.
 - **Windows의 exe/msi 생성은 WiX Toolset 3.x**(candle.exe)에 의존합니다. WiX 4/5는 JDK 21의 jpackage가
   쓰지 못합니다. 스크립트가 미리 확인해 안내합니다.
-- **데스크톱 빌드는 프론트엔드를 품은 서버**라서 실행해도 창이 없습니다. 그래서
-  [`DesktopBrowserLauncher`](backend/src/main/java/com/projectflow/infrastructure/config/DesktopBrowserLauncher.java)가
-  기동 후 브라우저를 엽니다. 기본값은 꺼져 있고 jpackage의 `--java-options`로만 켜지므로, 개발 중
-  `bootRun`에서는 탭이 열리지 않습니다.
+- **데스크톱 빌드는 프론트엔드를 품은 서버**라서 실행해도 창이 없습니다. 창이 없다는 것이 곧
+  "실패해도 아무 일도 안 일어난 것처럼 보인다"는 뜻이라, 세 가지를 함께 둡니다. 모두
+  `project-flow.desktop.enabled` 하나로 켜지고 기본값은 꺼져 있습니다 — 개발 중 `bootRun`에서
+  탭이 열리거나 포트가 바뀌면 방해가 됩니다.
+  - [`DesktopBrowserLauncher`](backend/src/main/java/com/projectflow/infrastructure/config/DesktopBrowserLauncher.java):
+    기동 후 브라우저를 엽니다. 포트는 실제 바인딩된 값(`local.server.port`)에서 읽습니다.
+  - [`DesktopPortFallback`](backend/src/main/java/com/projectflow/infrastructure/config/DesktopPortFallback.java):
+    8080이 사용 중이면 빈 포트로 옮깁니다. 이게 없으면 다른 서버가 8080을 쓰는 순간 앱이
+    조용히 죽습니다. **`EnvironmentPostProcessor`이고 `META-INF/spring.factories`에 등록**합니다 —
+    포트는 웹 서버가 바인딩하기 전에 정해져야 해서 빈으로는 늦고, `.imports` 방식은
+    auto-configuration 전용이라 등록되지 않습니다(그렇게 했다가 동작하지 않았습니다).
+    **호스팅(`server` 프로필)에서는 켜지 않습니다** — 거기서 포트는 주소의 일부라 조용히
+    바뀌면 안 되고, 크게 실패하는 것이 맞습니다.
+  - [`ProjectFlowApplication`](backend/src/main/java/com/projectflow/ProjectFlowApplication.java):
+    기동 실패 시 오류 창을 띄웁니다. Spring Boot는 명시된 `java.awt.headless` 값을 유지하므로
+    런처가 `-Djava.awt.headless=false`를 넘깁니다.
 
 ## 아키텍처
 

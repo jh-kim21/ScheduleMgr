@@ -17,9 +17,9 @@ import java.util.List;
  * installed application would otherwise start a process with nothing on screen — it would look
  * broken. This is the piece that makes the installer produce something usable.
  *
- * <p>Off unless {@code project-flow.desktop.open-browser} is set, which the jpackage build turns on
- * through {@code --java-options}. Defaulting to off keeps {@code ./gradlew bootRun} from opening a
- * tab on every restart during development.
+ * <p>Off unless {@code project-flow.desktop.enabled} is set, which the desktop launchers turn on
+ * through {@code -D}. Defaulting to off keeps {@code ./gradlew bootRun} from opening a tab on every
+ * restart during development. The same flag drives {@link DesktopPortFallback}.
  *
  * <p>The platform's own opener command is used rather than {@code java.awt.Desktop}: Spring Boot
  * runs headless by default, and {@code Desktop} throws there. A shell-out also keeps AWT out of a
@@ -34,7 +34,7 @@ public class DesktopBrowserLauncher {
     private final String host;
 
     public DesktopBrowserLauncher(
-            @Value("${project-flow.desktop.open-browser:false}") boolean enabled,
+            @Value("${project-flow.desktop.enabled:false}") boolean enabled,
             @Value("${project-flow.desktop.host:localhost}") String host) {
         this.enabled = enabled;
         this.host = host;

@@ -1,0 +1,5 @@
+# EnvironmentPostProcessor 는 auto-configuration 과 달리 .imports 가 아니라 여기에 등록한다
+# (spring-boot 자신도 같은 방식이다). 포트 결정은 웹 서버가 바인딩하기 전에 끝나야 하므로
+# 빈으로는 늦다.
+org.springframework.boot.env.EnvironmentPostProcessor=\
+com.projectflow.infrastructure.config.DesktopPortFallback

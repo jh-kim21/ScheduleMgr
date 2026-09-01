@@ -138,7 +138,8 @@ DEST_ARG="$(to_native_path "$OUTPUT_DIR")"
   --main-jar "$MAIN_JAR_NAME" \
   --main-class org.springframework.boot.loader.launch.JarLauncher \
   --java-options "-Dspring.profiles.active=desktop" \
-  --java-options "-Dproject-flow.desktop.open-browser=true" \
+  --java-options "-Dproject-flow.desktop.enabled=true" \
+  --java-options "-Djava.awt.headless=false" \
   --dest "$DEST_ARG" \
   "${PLATFORM_OPTS[@]}"
 
