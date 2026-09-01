@@ -11,3 +11,12 @@ spring:
     console:
       enabled: true
       path: /h2-console
+
+# 개발 중에는 Vite 개발 서버가 프론트엔드를 서비스하고, 5173이 점유되어 있으면 Vite가 다른 포트로
+# 올린다. 포트를 하나로 고정하면 그 순간부터 화면의 쓰기 동작이 전부 403이 된다 (GET에는 Origin
+# 헤더가 없어 통과하므로 "화면은 뜨는데 저장만 안 되는" 형태로 나타난다).
+# jpackage로 묶은 데스크톱 앱에서는 프론트엔드가 백엔드 정적 리소스로 함께 들어가 같은 오리진이
+# 되므로 이 설정이 쓰이지 않는다.
+project-flow:
+  cors:
+    allowed-origin-patterns: "http://localhost:[*],http://127.0.0.1:[*]"

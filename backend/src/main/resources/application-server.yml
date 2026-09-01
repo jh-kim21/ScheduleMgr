@@ -7,3 +7,11 @@ spring:
     driver-class-name: org.postgresql.Driver
   jpa:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
+
+# 프론트엔드를 백엔드와 다른 오리진에서 서비스할 때만 지정한다 (쉼표 구분).
+# 비워 두면 교차 오리진 요청을 허용하지 않는다 — 배포된 서비스에 로컬 개발용 와일드카드가 남아
+# 있는 것보다, 배포하는 쪽이 프론트엔드 오리진을 명시하게 하는 편이 안전하다.
+# 예: CORS_ALLOWED_ORIGINS=https://project-flow.example.com
+project-flow:
+  cors:
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGINS:}
