@@ -29,3 +29,13 @@ export function markWbsChanged() {
 export function cacheKeyFor(projectId: number): string {
   return `${projectId}:${revision.value}:${localToday()}`
 }
+
+/**
+ * The RACI matrix keys on the WBS revision but not on the date: its rows come from the WBS tree,
+ * and nothing in it is judged against "today". Member and assignment changes are made through the
+ * RACI screen itself, which applies the response it gets back, so they need no invalidation — the
+ * same reasoning that keeps dependency edits out of {@link markWbsChanged}.
+ */
+export function raciCacheKeyFor(projectId: number): string {
+  return `${projectId}:${revision.value}`
+}

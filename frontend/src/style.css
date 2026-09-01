@@ -68,6 +68,21 @@
   --violation-weak: #f5f0fd;
   --violation-text: #5a3596;
 
+  /*
+   * RACI 글자. 지연/위반 팔레트와 화면이 겹치지 않아 색을 공유할 수도 있지만, 한쪽 색을
+   * 조정할 때 다른 쪽이 따라 바뀌지 않도록 분리해 둔다. 살라이언스는 A > R > C > I 순.
+   */
+  --raci-responsible: #1f6feb;
+  --raci-accountable: #c2410c;
+  --raci-consulted: #7c4dcc;
+  --raci-informed: #6b7280;
+
+  /* RAID 종류 배지. 심각도가 아니라 분류라서 계열만 구분한다. */
+  --raid-risk: #c2410c;
+  --raid-assumption: #0f766e;
+  --raid-issue: #b91c1c;
+  --raid-dependency: #4338ca;
+
   /* 지연 상태 팔레트. 막대 채움·배지·범례가 같은 값을 공유한다. */
   --status-completed: #2f9e5f;
   --status-on-track: #1f6feb;
@@ -147,6 +162,16 @@
   --violation: #a687e8;
   --violation-weak: #241d33;
   --violation-text: #c1abf0;
+
+  --raci-responsible: #58a0ff;
+  --raci-accountable: #f08a53;
+  --raci-consulted: #a687e8;
+  --raci-informed: #8b939e;
+
+  --raid-risk: #f08a53;
+  --raid-assumption: #4db6ac;
+  --raid-issue: #ef6f6f;
+  --raid-dependency: #8a93f0;
 
   --status-completed: #3fb873;
   --status-on-track: #58a0ff;

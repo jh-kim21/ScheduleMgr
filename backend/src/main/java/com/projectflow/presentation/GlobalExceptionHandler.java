@@ -2,8 +2,11 @@ package com.projectflow.presentation;
 
 import com.projectflow.domain.CircularDependencyException;
 import com.projectflow.domain.InvalidDependencyException;
+import com.projectflow.domain.InvalidRaciAssignmentException;
 import com.projectflow.domain.InvalidWbsHierarchyException;
+import com.projectflow.domain.ProjectMemberNotFoundException;
 import com.projectflow.domain.ProjectNotFoundException;
+import com.projectflow.domain.RaidItemNotFoundException;
 import com.projectflow.domain.WbsItemNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,7 +21,12 @@ import java.util.Map;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    @ExceptionHandler({ProjectNotFoundException.class, WbsItemNotFoundException.class})
+    @ExceptionHandler({
+            ProjectNotFoundException.class,
+            WbsItemNotFoundException.class,
+            ProjectMemberNotFoundException.class,
+            RaidItemNotFoundException.class,
+    })
     public ResponseEntity<Map<String, Object>> handleNotFound(RuntimeException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorBody(HttpStatus.NOT_FOUND, ex.getMessage()));
     }
@@ -28,6 +36,7 @@ public class GlobalExceptionHandler {
             InvalidWbsHierarchyException.class,
             InvalidDependencyException.class,
             CircularDependencyException.class,
+            InvalidRaciAssignmentException.class,
     })
     public ResponseEntity<Map<String, Object>> handleInvalidStructure(RuntimeException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorBody(HttpStatus.BAD_REQUEST, ex.getMessage()));
