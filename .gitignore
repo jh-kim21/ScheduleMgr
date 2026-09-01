@@ -157,3 +157,8 @@ out/
 
 # --- 로컬 실행 데이터 (H2 desktop 프로필) ---
 data/
+
+# --- 패키징 산출물 ---
+# 데스크톱 빌드는 프론트엔드 dist를 backend 정적 리소스로 복사한다. 생성물이므로 소스로
+# 추적하지 않는다 (packaging/desktop/jpackage/build-desktop.sh 가 매번 다시 만든다).
+backend/src/main/resources/static/
