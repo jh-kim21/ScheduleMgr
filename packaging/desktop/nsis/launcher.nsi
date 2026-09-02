@@ -19,5 +19,5 @@ RequestExecutionLevel user
 Section "Run"
   ; $EXEDIR = 이 exe가 놓인 폴더. 설치 위치가 어디든 상대 경로로 찾는다.
   SetOutPath "$EXEDIR"
-  Exec '"$EXEDIR\runtime\bin\javaw.exe" -XX:MaxRAMPercentage=70 -Dspring.profiles.active=desktop -Dproject-flow.desktop.enabled=true -Djava.awt.headless=false -jar "$EXEDIR\app\@MAIN_JAR@"'
+  Exec '"$EXEDIR\runtime\bin\javaw.exe" -XX:MaxRAMPercentage=70 -Dspring.profiles.active=desktop -Dproject-flow.desktop.enabled=true -Djava.awt.headless=false -Dspring.config.additional-location=optional:file:$PROFILE/.project-flow/ -jar "$EXEDIR\app\@MAIN_JAR@"'
 SectionEnd

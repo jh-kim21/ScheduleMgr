@@ -140,6 +140,7 @@ DEST_ARG="$(to_native_path "$OUTPUT_DIR")"
   --java-options "-Dspring.profiles.active=desktop" \
   --java-options "-Dproject-flow.desktop.enabled=true" \
   --java-options "-Djava.awt.headless=false" \
+  --java-options "-Dspring.config.additional-location=optional:file:\${user.home}/.project-flow/" \
   --dest "$DEST_ARG" \
   "${PLATFORM_OPTS[@]}"
 

@@ -76,6 +76,17 @@ docker build -f packaging/server/Dockerfile -t project-flow-backend .   # 서버
   - [`ProjectFlowApplication`](backend/src/main/java/com/projectflow/ProjectFlowApplication.java):
     기동 실패 시 오류 창을 띄웁니다. Spring Boot는 명시된 `java.awt.headless` 값을 유지하므로
     런처가 `-Djava.awt.headless=false`를 넘깁니다.
+- **설치본의 설정은 `~/.project-flow/application.properties`에서 읽습니다.** 런처가
+  `-Dspring.config.additional-location=optional:file:${user.home}/.project-flow/`를 넘깁니다.
+  데이터와 같은 폴더라 재설치·업그레이드에도 남고, 설치 폴더(관리자 권한이 필요할 수 있는 곳)를
+  건드리지 않습니다. `optional:`이라 파일이 없어도 그냥 기동합니다.
+  - 예: 포트를 바꾸려면 `server.port=8090` 한 줄. 브라우저도 그 주소로 열립니다
+    (`DesktopBrowserLauncher`가 실제 바인딩된 포트를 읽으므로).
+  - **NSIS 런처만 `$PROFILE`을 씁니다.** NSIS에서 `${...}`는 자신의 define 문법이라 Spring
+    플레이스홀더를 쓸 수 없습니다. jpackage는 `--java-options`에서 `$APPDIR` 계열만 치환하므로
+    `${user.home}`이 그대로 통과합니다(생성된 `.cfg`로 확인).
+  - 설정 파일 없이 즉석으로 바꾸려면 인자나 환경변수도 됩니다:
+    `ProjectFlow.exe --server.port=8090`, 또는 `SERVER_PORT=8090`.
 
 ## 아키텍처
 
