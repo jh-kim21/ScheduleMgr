@@ -31,6 +31,12 @@ export const http = {
   get: <T>(path: string) => request<T>(path),
   post: <T>(path: string, body: unknown) =>
     request<T>(path, { method: 'POST', body: JSON.stringify(body) }),
+  /**
+   * 이미 JSON 문자열인 본문을 그대로 보낸다. 가져오기는 파일 내용을 손대지 않고 넘겨야 하므로
+   * parse → stringify 왕복을 거치지 않는다.
+   */
+  postRaw: <T>(path: string, body: string) =>
+    request<T>(path, { method: 'POST', body }),
   put: <T>(path: string, body: unknown) =>
     request<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
