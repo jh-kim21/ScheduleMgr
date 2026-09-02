@@ -2,14 +2,12 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { RaidItem, RaidItemInput } from '../api/raidApi'
-import ExportMenu from '../features/export/ExportMenu.vue'
 import RaidForm from '../features/raid/RaidForm.vue'
 import RaidList from '../features/raid/RaidList.vue'
 import { useRaid } from '../features/raid/useRaid'
 import { useProjects } from '../features/projects/useProjects'
 import { ensureSelection, selectedProjectId } from '../stores/projectSelection'
 import { RAID_TYPE_LABELS, RAID_TYPE_ORDER } from '../shared/raid'
-import { raidCsv } from '../shared/exportRows'
 import {
   isFiltered,
   SORT_LABELS,
@@ -34,11 +32,6 @@ const {
   remove,
   resetFilters,
 } = useRaid()
-
-/** 내보내기 파일명에 쓸 프로젝트 이름. */
-const selectedProjectName = computed(
-  () => projects.value.find((project) => project.id === selectedProjectId.value)?.name ?? 'project',
-)
 
 
 /** The row the single form is editing, mirroring how the WBS screen drives its form. */
@@ -157,14 +150,6 @@ async function handleRemove(item: RaidItem) {
             </option>
           </select>
         </label>
-
-        <ExportMenu
-          v-if="selectedProjectId !== null"
-          :project-id="selectedProjectId"
-          :project-name="selectedProjectName"
-          screen="raid"
-          :csv="() => raidCsv(visibleItems, data.referenceDate)"
-        />
 
         <span v-if="data.referenceDate" class="reference">기준일 {{ data.referenceDate }}</span>
       </div>
@@ -296,10 +281,6 @@ h1 {
   border: 1px solid var(--border-input);
   border-radius: 6px;
   font: inherit;
-}
-
-.toolbar .export {
-  margin-left: auto;
 }
 
 .reference {

@@ -2,8 +2,6 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { WbsItemInput, WbsMoveInput, WbsNode } from '../api/wbsApi'
-import ExportMenu from '../features/export/ExportMenu.vue'
-import { wbsCsv } from '../shared/exportRows'
 import WbsForm from '../features/wbs/WbsForm.vue'
 import WbsTree from '../features/wbs/WbsTree.vue'
 import { useWbs } from '../features/wbs/useWbs'
@@ -13,11 +11,6 @@ import { needsAttention } from '../shared/delay'
 
 const { projects, error: projectsError, ensureLoaded: ensureProjects } = useProjects()
 const { tree, referenceDate, loading, error, ensureLoaded, create, update, move, remove } = useWbs()
-
-/** 내보내기 파일명에 쓸 프로젝트 이름. */
-const selectedProjectName = computed(
-  () => projects.value.find((project) => project.id === selectedProjectId.value)?.name ?? 'project',
-)
 
 
 const editing = ref<WbsNode | null>(null)
@@ -112,24 +105,14 @@ async function handleMove(itemId: number, input: WbsMoveInput) {
     </p>
 
     <template v-else>
-      <div class="toolbar">
-        <label class="project-picker">
-          프로젝트
-          <select v-model="selectedProjectId">
-            <option v-for="project in projects" :key="project.id" :value="project.id">
-              {{ project.name }}
-            </option>
-          </select>
-        </label>
-
-        <ExportMenu
-          v-if="selectedProjectId !== null"
-          :project-id="selectedProjectId"
-          :project-name="selectedProjectName"
-          screen="wbs"
-          :csv="() => wbsCsv(tree, referenceDate)"
-        />
-      </div>
+      <label class="project-picker">
+        프로젝트
+        <select v-model="selectedProjectId">
+          <option v-for="project in projects" :key="project.id" :value="project.id">
+            {{ project.name }}
+          </option>
+        </select>
+      </label>
 
       <WbsForm
         :editing="editing"
@@ -166,17 +149,6 @@ async function handleMove(itemId: number, input: WbsMoveInput) {
 h1 {
   font-size: 1.4rem;
   margin-bottom: 1rem;
-}
-
-.toolbar {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
-.toolbar .export {
-  margin-left: auto;
 }
 
 .project-picker {

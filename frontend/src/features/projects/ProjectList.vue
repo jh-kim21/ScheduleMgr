@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Project } from '../../api/projectApi'
+import ExportMenu from '../export/ExportMenu.vue'
 import { STATUS_LABELS } from './statusLabels'
 
 defineProps<{
@@ -36,16 +37,7 @@ const emit = defineEmits<{
         <td>{{ project.startDate ?? '-' }}</td>
         <td>{{ project.endDate ?? '-' }}</td>
         <td class="actions">
-          <!--
-            평범한 링크다. 서버가 Content-Disposition: attachment 로 내려주므로 fetch·blob
-            코드가 필요 없다. 화면별 CSV와 달리 이건 프로젝트 전체 스냅샷이다.
-          -->
-          <a
-            class="ghost export"
-            :href="`/api/projects/${project.id}/export`"
-            download
-            title="이 프로젝트 전체를 JSON 한 파일로 내려받습니다"
-          >내보내기</a>
+          <ExportMenu :project="project" />
           <button class="ghost" @click="emit('edit', project)">수정</button>
           <button class="danger" @click="emit('remove', project)">삭제</button>
         </td>
@@ -106,11 +98,6 @@ td {
 .badge[data-status='ON_HOLD'] {
   background: var(--warn-badge-bg);
   color: var(--warn-badge-fg);
-}
-
-.actions a.export {
-  text-decoration: none;
-  display: inline-block;
 }
 
 .actions {
