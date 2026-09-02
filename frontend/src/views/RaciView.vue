@@ -3,11 +3,13 @@ import { computed, onMounted, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { MemberInput } from '../api/memberApi'
 import MemberEditor from '../features/raci/MemberEditor.vue'
+import ExportMenu from '../features/export/ExportMenu.vue'
 import RaciMatrix from '../features/raci/RaciMatrix.vue'
 import { useRaci } from '../features/raci/useRaci'
 import { useProjects } from '../features/projects/useProjects'
 import { ensureSelection, selectedProjectId } from '../stores/projectSelection'
 import { issueSummary, type RaciIssueType, type RaciRole } from '../shared/raci'
+import { raciCsv, raciLegend } from '../shared/exportRows'
 
 const { projects, error: projectsError, ensureLoaded: ensureProjects } = useProjects()
 const {
@@ -23,6 +25,12 @@ const {
   updateMember,
   removeMember,
 } = useRaci()
+
+/** 내보내기 파일명에 쓸 프로젝트 이름. */
+const selectedProjectName = computed(
+  () => projects.value.find((project) => project.id === selectedProjectId.value)?.name ?? 'project',
+)
+
 
 // The selection watcher is the single load path: `immediate` covers arriving with a project
 // already chosen, and `ensureSelection` below covers the first ever visit by setting one.
@@ -104,6 +112,15 @@ function handleRemoveMember(memberId: number) {
             </option>
           </select>
         </label>
+
+        <ExportMenu
+          v-if="selectedProjectId !== null"
+          :project-id="selectedProjectId"
+          :project-name="selectedProjectName"
+          screen="raci"
+          :csv="() => raciCsv(data)"
+          :note="`RACI: ${raciLegend()}`"
+        />
       </div>
 
       <p v-if="error" class="error">{{ error }}</p>
@@ -163,6 +180,10 @@ h1 {
   align-items: center;
   gap: 1rem;
   margin-bottom: 1rem;
+}
+
+.toolbar .export {
+  margin-left: auto;
 }
 
 .project-picker {
