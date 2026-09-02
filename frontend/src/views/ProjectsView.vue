@@ -67,8 +67,17 @@ async function handleRemove(project: Project) {
       <h1>프로젝트</h1>
 
       <span class="import">
-        <button type="button" :disabled="importing" @click="fileInput?.click()">
-          {{ importing ? '가져오는 중...' : '가져오기' }}
+        <!--
+          Material 의 filled tonal button: 주 동작이지만 페이지를 지배하지 않을 때 쓴다.
+          가져오기는 자주 누르는 버튼이 아니라서 채움(filled)보다 이쪽이 맞다.
+        -->
+        <button type="button" class="md-tonal" :disabled="importing" @click="fileInput?.click()">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M11 15V7.22L8.8 9.4 7.4 8l4.6-4.6L16.6 8l-1.4 1.4L13 7.22V15h-2ZM6 20a2 2 0 0 1-2-2v-3h2v3h12v-3h2v3a2 2 0 0 1-2 2H6Z"
+            />
+          </svg>
+          {{ importing ? '가져오는 중' : '가져오기' }}
         </button>
         <input
           ref="fileInput"
@@ -80,11 +89,27 @@ async function handleRemove(project: Project) {
       </span>
     </div>
 
-    <p v-if="importError" class="error">{{ importError }}</p>
-    <p v-else-if="importedName" class="imported">
-      <strong>{{ importedName }}</strong> 프로젝트를 가져왔습니다. 이름이 겹치면 뒤에 "(가져옴)"이
-      붙습니다.
-    </p>
+    <!--
+      Material 의 banner 에 가깝게: 아이콘 + 문장 + 닫기. 자동으로 사라지는 스낵바가 아니라
+      배너인 이유는, 어떤 이름으로 들어왔는지가 사용자가 목록에서 찾을 때 필요한 정보라서다.
+    -->
+    <div v-if="importError" class="md-banner is-error" role="alert">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 17a1.2 1.2 0 1 1 0-2.4A1.2 1.2 0 0 1 12 17Zm-1-4V7h2v6h-2Zm1 9a10 10 0 1 1 0-20 10 10 0 0 1 0 20Z" />
+      </svg>
+      <span>{{ importError }}</span>
+      <button type="button" class="dismiss" title="닫기" @click="importError = null">✕</button>
+    </div>
+    <div v-else-if="importedName" class="md-banner is-ok" role="status">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="m10 16.4-4-4L7.4 11l2.6 2.6L16.6 7 18 8.4l-8 8ZM12 22a10 10 0 1 1 0-20 10 10 0 0 1 0 20Z" />
+      </svg>
+      <span>
+        <strong>{{ importedName }}</strong> 프로젝트를 가져왔습니다. 이름이 겹치면 뒤에
+        "(가져옴)"이 붙습니다.
+      </span>
+      <button type="button" class="dismiss" title="닫기" @click="importedName = null">✕</button>
+    </div>
 
     <ProjectForm
       :editing="editing"
@@ -119,31 +144,119 @@ async function handleRemove(project: Project) {
   margin-left: auto;
 }
 
-.import button {
-  padding: 0.35rem 0.8rem;
-  border: 1px solid var(--border-input);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--text-muted);
+.md-tonal {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.9rem 0.4rem 0.75rem;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent-container);
+  color: var(--accent-container-fg);
   font: inherit;
   font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  overflow: hidden;
+  box-shadow: var(--elevation-1);
+  transition: box-shadow 140ms ease;
+}
+
+/* 상태 레이어를 겹치는 층으로 둔다 — 배경색을 갈아치우지 않으므로 다크 모드에 색을 더 정의할 필요가 없다. */
+.md-tonal::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  transition: background 120ms ease;
+}
+
+.md-tonal:hover {
+  box-shadow: var(--elevation-2);
+}
+
+.md-tonal:hover::before {
+  background: var(--state-hover);
+}
+
+.md-tonal:active {
+  box-shadow: var(--elevation-1);
+}
+
+.md-tonal:active::before {
+  background: var(--state-press);
+}
+
+.md-tonal:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.md-tonal:disabled {
+  background: var(--disabled-bg);
+  color: var(--disabled-fg);
+  box-shadow: none;
+  cursor: default;
+}
+
+.md-tonal .icon {
+  width: 1.05rem;
+  height: 1.05rem;
+  fill: currentColor;
+}
+
+.md-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: 10px;
+  margin-bottom: 0.85rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  box-shadow: var(--elevation-1);
+}
+
+.md-banner .icon {
+  width: 1.1rem;
+  height: 1.1rem;
+  flex: none;
+  margin-top: 0.1rem;
+  fill: currentColor;
+}
+
+.md-banner span {
+  flex: 1;
+}
+
+.md-banner.is-ok {
+  background: var(--success-weak);
+  color: var(--success-text);
+}
+
+.md-banner.is-error {
+  background: var(--danger-weak);
+  color: var(--danger);
+}
+
+.md-banner .dismiss {
+  flex: none;
+  padding: 0.05rem 0.3rem;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  opacity: 0.65;
+  font: inherit;
+  font-size: 0.75rem;
   cursor: pointer;
 }
 
-.import button:disabled {
-  background: var(--disabled-bg);
-  border-color: var(--disabled-border);
-  color: var(--disabled-fg);
-  cursor: not-allowed;
-}
-
-.imported {
-  font-size: 0.85rem;
-  color: var(--success-text);
-  background: var(--success-weak);
-  border-radius: 6px;
-  padding: 0.5rem 0.7rem;
-  margin-bottom: 0.75rem;
+.md-banner .dismiss:hover {
+  opacity: 1;
+  background: var(--state-hover);
 }
 
 h1 {

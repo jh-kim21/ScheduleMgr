@@ -30,6 +30,24 @@
   --border-input: #ccc;
   --border-dashed: #ddd;
 
+  /*
+   * Material 스타일 컨트롤용 토큰. 색은 위의 팔레트를 그대로 쓰고 형태·고도·상태만 얹는다 —
+   * Material 팔레트를 따로 들이면 다크 모드가 두 벌이 되고 나머지 화면과도 어긋난다.
+   *
+   * 상태 레이어는 Material 방식대로 표면 위에 겹치는 반투명 층이다(hover 8%, press 12%).
+   * 색을 따로 만들지 않아 어떤 배경 위에서도 같은 규칙으로 동작한다.
+   */
+  --state-hover: rgb(0 0 0 / 6%);
+  --state-press: rgb(0 0 0 / 12%);
+  --elevation-1: 0 1px 2px rgb(0 0 0 / 12%), 0 1px 3px 1px rgb(0 0 0 / 8%);
+  --elevation-2: 0 1px 2px rgb(0 0 0 / 14%), 0 2px 6px 2px rgb(0 0 0 / 10%);
+  --elevation-3: 0 1px 3px rgb(0 0 0 / 16%), 0 4px 8px 3px rgb(0 0 0 / 12%);
+  /* 메뉴·다이얼로그처럼 표면 위에 떠 있는 면. 본문 배경과 구분되어야 한다. */
+  --surface-raised: #fff;
+  /* 강조색을 옅게 깐 버튼(filled tonal). 주 동작이지만 페이지를 지배하지 않을 때 쓴다. */
+  --accent-container: #e3edfd;
+  --accent-container-fg: #10457a;
+
   /* 강조 (기본 동작, 활성 링크, 주요 버튼) */
   --accent: #1f6feb;
   --accent-fg: #fff;
@@ -44,6 +62,7 @@
   /* 위험 (삭제) */
   --danger: #c62828;
   --danger-border: #f3c2c2;
+  --danger-weak: #fdecec;
 
   /* 성공 (완료, 재계산 결과) */
   --success: #1e7d32;
@@ -132,6 +151,16 @@
   --border-input: #3c434e;
   --border-dashed: #3a404a;
 
+  /* 어두운 배경에서는 그림자가 잘 안 보여 알파를 올린다. 상태 레이어는 흰색으로 뒤집는다. */
+  --state-hover: rgb(255 255 255 / 8%);
+  --state-press: rgb(255 255 255 / 14%);
+  --elevation-1: 0 1px 2px rgb(0 0 0 / 40%), 0 1px 3px 1px rgb(0 0 0 / 28%);
+  --elevation-2: 0 1px 2px rgb(0 0 0 / 45%), 0 2px 6px 2px rgb(0 0 0 / 32%);
+  --elevation-3: 0 1px 3px rgb(0 0 0 / 50%), 0 4px 8px 3px rgb(0 0 0 / 36%);
+  --surface-raised: #242830;
+  --accent-container: #1d3252;
+  --accent-container-fg: #cfe0ff;
+
   --accent: #58a0ff;
   --accent-fg: #0b1220;
   --accent-weak: #16273d;
@@ -143,6 +172,7 @@
 
   --danger: #f0807f;
   --danger-border: #5d3030;
+  --danger-weak: #2b1a1c;
 
   --success: #63c98a;
   --success-weak: #16281d;
