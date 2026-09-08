@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import type { BacklogItem, BacklogItemInput } from '../api/backlogApi'
 import BacklogForm from '../features/backlog/BacklogForm.vue'
@@ -49,13 +49,10 @@ const editing = ref<BacklogItem | null>(null)
  * always-open form would push the table below the fold.
  */
 const formOpen = ref(false)
-const formSlot = ref<HTMLElement | null>(null)
 
-async function openForm(item: BacklogItem | null) {
+function openForm(item: BacklogItem | null) {
   editing.value = item
   formOpen.value = true
-  await nextTick()
-  formSlot.value?.scrollIntoView({ behavior: 'smooth', block: 'center' })
 }
 
 function closeForm() {
@@ -249,17 +246,16 @@ async function handleRemove(item: BacklogItem) {
         <strong>{{ focusedPackage.code }} {{ focusedPackage.name }}</strong>에 귀속된 항목만 보고 있습니다.
       </p>
 
-      <div ref="formSlot">
-        <BacklogForm
-          v-if="formOpen"
-          :editing="editing"
-          :members="members"
-          :work-packages="workPackages"
-          :parent-options="parentOptions"
-          @submit="handleSubmit"
-          @cancel="closeForm"
-        />
-      </div>
+      <BacklogForm
+        v-if="formOpen"
+        :editing="editing"
+        :members="members"
+        :work-packages="workPackages"
+        :parent-options="parentOptions"
+        :error="error"
+        @submit="handleSubmit"
+        @cancel="closeForm"
+      />
 
       <BacklogList
         :rows="rows"

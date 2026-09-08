@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { MemberInput, ProjectMember } from '../../api/memberApi'
+import ModalDialog from '../../components/ModalDialog.vue'
 
 const props = defineProps<{
   members: ProjectMember[]
+  /** 저장이 거부된 이유(이름 중복 등). 대화상자 안에 보여야 사용자가 볼 수 있다. */
+  error?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -15,6 +18,8 @@ const emit = defineEmits<{
 const blank = (): MemberInput => ({ name: '', email: null, position: null })
 
 const draft = ref<MemberInput>(blank())
+/** 추가 폼은 대화상자로 띄운다 — 이 화면의 주된 행위는 매트릭스를 읽는 것이다. */
+const addOpen = ref(false)
 
 /** The row being edited in place, and the values it is being edited to. */
 const editingId = ref<number | null>(null)
@@ -31,7 +36,10 @@ watch(
   (members) => {
     const added = draft.value.name.trim()
     if (added.length > 0 && members.some((member) => member.name === added)) {
+      // 저장이 받아들여졌다는 신호(보낸 이름이 목록에 나타남)일 때만 닫는다. 거부되면 대화상자가
+      // 입력값과 오류 메시지를 그대로 들고 남아 있어야 한다.
       draft.value = blank()
+      addOpen.value = false
     }
 
     if (editingId.value === null) return
@@ -68,6 +76,11 @@ function onSubmit() {
   emit('add', payload(draft.value))
 }
 
+function openAdd() {
+  draft.value = blank()
+  addOpen.value = true
+}
+
 function startEdit(member: ProjectMember) {
   editingId.value = member.id
   editDraft.value = { name: member.name, email: member.email, position: member.position }
@@ -90,31 +103,44 @@ function onRemove(member: ProjectMember) {
 
 <template>
   <section class="members">
-    <h2>프로젝트 구성원</h2>
+    <header class="section-head">
+      <h2>프로젝트 구성원</h2>
+      <button type="button" class="add" @click="openAdd">＋ 구성원 추가</button>
+    </header>
 
-    <form class="add-form" @submit.prevent="onSubmit">
-      <label>
-        이름
-        <input v-model="draft.name" type="text" placeholder="이름" />
-      </label>
+    <ModalDialog
+      v-if="addOpen"
+      title="구성원 추가"
+      :error="props.error"
+      @close="addOpen = false"
+    >
+      <form class="add-form" @submit.prevent="onSubmit">
+        <label>
+          이름
+          <input v-model="draft.name" type="text" placeholder="이름" />
+        </label>
 
-      <label>
-        직책
-        <input v-model="draft.position" type="text" placeholder="예: PM, 백엔드 (선택)" />
-      </label>
+        <label>
+          직책
+          <input v-model="draft.position" type="text" placeholder="예: PM, 백엔드 (선택)" />
+        </label>
 
-      <label class="email">
-        이메일
-        <input v-model="draft.email" type="email" placeholder="선택" />
-      </label>
+        <label class="email">
+          이메일
+          <input v-model="draft.email" type="email" placeholder="선택" />
+        </label>
 
-      <button type="submit" class="primary" :disabled="!submittable">추가</button>
-    </form>
+        <p class="rule">
+          구성원은 RACI 매트릭스의 <strong>열</strong>이 됩니다. 같은 프로젝트 안에서 이름은 겹칠 수
+          없습니다 — 겹치면 매트릭스에서 누가 누구인지 구분할 수 없기 때문입니다.
+        </p>
 
-    <p class="rule">
-      구성원은 RACI 매트릭스의 <strong>열</strong>이 됩니다. 같은 프로젝트 안에서 이름은 겹칠 수
-      없습니다 — 겹치면 매트릭스에서 누가 누구인지 구분할 수 없기 때문입니다.
-    </p>
+        <div class="dialog-actions">
+          <button type="submit" class="primary" :disabled="!submittable">추가</button>
+          <button type="button" @click="addOpen = false">취소</button>
+        </div>
+      </form>
+    </ModalDialog>
 
     <ul v-if="members.length > 0" class="list">
       <li
@@ -161,14 +187,43 @@ h2 {
   margin: 0 0 0.75rem;
 }
 
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.section-head h2 {
+  margin: 0;
+}
+
+.add {
+  margin-left: auto;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--border-input);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.add:hover {
+  border-color: var(--accent-border);
+  color: var(--text-h);
+}
+
 .add-form {
   display: flex;
-  align-items: flex-end;
-  gap: 0.6rem;
-  flex-wrap: wrap;
-  padding: 0.85rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 0.5rem;
 }
 
 label {
@@ -215,9 +270,9 @@ button.primary:disabled {
 }
 
 .rule {
-  margin-top: 0.5rem;
   font-size: 0.78rem;
   color: var(--text-faint);
+  line-height: 1.5;
 }
 
 .list {

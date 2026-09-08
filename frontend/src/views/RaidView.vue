@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { RaidItem, RaidItemInput } from '../api/raidApi'
 import RaidForm from '../features/raid/RaidForm.vue'
@@ -45,14 +45,9 @@ const editing = ref<RaidItem | null>(null)
  * push the table below the fold all day.
  */
 const formOpen = ref(false)
-const formSlot = ref<HTMLElement | null>(null)
-
-/** The form sits above the table, so opening it from a row far down needs a scroll to be seen. */
-async function openForm(item: RaidItem | null) {
+function openForm(item: RaidItem | null) {
   editing.value = item
   formOpen.value = true
-  await nextTick()
-  formSlot.value?.scrollIntoView({ behavior: 'smooth', block: 'center' })
 }
 
 function closeForm() {
@@ -221,26 +216,20 @@ async function handleRemove(item: RaidItem) {
           </button>
         </div>
 
-        <button
-          v-if="!formOpen"
-          type="button"
-          class="add"
-          @click="openForm(null)"
-        >＋ 항목 추가</button>
-        <button v-else type="button" class="add ghost" @click="closeForm">입력 닫기</button>
+        <button type="button" class="add" @click="openForm(null)">＋ 항목 추가</button>
       </div>
 
-      <div v-if="formOpen" ref="formSlot" class="form-slot">
-        <RaidForm
-          :editing="editing"
-          :members="members"
-          :wbs-tasks="wbsTasks"
-          :sprints="sprints"
-          :backlog-items="backlogItems"
-          @submit="handleSubmit"
-          @cancel="closeForm"
-        />
-      </div>
+      <RaidForm
+        v-if="formOpen"
+        :editing="editing"
+        :members="members"
+        :wbs-tasks="wbsTasks"
+        :sprints="sprints"
+        :backlog-items="backlogItems"
+        :error="error"
+        @submit="handleSubmit"
+        @cancel="closeForm"
+      />
 
       <p v-if="filterActive && data.items.length > 0" class="filter-note">
         {{ data.items.length }}건 중 {{ visibleItems.length }}건 표시 중.
@@ -373,10 +362,6 @@ h1 {
   background: var(--surface);
   border-color: var(--border-input);
   color: var(--text-muted);
-}
-
-.form-slot {
-  margin-bottom: 1rem;
 }
 
 .type-chips {

@@ -14,36 +14,38 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <table class="project-list">
-    <thead>
-      <tr>
-        <th>이름</th>
-        <th>상태</th>
-        <th>시작일</th>
-        <th>종료일</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr v-if="projects.length === 0">
-        <td colspan="5" class="empty">등록된 프로젝트가 없습니다.</td>
-      </tr>
-      <tr v-for="project in projects" :key="project.id">
-        <td>
-          <div class="name">{{ project.name }}</div>
-          <div v-if="project.description" class="desc">{{ project.description }}</div>
-        </td>
-        <td><span class="badge" :data-status="project.status">{{ STATUS_LABELS[project.status] }}</span></td>
-        <td>{{ project.startDate ?? '-' }}</td>
-        <td>{{ project.endDate ?? '-' }}</td>
-        <td class="actions">
-          <ExportMenu :project="project" />
-          <button class="ghost" @click="emit('edit', project)">수정</button>
-          <button class="danger" @click="emit('remove', project)">삭제</button>
-        </td>
-      </tr>
-    </tbody>
-  </table>
+  <div class="table-scroll">
+    <table class="project-list">
+      <thead>
+        <tr>
+          <th>이름</th>
+          <th>상태</th>
+          <th>시작일</th>
+          <th>종료일</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-if="projects.length === 0">
+          <td colspan="5" class="empty">등록된 프로젝트가 없습니다.</td>
+        </tr>
+        <tr v-for="project in projects" :key="project.id">
+          <td>
+            <div class="name">{{ project.name }}</div>
+            <div v-if="project.description" class="desc">{{ project.description }}</div>
+          </td>
+          <td><span class="badge" :data-status="project.status">{{ STATUS_LABELS[project.status] }}</span></td>
+          <td>{{ project.startDate ?? '-' }}</td>
+          <td>{{ project.endDate ?? '-' }}</td>
+          <td class="actions">
+            <ExportMenu :project="project" />
+            <button class="ghost" @click="emit('edit', project)">수정</button>
+            <button class="danger" @click="emit('remove', project)">삭제</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
 </template>
 
 <style scoped>

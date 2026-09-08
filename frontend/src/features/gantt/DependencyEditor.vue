@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { DependencyInput, GanttData, GanttDependency } from '../../api/ganttApi'
+import ModalDialog from '../../components/ModalDialog.vue'
 
 const props = defineProps<{
   data: GanttData
+  /** 저장이 거부된 이유(순환·중복 등). 대화상자 안에 보여야 사용자가 볼 수 있다. */
+  error?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -15,6 +18,10 @@ const emit = defineEmits<{
 const predecessorId = ref<number | null>(null)
 const successorId = ref<number | null>(null)
 const lagDays = ref(0)
+/** 추가 폼은 대화상자로 띄운다 — 이 화면의 주된 행위는 차트를 읽는 것이다. */
+const addOpen = ref(false)
+/** 방금 보낸 추가 요청. 목록에 나타나면 서버가 받아들인 것이므로 그때 닫는다. */
+let pendingAdd: DependencyInput | null = null
 
 /** The row being edited in place, and the values it is being edited to. */
 const editingId = ref<number | null>(null)
@@ -47,6 +54,20 @@ watch(
 watch(
   () => props.data.dependencies,
   (dependencies) => {
+    if (
+      pendingAdd &&
+      dependencies.some(
+        (dependency) =>
+          dependency.predecessorId === pendingAdd!.predecessorId &&
+          dependency.successorId === pendingAdd!.successorId,
+      )
+    ) {
+      pendingAdd = null
+      addOpen.value = false
+      successorId.value = null
+      lagDays.value = 0
+    }
+
     if (editingId.value === null) return
     const saved = dependencies.find((dependency) => dependency.id === editingId.value)
     if (!saved) {
@@ -75,13 +96,17 @@ const draftSubmittable = computed(() => draft.value.predecessorId !== draft.valu
 
 function onSubmit() {
   if (!submittable.value) return
-  emit('add', {
+  pendingAdd = {
     predecessorId: predecessorId.value!,
     successorId: successorId.value!,
     lagDays: lagDays.value,
-  })
-  successorId.value = null
-  lagDays.value = 0
+  }
+  emit('add', pendingAdd)
+}
+
+function openAdd() {
+  pendingAdd = null
+  addOpen.value = true
 }
 
 function startEdit(dependency: GanttDependency) {
@@ -105,43 +130,56 @@ function onSave() {
 
 <template>
   <section class="dependencies">
-    <h2>선후행 관계</h2>
+    <header class="section-head">
+      <h2>선후행 관계</h2>
+      <button type="button" class="add" :disabled="data.tasks.length < 2" @click="openAdd">
+        ＋ 관계 추가
+      </button>
+    </header>
 
-    <form class="add-form" @submit.prevent="onSubmit">
-      <label>
-        선행 업무
-        <select v-model="predecessorId">
-          <option :value="null" disabled>선택</option>
-          <option v-for="task in data.tasks" :key="`pred-${task.id}`" :value="task.id">
-            {{ task.code }} {{ task.name }}
-          </option>
-        </select>
-      </label>
+    <ModalDialog
+      v-if="addOpen"
+      title="선후행 관계 추가"
+      :error="props.error"
+      @close="addOpen = false"
+    >
+      <form class="add-form" @submit.prevent="onSubmit">
+        <label>
+          선행 업무
+          <select v-model="predecessorId">
+            <option :value="null" disabled>선택</option>
+            <option v-for="task in data.tasks" :key="`pred-${task.id}`" :value="task.id">
+              {{ task.code }} {{ task.name }}
+            </option>
+          </select>
+        </label>
 
-      <span class="arrow" aria-hidden="true">→</span>
+        <label>
+          후행 업무
+          <select v-model="successorId">
+            <option :value="null" disabled>선택</option>
+            <option v-for="task in data.tasks" :key="`succ-${task.id}`" :value="task.id">
+              {{ task.code }} {{ task.name }}
+            </option>
+          </select>
+        </label>
 
-      <label>
-        후행 업무
-        <select v-model="successorId">
-          <option :value="null" disabled>선택</option>
-          <option v-for="task in data.tasks" :key="`succ-${task.id}`" :value="task.id">
-            {{ task.code }} {{ task.name }}
-          </option>
-        </select>
-      </label>
+        <label class="lag">
+          대기(일)
+          <input v-model.number="lagDays" type="number" min="0" />
+        </label>
 
-      <label class="lag">
-        대기(일)
-        <input v-model.number="lagDays" type="number" min="0" />
-      </label>
+        <p class="rule">
+          선행 업무가 끝난 뒤 대기 일수만큼 지나서 후행 업무를 시작할 수 있습니다 (대기 0 = 바로 다음 날).
+          이 값은 <strong>계획상 간격</strong>이며, 실제 지연은 오늘 날짜와 진행률로 자동 판정됩니다.
+        </p>
 
-      <button type="submit" class="primary" :disabled="!submittable">추가</button>
-    </form>
-
-    <p class="rule">
-      선행 업무가 끝난 뒤 대기 일수만큼 지나서 후행 업무를 시작할 수 있습니다 (대기 0 = 바로 다음 날).
-      이 값은 <strong>계획상 간격</strong>이며, 실제 지연은 오늘 날짜와 진행률로 자동 판정됩니다.
-    </p>
+        <div class="dialog-actions">
+          <button type="submit" class="primary" :disabled="!submittable">추가</button>
+          <button type="button" @click="addOpen = false">취소</button>
+        </div>
+      </form>
+    </ModalDialog>
 
     <ul v-if="data.dependencies.length > 0" class="list">
       <li
@@ -206,14 +244,51 @@ h2 {
   margin: 0 0 0.75rem;
 }
 
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.section-head h2 {
+  margin: 0;
+}
+
+.add {
+  margin-left: auto;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--border-input);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.add:hover:not(:disabled) {
+  border-color: var(--accent-border);
+  color: var(--text-h);
+}
+
+.add:disabled {
+  background: var(--disabled-bg);
+  border-color: var(--disabled-border);
+  color: var(--disabled-fg);
+  cursor: not-allowed;
+}
+
 .add-form {
   display: flex;
-  align-items: flex-end;
-  gap: 0.6rem;
-  flex-wrap: wrap;
-  padding: 0.85rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 0.5rem;
 }
 
 label {
@@ -266,9 +341,9 @@ button.primary:disabled {
 }
 
 .rule {
-  margin-top: 0.5rem;
   font-size: 0.78rem;
   color: var(--text-faint);
+  line-height: 1.5;
 }
 
 .list {

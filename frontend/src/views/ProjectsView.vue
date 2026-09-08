@@ -9,6 +9,10 @@ import { ApiError } from '../api/http'
 
 const { projects, loading, error, ensureLoaded, load, create, update, remove } = useProjects()
 const editing = ref<Project | null>(null)
+/** 폼은 대화상자로 띄운다 — 이 화면의 주된 행위는 목록을 읽는 것이다. */
+const formOpen = ref(false)
+/** 저장 거부 사유. 목록 로딩 오류(`error`)와 섞이면 안 되므로 따로 둔다. */
+const saveError = ref<string | null>(null)
 
 /** 가져오기 결과는 목록 로딩 오류와 섞이면 안 되므로 따로 둔다. */
 const importError = ref<string | null>(null)
@@ -45,19 +49,37 @@ async function handleFile(event: Event) {
 
 onMounted(ensureLoaded)
 
+function openForm(project: Project | null) {
+  editing.value = project
+  saveError.value = null
+  formOpen.value = true
+}
+
+function closeForm() {
+  formOpen.value = false
+  editing.value = null
+  saveError.value = null
+}
+
+/** 거부되면 대화상자를 열어 둔 채 사유를 보여 준다 — 입력을 다시 치게 만들면 안 된다. */
 async function handleSubmit(input: ProjectInput) {
-  if (editing.value) {
-    await update(editing.value.id, input)
-    editing.value = null
-  } else {
-    await create(input)
+  saveError.value = null
+  try {
+    if (editing.value) {
+      await update(editing.value.id, input)
+    } else {
+      await create(input)
+    }
+    closeForm()
+  } catch (e) {
+    saveError.value = e instanceof ApiError ? e.message : '저장하지 못했습니다.'
   }
 }
 
 async function handleRemove(project: Project) {
   if (!confirm(`"${project.name}" 프로젝트를 삭제할까요?`)) return
   await remove(project.id)
-  if (editing.value?.id === project.id) editing.value = null
+  if (editing.value?.id === project.id) closeForm()
 }
 </script>
 
@@ -65,6 +87,8 @@ async function handleRemove(project: Project) {
   <section>
     <div class="head">
       <h1>프로젝트</h1>
+
+      <button type="button" class="add" @click="openForm(null)">＋ 프로젝트 추가</button>
 
       <span class="import">
         <!--
@@ -112,9 +136,11 @@ async function handleRemove(project: Project) {
     </div>
 
     <ProjectForm
+      v-if="formOpen"
       :editing="editing"
+      :error="saveError"
       @submit="handleSubmit"
-      @cancel="editing = null"
+      @cancel="closeForm"
     />
 
     <p v-if="error" class="error">{{ error }}</p>
@@ -122,7 +148,7 @@ async function handleRemove(project: Project) {
     <ProjectList
       v-else
       :projects="projects"
-      @edit="(p) => (editing = p)"
+      @edit="openForm"
       @remove="handleRemove"
     />
   </section>
@@ -140,8 +166,22 @@ async function handleRemove(project: Project) {
   margin-bottom: 0;
 }
 
-.import {
+.add {
   margin-left: auto;
+  padding: 0.4rem 0.85rem;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.add:hover {
+  box-shadow: var(--elevation-1);
 }
 
 .md-tonal {

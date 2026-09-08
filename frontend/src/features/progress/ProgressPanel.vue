@@ -215,106 +215,108 @@ function snapshotSummary(metrics: string): string {
     </div>
 
     <h2>Work Package별 진척</h2>
-    <table class="wp">
-      <thead>
-        <tr>
-          <th class="code">WBS</th>
-          <th>이름</th>
-          <th class="mode">실행 방식</th>
-          <th class="num">가중치</th>
-          <th class="basis">기준</th>
-          <th class="pct">진척</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        <template v-for="wp in data?.workPackages ?? []" :key="wp.wbsItemId">
-          <tr :class="{ open: expanded === wp.wbsItemId }">
-            <td class="code">{{ wp.code ?? '-' }}</td>
-            <td>
-              {{ wp.name }}
-              <span v-if="wp.acceptancePending" class="chip warn">
-                {{ ACCEPTANCE_STATUS_LABELS.PENDING }}
-              </span>
-            </td>
-            <td class="mode">
-              {{ executionModeLabel(wp.executionMode) }}
-              <span v-if="wp.executionMode === 'HYBRID'" class="ratio">
-                α {{ wp.agileRatio === null ? '미정' : `${wp.agileRatio}%` }}
-              </span>
-            </td>
-            <td class="num">{{ wp.weight ?? '-' }}</td>
-            <td class="basis">
-              <span :title="PROGRESS_BASIS_HINTS[wp.basis]">
-                {{ PROGRESS_BASIS_LABELS[wp.basis] }}
-              </span>
-            </td>
-            <td class="pct">
-              <div class="bar" :title="wp.note ?? ''">
-                <div class="fill" :style="{ width: progressBarWidth(wp.percent) }"></div>
-              </div>
-              <span :class="{ none: wp.percent === null }">{{ progressText(wp.percent) }}</span>
-            </td>
-            <td class="actions">
-              <button type="button" @click="toggle(wp)">
-                체크포인트 {{ wp.checkpointApproved }}/{{ wp.checkpointTotal }}
-              </button>
-            </td>
+    <div class="table-scroll">
+      <table class="wp">
+        <thead>
+          <tr>
+            <th class="code">WBS</th>
+            <th>이름</th>
+            <th class="mode">실행 방식</th>
+            <th class="num">가중치</th>
+            <th class="basis">기준</th>
+            <th class="pct">진척</th>
+            <th></th>
           </tr>
-          <tr v-if="expanded === wp.wbsItemId" class="detail">
-            <td colspan="7">
-              <p v-if="wp.note" class="note">{{ wp.note }}</p>
-              <p v-if="wp.backlogTotal > 0" class="note muted">
-                집계 대상 Story·Bug {{ wp.backlogDone }}/{{ wp.backlogTotal }} 완료
-              </p>
-
-              <ul v-if="wp.checkpoints.length > 0" class="checkpoints">
-                <li v-for="cp in wp.checkpoints" :key="cp.id">
-                  <span class="cp-title">{{ cp.title }}</span>
-                  <span class="cp-weight">가중치 {{ cp.weight ?? '균등' }}</span>
-                  <span v-if="cp.completionCriteria" class="cp-criteria">
-                    {{ cp.completionCriteria }}
-                  </span>
-                  <span v-if="cp.approved" class="cp-approved">
-                    승인 · {{ cp.approvedBy }} · {{ cp.approvedAt?.slice(0, 10) }}
-                  </span>
-                  <button
-                    v-if="cp.approved"
-                    type="button"
-                    class="link"
-                    @click="setApproval(selectedProjectId!, cp.id, false, null)"
-                  >승인 취소</button>
-                  <button
-                    v-else
-                    type="button"
-                    class="link"
-                    @click="approving = { checkpointId: cp.id }; approver = ''"
-                  >승인</button>
-                  <button
-                    type="button"
-                    class="link danger"
-                    @click="deleteCheckpoint(selectedProjectId!, cp.id)"
-                  >삭제</button>
-                </li>
-              </ul>
-              <p v-else class="note muted">
-                체크포인트가 없습니다. Waterfall·Hybrid 진척은 이 목록이 분모이므로, 없으면
-                산정 전입니다.
-              </p>
-
-              <div class="cp-form">
-                <input v-model="newTitle" type="text" placeholder="체크포인트 제목" />
-                <input v-model.number="newWeight" type="number" min="0" placeholder="가중치" />
-                <input v-model="newCriteria" type="text" placeholder="완료 조건 (선택)" />
-                <button type="button" :disabled="!newTitle.trim()" @click="submitCheckpoint(wp)">
-                  추가
+        </thead>
+        <tbody>
+          <template v-for="wp in data?.workPackages ?? []" :key="wp.wbsItemId">
+            <tr :class="{ open: expanded === wp.wbsItemId }">
+              <td class="code">{{ wp.code ?? '-' }}</td>
+              <td>
+                {{ wp.name }}
+                <span v-if="wp.acceptancePending" class="chip warn">
+                  {{ ACCEPTANCE_STATUS_LABELS.PENDING }}
+                </span>
+              </td>
+              <td class="mode">
+                {{ executionModeLabel(wp.executionMode) }}
+                <span v-if="wp.executionMode === 'HYBRID'" class="ratio">
+                  α {{ wp.agileRatio === null ? '미정' : `${wp.agileRatio}%` }}
+                </span>
+              </td>
+              <td class="num">{{ wp.weight ?? '-' }}</td>
+              <td class="basis">
+                <span :title="PROGRESS_BASIS_HINTS[wp.basis]">
+                  {{ PROGRESS_BASIS_LABELS[wp.basis] }}
+                </span>
+              </td>
+              <td class="pct">
+                <div class="bar" :title="wp.note ?? ''">
+                  <div class="fill" :style="{ width: progressBarWidth(wp.percent) }"></div>
+                </div>
+                <span :class="{ none: wp.percent === null }">{{ progressText(wp.percent) }}</span>
+              </td>
+              <td class="actions">
+                <button type="button" @click="toggle(wp)">
+                  체크포인트 {{ wp.checkpointApproved }}/{{ wp.checkpointTotal }}
                 </button>
-              </div>
-            </td>
-          </tr>
-        </template>
-      </tbody>
-    </table>
+              </td>
+            </tr>
+            <tr v-if="expanded === wp.wbsItemId" class="detail">
+              <td colspan="7">
+                <p v-if="wp.note" class="note cell-clip" :title="wp.note">{{ wp.note }}</p>
+                <p v-if="wp.backlogTotal > 0" class="note muted">
+                  집계 대상 Story·Bug {{ wp.backlogDone }}/{{ wp.backlogTotal }} 완료
+                </p>
+
+                <ul v-if="wp.checkpoints.length > 0" class="checkpoints">
+                  <li v-for="cp in wp.checkpoints" :key="cp.id">
+                    <span class="cp-title">{{ cp.title }}</span>
+                    <span class="cp-weight">가중치 {{ cp.weight ?? '균등' }}</span>
+                    <span v-if="cp.completionCriteria" class="cp-criteria">
+                      {{ cp.completionCriteria }}
+                    </span>
+                    <span v-if="cp.approved" class="cp-approved">
+                      승인 · {{ cp.approvedBy }} · {{ cp.approvedAt?.slice(0, 10) }}
+                    </span>
+                    <button
+                      v-if="cp.approved"
+                      type="button"
+                      class="link"
+                      @click="setApproval(selectedProjectId!, cp.id, false, null)"
+                    >승인 취소</button>
+                    <button
+                      v-else
+                      type="button"
+                      class="link"
+                      @click="approving = { checkpointId: cp.id }; approver = ''"
+                    >승인</button>
+                    <button
+                      type="button"
+                      class="link danger"
+                      @click="deleteCheckpoint(selectedProjectId!, cp.id)"
+                    >삭제</button>
+                  </li>
+                </ul>
+                <p v-else class="note muted">
+                  체크포인트가 없습니다. Waterfall·Hybrid 진척은 이 목록이 분모이므로, 없으면
+                  산정 전입니다.
+                </p>
+
+                <div class="cp-form">
+                  <input v-model="newTitle" type="text" placeholder="체크포인트 제목" />
+                  <input v-model.number="newWeight" type="number" min="0" placeholder="가중치" />
+                  <input v-model="newCriteria" type="text" placeholder="완료 조건 (선택)" />
+                  <button type="button" :disabled="!newTitle.trim()" @click="submitCheckpoint(wp)">
+                    추가
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
 
     <h2>보고 스냅샷</h2>
     <p class="notice subtle">
@@ -503,6 +505,8 @@ input {
   border-bottom: 1px solid var(--border-soft);
   font-size: 0.87rem;
   vertical-align: top;
+  /* 값이 세로로 접히지 않게 한다 — 넘치면 .table-scroll 이 가로로 넘긴다. */
+  white-space: nowrap;
 }
 
 .wp th {

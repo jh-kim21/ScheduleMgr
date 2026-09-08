@@ -59,10 +59,17 @@ const inAgile = computed(() => AGILE_PATHS.includes(route.path))
 </template>
 
 <style scoped>
+/*
+ * 표와 간트 차트가 주된 내용이라 폭이 넓을수록 한 화면에 들어오는 열이 늘어난다. 960px 은 본문
+ * 위주 페이지의 읽기 폭이라 이 앱에서는 좌우가 비어 보였다.
+ *
+ * 여전히 상한을 두는 이유: 아주 넓은 화면에서 헤더의 메뉴가 양 끝으로 흩어지고 표가 화면 폭만큼
+ * 늘어나면 시선 이동이 오히려 커진다.
+ */
 .app {
-  max-width: 960px;
+  max-width: 1600px;
   margin: 0 auto;
-  padding: 0 1.5rem;
+  padding: 0 1rem;
 }
 
 .app-header {

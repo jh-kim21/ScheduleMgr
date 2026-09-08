@@ -233,3 +233,30 @@ h2 {
 p {
   margin: 0;
 }
+
+/*
+ * 표는 셀 값을 세로로 접지 않고 가로 스크롤로 넘긴다 — 값이 줄바꿈되면 행 높이가 들쭉날쭉해져서
+ * 훑어 읽기가 어렵다. 컴포넌트 스코프가 아니라 전역에 두어 모든 표가 같은 규칙을 공유한다
+ * (스코프 스타일은 자기 컴포넌트에만 붙지만, 전역 클래스는 그 안의 요소에도 그대로 적용된다).
+ */
+.table-scroll {
+  overflow-x: auto;
+  /* 표 끝에서 스크롤이 페이지로 넘어가 화면이 튀는 것을 막는다. */
+  overscroll-behavior-x: contain;
+}
+
+.table-scroll > table {
+  min-width: 100%;
+}
+
+/*
+ * 자유 입력 칸(설명·비고)에만 쓴다. 한 줄로 두는 것은 같지만 폭에 상한을 두어, 긴 메모 하나가
+ * 표를 화면 몇 배로 늘리지 않게 한다. 잘린 값은 title 로 확인한다.
+ */
+.cell-clip {
+  display: block;
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

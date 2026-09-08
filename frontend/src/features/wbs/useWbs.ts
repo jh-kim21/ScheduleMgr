@@ -56,15 +56,24 @@ export function useWbs() {
   /**
    * Runs a mutation, then marks WBS items as changed so the Gantt view refetches. The cache key is
    * refreshed *after* the bump, so this view keeps the tree the server just returned.
+   *
+   * Returns whether the server accepted the change. A rejected save has to leave the input dialog
+   * open with the draft in it, so the caller needs to know.
    */
-  async function mutate(projectId: number, action: () => Promise<WbsTree>, fallback: string) {
+  async function mutate(
+    projectId: number,
+    action: () => Promise<WbsTree>,
+    fallback: string,
+  ): Promise<boolean> {
     error.value = null
     try {
       const result = await action()
       markWbsChanged()
       apply(result, projectId)
+      return true
     } catch (e) {
       error.value = describe(e, fallback)
+      return false
     }
   }
 

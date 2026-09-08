@@ -206,149 +206,155 @@ function rowClass(row: WbsRow) {
 
 <template>
   <div v-if="tree.length === 0" class="empty">
-    등록된 WBS 항목이 없습니다. 위 폼에서 최상위 항목을 추가해 보세요.
+    등록된 WBS 항목이 없습니다. 위 ＋ 최상위 항목 추가로 첫 항목을 만들어 보세요.
   </div>
 
   <template v-else>
-    <table class="wbs-tree">
-      <thead>
-        <tr>
-          <th class="code">WBS</th>
-          <th>업무명</th>
-          <th class="date">시작일</th>
-          <th class="date">종료일</th>
-          <th class="mode">실행 방식</th>
-          <th class="backlog">연결 Backlog</th>
-          <th class="progress">진척</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody ref="body">
-        <tr
-          v-for="row in rows"
-          :key="row.node.id"
-          :data-row-id="row.node.id"
-          :class="rowClass(row)"
-          draggable="true"
-          @dragstart="onDragStart($event, row.node)"
-          @dragend="onDragEnd"
-          @dragover="onDragOver($event, row)"
-          @drop="onDrop($event, row)"
-        >
-          <td class="code">{{ row.node.code }}</td>
-          <td>
-            <div class="name" :style="{ paddingLeft: `${(row.node.level - 1) * 1.25}rem` }">
-              <button
-                v-if="row.node.children.length > 0"
-                class="toggle"
-                type="button"
-                :aria-label="collapsed.has(row.node.id) ? '펼치기' : '접기'"
-                @click="toggle(row.node)"
-              >
-                {{ collapsed.has(row.node.id) ? '▶' : '▼' }}
-              </button>
-              <span v-else class="toggle-spacer"></span>
-              <span :class="{ summary: row.node.summary }">{{ row.node.name }}</span>
-              <!--
-                지연/지연 위험만 표시한다. WBS는 구조를 다루는 화면이라 모든 행에 상태를 달면
-                소음이 되고, 전체 상태는 간트에서 본다.
-              -->
-              <span
-                v-if="needsAttention(row.node)"
-                class="delay-badge"
-                :data-status="row.node.delayStatus"
-                :title="delayDescription(row.node)"
-              >{{ delayBadge(row.node) }}</span>
-              <span v-if="row.node.description" class="desc">{{ row.node.description }}</span>
-            </div>
-          </td>
-          <td class="date">{{ row.node.startDate ?? '-' }}</td>
-          <td class="date">{{ row.node.endDate ?? '-' }}</td>
-          <!--
-            실행 방식은 최하위 Work Package의 것이다. 하위가 있는 항목은 자기 값을 쓰지 않고
-            하위의 요약을 보여준다 (설계 §5).
-          -->
-          <td class="mode">
-            <template v-if="row.node.children.length > 0">
-              <span class="mode-summary">
-                {{ executionModeSummaryText(row.node.executionModeSummary) || '-' }}
-              </span>
-              <!--
-                전환 전 값이 남아 있는 경우. 지우지 않는 것이 의도이므로, 지금 적용되는 값이
-                아니라는 사실만 따로 알린다.
-              -->
-              <span
-                v-if="row.node.executionMode"
-                class="retained"
-                :title="`구분을 Work Package로 되돌리면 다시 적용됩니다.`"
-              >보관 {{ executionModeLabel(row.node.executionMode) }}</span>
-            </template>
-            <span
-              v-else
-              :class="{ unspecified: !row.node.executionMode }"
-            >{{ executionModeLabel(row.node.executionMode) }}</span>
-          </td>
-          <!--
-            연결 Backlog 수 (설계 §4.3). 눌러서 그 Work Package로 필터링한 Backlog로 이동한다.
-            상위 행의 숫자는 하위 전체를 합친 것이라 링크 대상이 하나가 아니므로 글자만 보여준다.
-          -->
-          <td class="backlog">
-            <template v-if="row.node.backlogSummary">
-              <RouterLink
-                v-if="row.node.nodeType === 'WORK_PACKAGE'"
-                :to="{ path: '/backlog', query: { wbs: String(row.node.id) } }"
-                :title="`'${row.node.name}'에 귀속된 Backlog 보기`"
-              >{{ backlogSummaryText(row.node.backlogSummary) }}</RouterLink>
-              <span v-else class="rolled-up" title="하위 항목들의 합계입니다.">
-                {{ backlogSummaryText(row.node.backlogSummary) }}
-              </span>
-            </template>
-            <span v-else class="none">-</span>
-          </td>
-          <!--
-            공통 집계 결과를 그대로 보여준다 (지시서 5-C). 산정 전은 0%가 아니므로 막대를 그리지
-            않고 그렇게 적는다.
-          -->
-          <td class="progress">
-            <div
-              class="bar"
-              :title="row.node.progressNote ?? (row.node.progressBasis ? PROGRESS_BASIS_HINTS[row.node.progressBasis] : '')"
-            >
-              <div class="fill" :style="{ width: progressBarWidth(row.node.computedProgress) }"></div>
-            </div>
-            <span class="pct" :class="{ none: row.node.computedProgress === null }">
-              {{ progressText(row.node.computedProgress) }}
-            </span>
-            <span
-              v-if="row.node.progressBasis && row.node.progressBasis !== 'MANUAL'"
-              class="basis"
-            >{{ PROGRESS_BASIS_LABELS[row.node.progressBasis] }}</span>
-            <span v-if="row.node.progressIncomplete" class="incomplete" title="일부 하위가 산정 전이거나 가중치가 없습니다.">불완전</span>
-            <span v-if="row.node.acceptancePending" class="pending">
-              {{ ACCEPTANCE_STATUS_LABELS.PENDING }}
-            </span>
-          </td>
-          <td class="actions">
+    <div class="table-scroll">
+      <table class="wbs-tree">
+        <thead>
+          <tr>
+            <th class="code">WBS</th>
+            <th>업무명</th>
+            <th class="date">시작일</th>
+            <th class="date">종료일</th>
+            <th class="mode">실행 방식</th>
+            <th class="backlog">연결 Backlog</th>
+            <th class="progress">진척</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody ref="body">
+          <tr
+            v-for="row in rows"
+            :key="row.node.id"
+            :data-row-id="row.node.id"
+            :class="rowClass(row)"
+            draggable="true"
+            @dragstart="onDragStart($event, row.node)"
+            @dragend="onDragEnd"
+            @dragover="onDragOver($event, row)"
+            @drop="onDrop($event, row)"
+          >
+            <td class="code">{{ row.node.code }}</td>
+            <td>
+              <div class="name" :style="{ paddingLeft: `${(row.node.level - 1) * 1.25}rem` }">
+                <button
+                  v-if="row.node.children.length > 0"
+                  class="toggle"
+                  type="button"
+                  :aria-label="collapsed.has(row.node.id) ? '펼치기' : '접기'"
+                  @click="toggle(row.node)"
+                >
+                  {{ collapsed.has(row.node.id) ? '▶' : '▼' }}
+                </button>
+                <span v-else class="toggle-spacer"></span>
+                <span :class="{ summary: row.node.summary }">{{ row.node.name }}</span>
+                <!--
+                  지연/지연 위험만 표시한다. WBS는 구조를 다루는 화면이라 모든 행에 상태를 달면
+                  소음이 되고, 전체 상태는 간트에서 본다.
+                -->
+                <span
+                  v-if="needsAttention(row.node)"
+                  class="delay-badge"
+                  :data-status="row.node.delayStatus"
+                  :title="delayDescription(row.node)"
+                >{{ delayBadge(row.node) }}</span>
+                <span
+                  v-if="row.node.description"
+                  class="desc cell-clip"
+                  :title="row.node.description"
+                >{{ row.node.description }}</span>
+              </div>
+            </td>
+            <td class="date">{{ row.node.startDate ?? '-' }}</td>
+            <td class="date">{{ row.node.endDate ?? '-' }}</td>
             <!--
-              Work Package에는 하위를 둘 수 없다. 눌러 봐야 서버가 거부하므로 미리 막고
-              무엇을 해야 하는지 title로 알린다.
+              실행 방식은 최하위 Work Package의 것이다. 하위가 있는 항목은 자기 값을 쓰지 않고
+              하위의 요약을 보여준다 (설계 §5).
             -->
-            <button
-              type="button"
-              :disabled="row.node.nodeType === 'WORK_PACKAGE'"
-              :title="
-                row.node.nodeType === 'WORK_PACKAGE'
-                  ? 'Work Package에는 하위 항목을 둘 수 없습니다. 수정에서 구분을 Summary로 바꾸세요.'
-                  : '하위 항목 추가'
-              "
-              @click="emit('addChild', row.node)"
-            >하위</button>
-            <button type="button" @click="emit('edit', row.node)">수정</button>
-            <button type="button" class="danger" @click="emit('remove', row.node)">삭제</button>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+            <td class="mode">
+              <template v-if="row.node.children.length > 0">
+                <span class="mode-summary">
+                  {{ executionModeSummaryText(row.node.executionModeSummary) || '-' }}
+                </span>
+                <!--
+                  전환 전 값이 남아 있는 경우. 지우지 않는 것이 의도이므로, 지금 적용되는 값이
+                  아니라는 사실만 따로 알린다.
+                -->
+                <span
+                  v-if="row.node.executionMode"
+                  class="retained"
+                  :title="`구분을 Work Package로 되돌리면 다시 적용됩니다.`"
+                >보관 {{ executionModeLabel(row.node.executionMode) }}</span>
+              </template>
+              <span
+                v-else
+                :class="{ unspecified: !row.node.executionMode }"
+              >{{ executionModeLabel(row.node.executionMode) }}</span>
+            </td>
+            <!--
+              연결 Backlog 수 (설계 §4.3). 눌러서 그 Work Package로 필터링한 Backlog로 이동한다.
+              상위 행의 숫자는 하위 전체를 합친 것이라 링크 대상이 하나가 아니므로 글자만 보여준다.
+            -->
+            <td class="backlog">
+              <template v-if="row.node.backlogSummary">
+                <RouterLink
+                  v-if="row.node.nodeType === 'WORK_PACKAGE'"
+                  :to="{ path: '/backlog', query: { wbs: String(row.node.id) } }"
+                  :title="`'${row.node.name}'에 귀속된 Backlog 보기`"
+                >{{ backlogSummaryText(row.node.backlogSummary) }}</RouterLink>
+                <span v-else class="rolled-up" title="하위 항목들의 합계입니다.">
+                  {{ backlogSummaryText(row.node.backlogSummary) }}
+                </span>
+              </template>
+              <span v-else class="none">-</span>
+            </td>
+            <!--
+              공통 집계 결과를 그대로 보여준다 (지시서 5-C). 산정 전은 0%가 아니므로 막대를 그리지
+              않고 그렇게 적는다.
+            -->
+            <td class="progress">
+              <div
+                class="bar"
+                :title="row.node.progressNote ?? (row.node.progressBasis ? PROGRESS_BASIS_HINTS[row.node.progressBasis] : '')"
+              >
+                <div class="fill" :style="{ width: progressBarWidth(row.node.computedProgress) }"></div>
+              </div>
+              <span class="pct" :class="{ none: row.node.computedProgress === null }">
+                {{ progressText(row.node.computedProgress) }}
+              </span>
+              <span
+                v-if="row.node.progressBasis && row.node.progressBasis !== 'MANUAL'"
+                class="basis"
+              >{{ PROGRESS_BASIS_LABELS[row.node.progressBasis] }}</span>
+              <span v-if="row.node.progressIncomplete" class="incomplete" title="일부 하위가 산정 전이거나 가중치가 없습니다.">불완전</span>
+              <span v-if="row.node.acceptancePending" class="pending">
+                {{ ACCEPTANCE_STATUS_LABELS.PENDING }}
+              </span>
+            </td>
+            <td class="actions">
+              <!--
+                Work Package에는 하위를 둘 수 없다. 눌러 봐야 서버가 거부하므로 미리 막고
+                무엇을 해야 하는지 title로 알린다.
+              -->
+              <button
+                type="button"
+                :disabled="row.node.nodeType === 'WORK_PACKAGE'"
+                :title="
+                  row.node.nodeType === 'WORK_PACKAGE'
+                    ? 'Work Package에는 하위 항목을 둘 수 없습니다. 수정에서 구분을 Summary로 바꾸세요.'
+                    : '하위 항목 추가'
+                "
+                @click="emit('addChild', row.node)"
+              >하위</button>
+              <button type="button" @click="emit('edit', row.node)">수정</button>
+              <button type="button" class="danger" @click="emit('remove', row.node)">삭제</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
     <div
       class="root-dropzone"
@@ -379,6 +385,8 @@ td {
   border-bottom: 1px solid var(--border-soft);
   border-top: 2px solid transparent;
   font-size: 0.9rem;
+  /* 값이 세로로 접히지 않게 한다 — 넘치면 .table-scroll 이 가로로 넘긴다. */
+  white-space: nowrap;
 }
 
 th {

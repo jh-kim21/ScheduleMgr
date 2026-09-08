@@ -69,97 +69,99 @@ function archiveTitle(item: BacklogItem): string {
     {{ filtered ? '조건에 맞는 항목이 없습니다.' : '등록된 Backlog 항목이 없습니다. ＋ 항목 추가로 시작해 보세요.' }}
   </div>
 
-  <table v-else class="backlog">
-    <thead>
-      <tr>
-        <th class="type">유형</th>
-        <th>제목</th>
-        <th class="wbs">귀속 Work Package</th>
-        <th class="who">담당</th>
-        <th class="num">SP</th>
-        <th class="num">가중치</th>
-        <th class="status">상태</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr
-        v-for="row in rows"
-        :key="row.item.id"
-        :class="{ context: row.context, archived: row.item.archived }"
-      >
-        <td class="type">
-          <span class="type-badge" :data-type="row.item.itemType">
-            {{ BACKLOG_TYPE_LABELS[row.item.itemType] }}
-          </span>
-        </td>
-        <td>
-          <div class="title" :style="{ paddingLeft: `${row.item.depth * 1.25}rem` }">
-            <span>{{ row.item.title }}</span>
-            <span v-if="row.item.archived" class="chip">보관</span>
-            <span
-              v-if="row.item.openSprintName"
-              class="chip sprint"
-              :title="'진행 중인 Sprint에 배정되어 있어 삭제·보관할 수 없습니다.'"
-            >{{ row.item.openSprintName }}</span>
-            <span
-              v-if="row.item.blocked"
-              class="chip warn"
-              :title="row.item.blockedReason ?? '차단됨'"
-            >차단</span>
-            <!-- 집계 대상이 아닌 유형은 Step 5의 진척에 가산되지 않는다. 미리 밝혀 둔다. -->
-            <span v-if="!row.item.aggregated" class="chip muted" title="진척 집계에 별도로 가산하지 않습니다 (Epic은 묶음, Task는 실행 상세).">
-              집계 제외
+  <div v-else class="table-scroll">
+    <table class="backlog">
+      <thead>
+        <tr>
+          <th class="type">유형</th>
+          <th>제목</th>
+          <th class="wbs">귀속 Work Package</th>
+          <th class="who">담당</th>
+          <th class="num">SP</th>
+          <th class="num">가중치</th>
+          <th class="status">상태</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr
+          v-for="row in rows"
+          :key="row.item.id"
+          :class="{ context: row.context, archived: row.item.archived }"
+        >
+          <td class="type">
+            <span class="type-badge" :data-type="row.item.itemType">
+              {{ BACKLOG_TYPE_LABELS[row.item.itemType] }}
             </span>
-            <span
-              v-if="warning(row.item)"
-              class="chip warn"
-              :title="warning(row.item) ?? ''"
-            >{{ warningLabel(row.item) }}</span>
-            <span class="priority" :data-priority="row.item.priority">
-              {{ BACKLOG_PRIORITY_LABELS[row.item.priority] }}
+          </td>
+          <td>
+            <div class="title" :style="{ paddingLeft: `${row.item.depth * 1.25}rem` }">
+              <span>{{ row.item.title }}</span>
+              <span v-if="row.item.archived" class="chip">보관</span>
+              <span
+                v-if="row.item.openSprintName"
+                class="chip sprint"
+                :title="'진행 중인 Sprint에 배정되어 있어 삭제·보관할 수 없습니다.'"
+              >{{ row.item.openSprintName }}</span>
+              <span
+                v-if="row.item.blocked"
+                class="chip warn"
+                :title="row.item.blockedReason ?? '차단됨'"
+              >차단</span>
+              <!-- 집계 대상이 아닌 유형은 Step 5의 진척에 가산되지 않는다. 미리 밝혀 둔다. -->
+              <span v-if="!row.item.aggregated" class="chip muted" title="진척 집계에 별도로 가산하지 않습니다 (Epic은 묶음, Task는 실행 상세).">
+                집계 제외
+              </span>
+              <span
+                v-if="warning(row.item)"
+                class="chip warn"
+                :title="warning(row.item) ?? ''"
+              >{{ warningLabel(row.item) }}</span>
+              <span class="priority" :data-priority="row.item.priority">
+                {{ BACKLOG_PRIORITY_LABELS[row.item.priority] }}
+              </span>
+            </div>
+            <div v-if="row.item.acceptanceCriteria" class="criteria">
+              수용 조건: {{ row.item.acceptanceCriteria }}
+            </div>
+          </td>
+          <td class="wbs">
+            <!-- Backlog에서 원본 WBS로 이동한다 (Step 3 지시서 7항). -->
+            <RouterLink
+              v-if="row.item.wbsItemId"
+              :to="{ path: '/wbs', query: { focus: String(row.item.wbsItemId) } }"
+              :title="`WBS에서 '${row.item.wbsName}' 보기`"
+            >{{ row.item.wbsCode }} {{ row.item.wbsName }}</RouterLink>
+            <span v-else class="none">미연결</span>
+          </td>
+          <td class="who">{{ row.item.assigneeName ?? '-' }}</td>
+          <td class="num">{{ row.item.storyPoint ?? '-' }}</td>
+          <td class="num">{{ row.item.progressWeight ?? '-' }}</td>
+          <td class="status">
+            <span class="status-badge" :data-status="row.item.status">
+              {{ BACKLOG_STATUS_LABELS[row.item.status] }}
             </span>
-          </div>
-          <div v-if="row.item.acceptanceCriteria" class="criteria">
-            수용 조건: {{ row.item.acceptanceCriteria }}
-          </div>
-        </td>
-        <td class="wbs">
-          <!-- Backlog에서 원본 WBS로 이동한다 (Step 3 지시서 7항). -->
-          <RouterLink
-            v-if="row.item.wbsItemId"
-            :to="{ path: '/wbs', query: { focus: String(row.item.wbsItemId) } }"
-            :title="`WBS에서 '${row.item.wbsName}' 보기`"
-          >{{ row.item.wbsCode }} {{ row.item.wbsName }}</RouterLink>
-          <span v-else class="none">미연결</span>
-        </td>
-        <td class="who">{{ row.item.assigneeName ?? '-' }}</td>
-        <td class="num">{{ row.item.storyPoint ?? '-' }}</td>
-        <td class="num">{{ row.item.progressWeight ?? '-' }}</td>
-        <td class="status">
-          <span class="status-badge" :data-status="row.item.status">
-            {{ BACKLOG_STATUS_LABELS[row.item.status] }}
-          </span>
-        </td>
-        <td class="actions">
-          <button type="button" @click="emit('edit', row.item)">수정</button>
-          <button
-            type="button"
-            :disabled="!row.item.archived && row.item.openSprintName !== null"
-            :title="archiveTitle(row.item)"
-            @click="emit('archive', row.item, !row.item.archived)"
-          >{{ row.item.archived ? '복구' : '보관' }}</button>
-          <button
-            type="button"
-            class="danger"
-            :disabled="row.item.childCount > 0 || row.item.openSprintName !== null"
-            :title="deleteTitle(row.item)"
-            @click="emit('remove', row.item)"
-          >삭제</button>
-        </td>
-      </tr>
-    </tbody>
-  </table>
+          </td>
+          <td class="actions">
+            <button type="button" @click="emit('edit', row.item)">수정</button>
+            <button
+              type="button"
+              :disabled="!row.item.archived && row.item.openSprintName !== null"
+              :title="archiveTitle(row.item)"
+              @click="emit('archive', row.item, !row.item.archived)"
+            >{{ row.item.archived ? '복구' : '보관' }}</button>
+            <button
+              type="button"
+              class="danger"
+              :disabled="row.item.childCount > 0 || row.item.openSprintName !== null"
+              :title="deleteTitle(row.item)"
+              @click="emit('remove', row.item)"
+            >삭제</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
 </template>
 
 <style scoped>
@@ -175,6 +177,8 @@ td {
   border-bottom: 1px solid var(--border-soft);
   font-size: 0.9rem;
   vertical-align: top;
+  /* 값이 세로로 접히지 않게 한다 — 넘치면 .table-scroll 이 가로로 넘긴다. */
+  white-space: nowrap;
 }
 
 th {

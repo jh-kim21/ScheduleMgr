@@ -81,7 +81,11 @@ function onRemove(item: RaidItem) {
             >
               <td class="title-col">
                 <span class="title">{{ item.title }}</span>
-                <span v-if="item.description" class="description">{{ item.description }}</span>
+                <span
+                  v-if="item.description"
+                  class="description cell-clip"
+                  :title="item.description"
+                >{{ item.description }}</span>
                 <span v-if="item.response" class="response">↳ {{ item.response }}</span>
               </td>
 
@@ -199,6 +203,8 @@ td {
   padding: 0.4rem 0.6rem;
   text-align: left;
   vertical-align: top;
+  /* 값이 세로로 접히지 않게 한다 — 넘치면 감싼 스크롤 컨테이너가 가로로 넘긴다. */
+  white-space: nowrap;
 }
 
 thead th {

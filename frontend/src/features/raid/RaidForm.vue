@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue'
+import ModalDialog from '../../components/ModalDialog.vue'
 import type { ProjectMember } from '../../api/memberApi'
 import type { RaidItem, RaidItemInput, RaidLinkInput } from '../../api/raidApi'
 import {
@@ -24,6 +25,8 @@ const props = defineProps<{
   /** The other two kinds of link target. Empty until Sprints or Backlog entries exist. */
   sprints: RaidLinkOption[]
   backlogItems: RaidLinkOption[]
+  /** 저장이 거부된 이유. 대화상자 안에 보여야 사용자가 볼 수 있다. */
+  error?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -177,132 +180,133 @@ function onSubmit() {
 </script>
 
 <template>
-  <form class="raid-form" @submit.prevent="onSubmit">
-    <h2>{{ title }}</h2>
+  <ModalDialog :title="title" size="lg" :error="props.error" @close="emit('cancel')">
+    <form class="raid-form" @submit.prevent="onSubmit">
 
-    <div class="row">
-      <label class="type">
-        종류
-        <select v-model="form.type">
-          <option v-for="type in RAID_TYPE_ORDER" :key="type" :value="type">
-            {{ RAID_TYPE_LABELS[type] }}
-          </option>
-        </select>
-      </label>
+      <div class="row">
+        <label class="type">
+          종류
+          <select v-model="form.type">
+            <option v-for="type in RAID_TYPE_ORDER" :key="type" :value="type">
+              {{ RAID_TYPE_LABELS[type] }}
+            </option>
+          </select>
+        </label>
 
-      <label class="grow">
-        제목
-        <input v-model="form.title" type="text" placeholder="한 줄로 요약" />
-      </label>
+        <label class="grow">
+          제목
+          <input v-model="form.title" type="text" placeholder="한 줄로 요약" />
+        </label>
 
-      <label class="status">
-        상태
-        <select v-model="form.status">
-          <option v-for="status in RAID_STATUS_ORDER" :key="status" :value="status">
-            {{ RAID_STATUS_LABELS[status] }}
-          </option>
-        </select>
-      </label>
-    </div>
-
-    <p class="type-hint">{{ RAID_TYPE_DESCRIPTIONS[form.type] }}</p>
-
-    <div class="row">
-      <label class="grow">
-        설명
-        <input v-model="form.description" type="text" placeholder="선택" />
-      </label>
-    </div>
-
-    <div class="row">
-      <label v-if="asksProbability" class="level">
-        확률
-        <select v-model="form.probability">
-          <option :value="null">미지정</option>
-          <option v-for="level in RAID_LEVEL_ORDER" :key="level" :value="level">
-            {{ RAID_LEVEL_LABELS[level] }}
-          </option>
-        </select>
-      </label>
-
-      <label v-if="asksImpact" class="level">
-        영향
-        <select v-model="form.impact">
-          <option :value="null">미지정</option>
-          <option v-for="level in RAID_LEVEL_ORDER" :key="level" :value="level">
-            {{ RAID_LEVEL_LABELS[level] }}
-          </option>
-        </select>
-      </label>
-
-      <label class="owner">
-        소유자
-        <select v-model="form.ownerMemberId">
-          <option :value="null">미지정</option>
-          <option v-for="member in members" :key="member.id" :value="member.id">
-            {{ member.name }}
-          </option>
-        </select>
-      </label>
-
-      <label class="due">
-        {{ dueLabel }}
-        <input v-model="form.dueDate" type="date" />
-      </label>
-    </div>
-
-    <fieldset class="links">
-      <legend>연결 대상</legend>
-
-      <ul v-if="form.links.length > 0" class="link-chips">
-        <li v-for="(link, index) in form.links" :key="`${link.targetType}:${link.targetId}`">
-          <span class="kind">{{ RAID_LINK_TARGET_LABELS[link.targetType] }}</span>
-          {{ linkLabel(link) }}
-          <button type="button" aria-label="연결 해제" @click="removeLink(index)">×</button>
-        </li>
-      </ul>
-      <p v-else class="link-empty">연결 없음 — 프로젝트 전체에 대한 항목입니다.</p>
-
-      <div class="link-add">
-        <select v-model="draftLink.targetType" aria-label="연결 종류" @change="draftLink.targetId = null">
-          <option v-for="target in RAID_LINK_TARGET_ORDER" :key="target" :value="target">
-            {{ RAID_LINK_TARGET_LABELS[target] }}
-          </option>
-        </select>
-
-        <select v-model="draftLink.targetId" aria-label="연결 대상" class="grow-select">
-          <option :value="null">선택</option>
-          <option v-for="option in availableOptions" :key="option.id" :value="option.id">
-            {{ optionLabel(option) }}
-          </option>
-        </select>
-
-        <button type="button" :disabled="draftLink.targetId === null" @click="addLink">추가</button>
+        <label class="status">
+          상태
+          <select v-model="form.status">
+            <option v-for="status in RAID_STATUS_ORDER" :key="status" :value="status">
+              {{ RAID_STATUS_LABELS[status] }}
+            </option>
+          </select>
+        </label>
       </div>
 
-      <p v-if="linkOptions.length === 0" class="link-hint">
-        연결할 {{ RAID_LINK_TARGET_LABELS[draftLink.targetType] }}이(가) 아직 없습니다.
+      <p class="type-hint">{{ RAID_TYPE_DESCRIPTIONS[form.type] }}</p>
+
+      <div class="row">
+        <label class="grow">
+          설명
+          <input v-model="form.description" type="text" placeholder="선택" />
+        </label>
+      </div>
+
+      <div class="row">
+        <label v-if="asksProbability" class="level">
+          확률
+          <select v-model="form.probability">
+            <option :value="null">미지정</option>
+            <option v-for="level in RAID_LEVEL_ORDER" :key="level" :value="level">
+              {{ RAID_LEVEL_LABELS[level] }}
+            </option>
+          </select>
+        </label>
+
+        <label v-if="asksImpact" class="level">
+          영향
+          <select v-model="form.impact">
+            <option :value="null">미지정</option>
+            <option v-for="level in RAID_LEVEL_ORDER" :key="level" :value="level">
+              {{ RAID_LEVEL_LABELS[level] }}
+            </option>
+          </select>
+        </label>
+
+        <label class="owner">
+          소유자
+          <select v-model="form.ownerMemberId">
+            <option :value="null">미지정</option>
+            <option v-for="member in members" :key="member.id" :value="member.id">
+              {{ member.name }}
+            </option>
+          </select>
+        </label>
+
+        <label class="due">
+          {{ dueLabel }}
+          <input v-model="form.dueDate" type="date" />
+        </label>
+      </div>
+
+      <fieldset class="links">
+        <legend>연결 대상</legend>
+
+        <ul v-if="form.links.length > 0" class="link-chips">
+          <li v-for="(link, index) in form.links" :key="`${link.targetType}:${link.targetId}`">
+            <span class="kind">{{ RAID_LINK_TARGET_LABELS[link.targetType] }}</span>
+            {{ linkLabel(link) }}
+            <button type="button" aria-label="연결 해제" @click="removeLink(index)">×</button>
+          </li>
+        </ul>
+        <p v-else class="link-empty">연결 없음 — 프로젝트 전체에 대한 항목입니다.</p>
+
+        <div class="link-add">
+          <select v-model="draftLink.targetType" aria-label="연결 종류" @change="draftLink.targetId = null">
+            <option v-for="target in RAID_LINK_TARGET_ORDER" :key="target" :value="target">
+              {{ RAID_LINK_TARGET_LABELS[target] }}
+            </option>
+          </select>
+
+          <select v-model="draftLink.targetId" aria-label="연결 대상" class="grow-select">
+            <option :value="null">선택</option>
+            <option v-for="option in availableOptions" :key="option.id" :value="option.id">
+              {{ optionLabel(option) }}
+            </option>
+          </select>
+
+          <button type="button" :disabled="draftLink.targetId === null" @click="addLink">추가</button>
+        </div>
+
+        <p v-if="linkOptions.length === 0" class="link-hint">
+          연결할 {{ RAID_LINK_TARGET_LABELS[draftLink.targetType] }}이(가) 아직 없습니다.
+        </p>
+      </fieldset>
+
+      <div class="row">
+        <label class="grow">
+          {{ responseLabel }}
+          <input v-model="form.response" type="text" placeholder="선택" />
+        </label>
+      </div>
+
+      <p v-if="members.length === 0" class="owner-hint">
+        소유자로 지정할 구성원이 없습니다. RACI 화면에서 구성원을 먼저 등록하면 선택할 수 있습니다.
       </p>
-    </fieldset>
 
-    <div class="row">
-      <label class="grow">
-        {{ responseLabel }}
-        <input v-model="form.response" type="text" placeholder="선택" />
-      </label>
-    </div>
-
-    <p v-if="members.length === 0" class="owner-hint">
-      소유자로 지정할 구성원이 없습니다. RACI 화면에서 구성원을 먼저 등록하면 선택할 수 있습니다.
-    </p>
-
-    <div class="actions">
-      <button type="submit" class="primary" :disabled="!submittable">
-        {{ editing ? '저장' : '추가' }}
-      </button>
-      <button v-if="editing" type="button" @click="emit('cancel')">취소</button>
-    </div>
-  </form>
+      <div class="actions">
+        <button type="submit" class="primary" :disabled="!submittable">
+          {{ editing ? '저장' : '추가' }}
+        </button>
+        <button type="button" @click="emit('cancel')">취소</button>
+      </div>
+    </form>
+  </ModalDialog>
 </template>
 
 <style scoped>
@@ -397,17 +401,6 @@ function onSubmit() {
   border-color: var(--disabled-border);
   color: var(--disabled-fg);
   cursor: not-allowed;
-}
-
-.raid-form {
-  padding: 0.85rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
-
-h2 {
-  font-size: 0.95rem;
-  margin: 0 0 0.75rem;
 }
 
 .row {

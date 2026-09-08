@@ -35,6 +35,8 @@ const { tree, referenceDate, loading, error, ensureLoaded, create, update, move,
 
 const editing = ref<WbsNode | null>(null)
 const parentForNew = ref<WbsNode | null>(null)
+/** 폼은 대화상자로 띄운다 — 이 화면의 주된 행위는 트리를 읽는 것이다. */
+const formOpen = ref(false)
 
 // The selection watcher is the single load path: `immediate` covers arriving with a project
 // already chosen, and `ensureSelection` below covers the first ever visit by setting one.
@@ -69,29 +71,36 @@ const atRiskCount = computed(
   () => attention.value.filter((node) => node.delayStatus === 'AT_RISK').length,
 )
 
+/** 거부되면 대화상자를 열어 둔 채 사유를 보여 준다 — 입력을 다시 치게 만들면 안 된다. */
 async function handleSubmit(input: WbsItemInput) {
   const id = selectedProjectId.value
   if (id === null) return
-  if (editing.value) {
-    await update(id, editing.value.id, input)
-    editing.value = null
-  } else {
-    await create(id, parentForNew.value?.id ?? null, input)
-    parentForNew.value = null
-  }
+  const ok = editing.value
+    ? await update(id, editing.value.id, input)
+    : await create(id, parentForNew.value?.id ?? null, input)
+  if (ok) closeForm()
+}
+
+function openAddRoot() {
+  editing.value = null
+  parentForNew.value = null
+  formOpen.value = true
 }
 
 function startAddChild(parent: WbsNode) {
   editing.value = null
   parentForNew.value = parent
+  formOpen.value = true
 }
 
 function startEdit(node: WbsNode) {
   parentForNew.value = null
   editing.value = node
+  formOpen.value = true
 }
 
-function cancelForm() {
+function closeForm() {
+  formOpen.value = false
   editing.value = null
   parentForNew.value = null
 }
@@ -102,8 +111,7 @@ async function handleRemove(node: WbsNode) {
   const warning = node.children.length > 0 ? '\n하위 항목도 모두 함께 삭제됩니다.' : ''
   if (!confirm(`"${node.code} ${node.name}" 항목을 삭제할까요?${warning}`)) return
   await remove(id, node.id)
-  if (editing.value?.id === node.id) editing.value = null
-  if (parentForNew.value?.id === node.id) parentForNew.value = null
+  if (editing.value?.id === node.id || parentForNew.value?.id === node.id) closeForm()
 }
 
 async function handleMove(itemId: number, input: WbsMoveInput) {
@@ -115,7 +123,15 @@ async function handleMove(itemId: number, input: WbsMoveInput) {
 
 <template>
   <section>
-    <h1>WBS</h1>
+    <div class="head">
+      <h1>WBS</h1>
+      <button
+        v-if="projects.length > 0"
+        type="button"
+        class="add"
+        @click="openAddRoot"
+      >＋ 최상위 항목 추가</button>
+    </div>
 
     <p v-if="projectsError" class="error">{{ projectsError }}</p>
 
@@ -135,10 +151,12 @@ async function handleMove(itemId: number, input: WbsMoveInput) {
       </label>
 
       <WbsForm
+        v-if="formOpen"
         :editing="editing"
         :parent="parentForNew"
+        :error="error"
         @submit="handleSubmit"
-        @cancel="cancelForm"
+        @cancel="closeForm"
       />
 
       <p v-if="error" class="error">{{ error }}</p>
@@ -167,9 +185,34 @@ async function handleMove(itemId: number, input: WbsMoveInput) {
 </template>
 
 <style scoped>
+.head {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
 h1 {
   font-size: 1.4rem;
-  margin-bottom: 1rem;
+  margin: 0;
+}
+
+.add {
+  margin-left: auto;
+  padding: 0.4rem 0.85rem;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.add:hover {
+  box-shadow: var(--elevation-1);
 }
 
 .project-picker {

@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { reactive, watch } from 'vue'
+import { computed, reactive, watch } from 'vue'
+import ModalDialog from '../../components/ModalDialog.vue'
 import type { Project, ProjectInput, ProjectStatus } from '../../api/projectApi'
 import { STATUS_OPTIONS } from './statusLabels'
 
 const props = defineProps<{
   editing: Project | null
+  /** 저장이 거부된 이유. 대화상자 안에 보여야 사용자가 볼 수 있다. */
+  error?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -21,6 +24,8 @@ const empty: ProjectInput = {
 }
 
 const form = reactive<ProjectInput>({ ...empty })
+
+const title = computed(() => (props.editing ? '프로젝트 수정' : '새 프로젝트'))
 
 watch(
   () => props.editing,
@@ -48,45 +53,46 @@ function onSubmit() {
 </script>
 
 <template>
-  <form class="project-form" @submit.prevent="onSubmit">
-    <h2>{{ editing ? '프로젝트 수정' : '새 프로젝트' }}</h2>
+  <ModalDialog :title="title" :error="props.error" @close="emit('cancel')">
+    <form class="project-form" @submit.prevent="onSubmit">
 
-    <label>
-      이름
-      <input v-model="form.name" type="text" required placeholder="프로젝트 이름" />
-    </label>
-
-    <label>
-      설명
-      <textarea v-model="form.description" rows="2" placeholder="프로젝트 설명"></textarea>
-    </label>
-
-    <div class="row">
       <label>
-        상태
-        <select v-model="form.status">
-          <option v-for="[value, label] in STATUS_OPTIONS" :key="value" :value="value">
-            {{ label }}
-          </option>
-        </select>
+        이름
+        <input v-model="form.name" type="text" required placeholder="프로젝트 이름" />
       </label>
 
       <label>
-        시작일
-        <input v-model="form.startDate" type="date" />
+        설명
+        <textarea v-model="form.description" rows="2" placeholder="프로젝트 설명"></textarea>
       </label>
 
-      <label>
-        종료일
-        <input v-model="form.endDate" type="date" />
-      </label>
-    </div>
+      <div class="row">
+        <label>
+          상태
+          <select v-model="form.status">
+            <option v-for="[value, label] in STATUS_OPTIONS" :key="value" :value="value">
+              {{ label }}
+            </option>
+          </select>
+        </label>
 
-    <div class="actions">
-      <button type="submit">{{ editing ? '저장' : '추가' }}</button>
-      <button v-if="editing" type="button" class="ghost" @click="emit('cancel')">취소</button>
-    </div>
-  </form>
+        <label>
+          시작일
+          <input v-model="form.startDate" type="date" />
+        </label>
+
+        <label>
+          종료일
+          <input v-model="form.endDate" type="date" />
+        </label>
+      </div>
+
+      <div class="actions">
+        <button type="submit">{{ editing ? '저장' : '추가' }}</button>
+        <button type="button" class="ghost" @click="emit('cancel')">취소</button>
+      </div>
+    </form>
+  </ModalDialog>
 </template>
 
 <style scoped>
@@ -94,15 +100,6 @@ function onSubmit() {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  padding: 1rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  margin-bottom: 1.5rem;
-}
-
-.project-form h2 {
-  margin: 0 0 0.25rem;
-  font-size: 1.1rem;
 }
 
 label {

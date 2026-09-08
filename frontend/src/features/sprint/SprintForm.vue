@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue'
+import ModalDialog from '../../components/ModalDialog.vue'
 import type { Sprint, SprintInput } from '../../api/sprintApi'
 
 const props = defineProps<{
   editing: Sprint | null
+  /** 저장이 거부된 이유. 대화상자 안에 보여야 사용자가 볼 수 있다. */
+  error?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -51,36 +54,37 @@ function onSubmit() {
 </script>
 
 <template>
-  <form class="sprint-form" @submit.prevent="onSubmit">
-    <h2>{{ title }}</h2>
+  <ModalDialog :title="title" :error="props.error" @close="emit('cancel')">
+    <form class="sprint-form" @submit.prevent="onSubmit">
 
-    <div class="row">
+      <div class="row">
+        <label class="grow">
+          이름
+          <input v-model="form.name" type="text" required placeholder="예: Sprint 1" />
+        </label>
+        <label>
+          시작일
+          <input v-model="form.startDate" type="date" required />
+        </label>
+        <label>
+          종료일
+          <input v-model="form.endDate" type="date" required />
+        </label>
+      </div>
+
       <label class="grow">
-        이름
-        <input v-model="form.name" type="text" required placeholder="예: Sprint 1" />
+        Sprint Goal
+        <input v-model="form.goal" type="text" placeholder="이번 Sprint에서 달성할 목표 (선택)" />
       </label>
-      <label>
-        시작일
-        <input v-model="form.startDate" type="date" required />
-      </label>
-      <label>
-        종료일
-        <input v-model="form.endDate" type="date" required />
-      </label>
-    </div>
 
-    <label class="grow">
-      Sprint Goal
-      <input v-model="form.goal" type="text" placeholder="이번 Sprint에서 달성할 목표 (선택)" />
-    </label>
+      <p v-if="backwards" class="hint">종료일이 시작일보다 앞설 수 없습니다.</p>
 
-    <p v-if="backwards" class="hint">종료일이 시작일보다 앞설 수 없습니다.</p>
-
-    <div class="actions">
-      <button type="submit" :disabled="backwards">{{ editing ? '저장' : '추가' }}</button>
-      <button type="button" class="ghost" @click="emit('cancel')">취소</button>
-    </div>
-  </form>
+      <div class="actions">
+        <button type="submit" :disabled="backwards">{{ editing ? '저장' : '추가' }}</button>
+        <button type="button" class="ghost" @click="emit('cancel')">취소</button>
+      </div>
+    </form>
+  </ModalDialog>
 </template>
 
 <style scoped>
@@ -88,15 +92,6 @@ function onSubmit() {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  padding: 1rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  margin-bottom: 1.25rem;
-}
-
-.sprint-form h2 {
-  margin: 0;
-  font-size: 1rem;
 }
 
 label {

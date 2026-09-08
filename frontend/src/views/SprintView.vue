@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { Sprint } from '../api/sprintApi'
 import SprintForm from '../features/sprint/SprintForm.vue'
@@ -30,7 +30,6 @@ const {
 
 const editing = ref<Sprint | null>(null)
 const formOpen = ref(false)
-const formSlot = ref<HTMLElement | null>(null)
 
 /** 종료 대화상자: 이월 대상을 고르는 자리. 종료는 되돌릴 수 없으니 한 번 묻는다. */
 const closing = ref<Sprint | null>(null)
@@ -38,11 +37,9 @@ const carryOverTo = ref<number | null>(null)
 
 const assignPick = ref<number | null>(null)
 
-async function openForm(sprint: Sprint | null) {
+function openForm(sprint: Sprint | null) {
   editing.value = sprint
   formOpen.value = true
-  await nextTick()
-  formSlot.value?.scrollIntoView({ behavior: 'smooth', block: 'center' })
 }
 
 function closeForm() {
@@ -134,9 +131,13 @@ async function confirmClose() {
 
       <p v-if="error" class="error">{{ error }}</p>
 
-      <div ref="formSlot">
-        <SprintForm v-if="formOpen" :editing="editing" @submit="handleSubmit" @cancel="closeForm" />
-      </div>
+      <SprintForm
+        v-if="formOpen"
+        :editing="editing"
+        :error="error"
+        @submit="handleSubmit"
+        @cancel="closeForm"
+      />
 
       <p v-if="data.sprints.length === 0 && !loading" class="notice">
         등록된 Sprint가 없습니다. ＋ Sprint 추가로 첫 Sprint를 계획해 보세요. 배정할 항목은

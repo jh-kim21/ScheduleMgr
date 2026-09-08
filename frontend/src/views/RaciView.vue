@@ -144,6 +144,7 @@ function handleRemoveMember(memberId: number) {
         />
         <MemberEditor
           :members="data.members"
+          :error="error"
           @add="handleAddMember"
           @update="handleUpdateMember"
           @remove="handleRemoveMember"

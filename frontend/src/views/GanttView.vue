@@ -223,6 +223,7 @@ async function handleRecalculate() {
         <GanttChart :data="data" :highlight-critical-path="showCriticalPath" />
         <DependencyEditor
           :data="data"
+          :error="error"
           @add="handleAdd"
           @update="handleUpdate"
           @remove="handleRemove"
