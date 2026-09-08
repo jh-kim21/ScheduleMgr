@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue'
-import { RouterLink } from 'vue-router'
+import { computed, onMounted, ref, watch } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import type { DataGap, RaidRef, TaskRef } from '../api/dashboardApi'
 import { useDashboard } from '../features/dashboard/useDashboard'
+import ProgressPanel from '../features/progress/ProgressPanel.vue'
 import { useProjects } from '../features/projects/useProjects'
 import { ensureSelection, selectedProjectId } from '../stores/projectSelection'
 import { EXECUTION_MODE_LABELS } from '../shared/executionMode'
@@ -11,6 +12,45 @@ import { RAID_TYPE_LABELS } from '../shared/raid'
 
 const { projects, error: projectsError, ensureLoaded: ensureProjects } = useProjects()
 const { data, loading, error, ensureLoaded, invalidate, load } = useDashboard()
+
+const route = useRoute()
+const router = useRouter()
+
+/**
+ * 요약과 진척은 한 화면의 두 면이다 (설계서 §2.2의 메뉴 일곱 개를 그대로 두려고 합쳤다).
+ *
+ * <p>요약은 읽기 전용 집계이고, 진척은 그 숫자의 근거를 입력하는 곳이다 — 가중치, 승인
+ * 체크포인트, 기준선, 스냅샷. 두 탭이 같은 진척 API 를 쓰므로 변경 경로가 늘지 않는다.
+ *
+ * <p>탭을 쿼리에 두는 이유: 다른 화면에서 "진척으로 가라"고 링크할 수 있어야 한다
+ * (예전 /progress 라우트가 이리로 리다이렉트된다).
+ */
+type Tab = 'summary' | 'progress'
+const tab = ref<Tab>(route.query.tab === 'progress' ? 'progress' : 'summary')
+
+function selectTab(next: Tab) {
+  if (tab.value === next) return
+  tab.value = next
+  router.replace({ path: '/dashboard', query: next === 'progress' ? { tab: 'progress' } : {} })
+}
+
+// 주소로 직접 들어오거나 뒤로 가기를 했을 때 탭을 맞춘다.
+watch(
+  () => route.query.tab,
+  (value) => {
+    tab.value = value === 'progress' ? 'progress' : 'summary'
+  },
+)
+
+/**
+ * 진척 탭에서 기준선을 승인하거나 체크포인트를 바꾸면 요약의 숫자가 낡는다. 화면이 바뀌지 않아
+ * (탭은 같은 컴포넌트 안이다) 마운트 시 로드만으로는 갱신되지 않으므로, 요약으로 돌아올 때 다시
+ * 확인한다. 캐시 키가 그대로면 ensureLoaded 는 아무것도 하지 않는다.
+ */
+watch(tab, (value) => {
+  const id = selectedProjectId.value
+  if (value === 'summary' && id !== null) ensureLoaded(id)
+})
 
 // The selection watcher is the single load path: `immediate` covers arriving with a project
 // already chosen, and `ensureSelection` below covers the first ever visit by setting one.
@@ -52,10 +92,13 @@ const varianceLabel = computed(() => {
   return rounded > 0 ? `계획보다 ${rounded}%p 앞섬` : `계획보다 ${-rounded}%p 뒤짐`
 })
 
+/** 같은 화면의 진척 탭. 카드에서 근거를 고치러 갈 때 쓴다. */
+const PROGRESS_TAB = { path: '/dashboard', query: { tab: 'progress' } }
+
 /** 데이터 누락이 향하는 화면. kind마다 원인이 있는 곳이 다르다. */
 function gapRoute(gap: DataGap) {
   if (gap.kind.startsWith('BACKLOG')) return { path: '/backlog' }
-  if (gap.kind === 'NOT_ESTIMABLE' || gap.kind === 'WEIGHT_MISSING') return { path: '/progress' }
+  if (gap.kind === 'NOT_ESTIMABLE' || gap.kind === 'WEIGHT_MISSING') return PROGRESS_TAB
   return { path: '/wbs', query: { focus: gap.wbsItemIds[0] } }
 }
 
@@ -88,12 +131,12 @@ const scopeChanged = computed(() => {
 
 <template>
   <section>
-    <h1>대시보드</h1>
+    <h1>Dashboard</h1>
 
     <p v-if="projectsError" class="error">{{ projectsError }}</p>
 
     <p v-else-if="projects.length === 0" class="notice">
-      먼저 프로젝트를 등록해야 대시보드를 볼 수 있습니다.
+      먼저 프로젝트를 등록해야 Dashboard 를 볼 수 있습니다.
       <RouterLink to="/projects">프로젝트 화면으로 이동</RouterLink>
     </p>
 
@@ -109,9 +152,35 @@ const scopeChanged = computed(() => {
         </label>
 
         <span v-if="data" class="reference">기준일 {{ data.referenceDate }}</span>
-        <button type="button" class="refresh" :disabled="loading" @click="refresh">새로고침</button>
+        <button
+          v-if="tab === 'summary'"
+          type="button"
+          class="refresh"
+          :disabled="loading"
+          @click="refresh"
+        >새로고침</button>
       </div>
 
+      <div class="tabs" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="tab === 'summary'"
+          :class="{ active: tab === 'summary' }"
+          @click="selectTab('summary')"
+        >요약</button>
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="tab === 'progress'"
+          :class="{ active: tab === 'progress' }"
+          @click="selectTab('progress')"
+        >진척</button>
+      </div>
+
+      <ProgressPanel v-if="tab === 'progress'" />
+
+      <template v-else>
       <p v-if="error" class="error">{{ error }}</p>
       <p v-if="loading" class="loading">불러오는 중...</p>
 
@@ -126,7 +195,7 @@ const scopeChanged = computed(() => {
           <article class="card wide">
             <header>
               <h2>진척</h2>
-              <RouterLink to="/progress" class="more">상세</RouterLink>
+              <RouterLink :to="PROGRESS_TAB" class="more">상세</RouterLink>
             </header>
 
             <p class="headline">
@@ -220,7 +289,7 @@ const scopeChanged = computed(() => {
           <article class="card">
             <header>
               <h2>기준 일정</h2>
-              <RouterLink to="/progress" class="more">기준선</RouterLink>
+              <RouterLink :to="PROGRESS_TAB" class="more">기준선</RouterLink>
             </header>
 
             <template v-if="data.baseline">
@@ -448,6 +517,7 @@ const scopeChanged = computed(() => {
           </article>
         </div>
       </template>
+      </template>
     </template>
   </section>
 </template>
@@ -505,6 +575,31 @@ h1 {
 .notice {
   color: var(--text-dim);
   margin-bottom: 0.75rem;
+}
+
+/* 탭은 링크가 아니라 같은 화면의 두 면이라 버튼으로 둔다. */
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.tabs button {
+  padding: 0.4rem 0.9rem;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.tabs button.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
 }
 
 /* 카드는 두 열이 기본이고, 넓은 카드는 두 칸을 차지한다. 좁아지면 한 열로 접힌다. */

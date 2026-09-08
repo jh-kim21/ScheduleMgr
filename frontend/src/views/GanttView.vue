@@ -178,7 +178,9 @@ async function handleRecalculate() {
       <p v-if="data.tasks.length > 0 && !data.hasBaseline" class="no-baseline">
         승인된 기준 일정이 없습니다. 현재 계획을 기준선으로 표시하지 않으므로 기준 대비 초과도
         판정하지 않습니다.
-        <RouterLink to="/progress">진척 화면에서 기준선 승인</RouterLink>
+        <RouterLink :to="{ path: '/dashboard', query: { tab: 'progress' } }">
+          Dashboard 의 진척 탭에서 기준선 승인
+        </RouterLink>
       </p>
 
       <p v-if="exceeded.length > 0" class="violation">

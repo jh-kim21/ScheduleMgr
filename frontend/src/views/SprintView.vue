@@ -1,10 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
-import type { BoardMoveInput, Sprint, SprintItem } from '../api/sprintApi'
-import SprintBoard from '../features/sprint/SprintBoard.vue'
+import type { Sprint } from '../api/sprintApi'
 import SprintForm from '../features/sprint/SprintForm.vue'
-import { useRaid } from '../features/raid/useRaid'
 import { useSprints } from '../features/sprint/useSprints'
 import { useProjects } from '../features/projects/useProjects'
 import { BACKLOG_TYPE_LABELS } from '../shared/backlog'
@@ -13,12 +11,6 @@ import { remainingLabel, SPRINT_STATUS_LABELS, sprintPeriod } from '../shared/sp
 import { ensureSelection, selectedProjectId } from '../stores/projectSelection'
 
 const { projects, error: projectsError, ensureLoaded: ensureProjects } = useProjects()
-/**
- * The register, for the "왜 막혔나" note on blocked cards. Reusing the RAID composable rather than
- * loading it here: it is module-scoped and already knows when its own cache is stale, so the two
- * screens share one fetch.
- */
-const { data: raidLog, ensureLoaded: ensureRaid } = useRaid()
 const {
   data,
   loading,
@@ -34,8 +26,6 @@ const {
   start,
   close,
   assign,
-  unassign,
-  move,
 } = useSprints()
 
 const editing = ref<Sprint | null>(null)
@@ -64,10 +54,7 @@ watch(
   selectedProjectId,
   (id) => {
     closeForm()
-    if (id !== null) {
-      ensureLoaded(id)
-      ensureRaid(id)
-    }
+    if (id !== null) ensureLoaded(id)
   },
   { immediate: true },
 )
@@ -101,19 +88,7 @@ async function handleAssign() {
   if (ok) assignPick.value = null
 }
 
-async function handleMove(backlogItemId: number, input: BoardMoveInput) {
-  const projectId = selectedProjectId.value
-  const sprintId = selectedSprintId.value
-  if (projectId === null || sprintId === null) return
-  await move(projectId, sprintId, backlogItemId, input)
-}
 
-async function handleUnassign(item: SprintItem) {
-  const projectId = selectedProjectId.value
-  const sprintId = selectedSprintId.value
-  if (projectId === null || sprintId === null) return
-  await unassign(projectId, sprintId, item.backlogItemId)
-}
 
 function openClose(sprint: Sprint) {
   closing.value = sprint
@@ -260,12 +235,10 @@ async function confirmClose() {
             </span>
           </div>
 
-          <SprintBoard
-            :sprint="selected"
-            :raid-items="raidLog.items"
-            @move="handleMove"
-            @unassign="handleUnassign"
-          />
+          <p class="to-board">
+            카드를 옮기고 차단을 표시하는 곳은 Board 입니다.
+            <RouterLink to="/board">이 Sprint 의 Board 열기</RouterLink>
+          </p>
         </template>
       </template>
     </template>
@@ -300,6 +273,12 @@ async function confirmClose() {
 </template>
 
 <style scoped>
+.to-board {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin: 0.75rem 0 0;
+}
+
 h1 {
   font-size: 1.3rem;
   margin: 0 0 1rem;

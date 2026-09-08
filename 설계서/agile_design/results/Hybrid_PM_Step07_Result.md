@@ -58,7 +58,7 @@
 | `api/dashboardApi.ts` | payload 타입 |
 | `features/dashboard/useDashboard.ts` | 모듈 스코프 상태 + 캐시 |
 | `views/DashboardView.vue` | 카드 배치 |
-| `router/index.ts`, `App.vue` | `/dashboard` 라우트와 메뉴(프로젝트 다음) |
+| `router/index.ts`, `App.vue` | `/dashboard` 라우트와 메뉴 |
 | `stores/scheduleCache.ts` | `dashboardCacheKeyFor` — 세 리비전 + 로컬 날짜 |
 
 **대시보드 캐시 키에는 모든 것이 들어간다.** 여섯 화면의 데이터를 읽으므로 어느 화면의 편집도 카드를
@@ -135,8 +135,9 @@ cd frontend && npm run build         # vue-tsc + vite 빌드 성공
 
 ### 3.4 실행하지 않은 검증
 
-- **브라우저에서의 시각 확인.** 카드 배치·추세 막대·반응형은 타입 검사와 빌드까지만 했다. 값은 API
-  레벨 47항목으로 확인했다.
+- **브라우저에서의 시각 확인.** 이 시점에는 타입 검사와 빌드까지만 했고 값은 API 레벨 47항목으로
+  확인했다. (§5-1의 후속 변경 때 Dashboard 두 탭과 Board·Sprint·메뉴는 실제로 열어 확인했다.
+  추세 막대와 좁은 화면은 여전히 눈으로 보지 않았다.)
 - **PostgreSQL에서의 마이그레이션.** H2로만 돌렸다. V18·V21은 데이터를 옮기는 마이그레이션이라
   운영 적용 전에 실 DB에서 한 번 돌려 봐야 한다(운영 안내 §6).
 - **대량 데이터에서의 성능.** 대시보드가 여섯 조회를 한 요청에 합치므로 가장 먼저 느려질 곳이다.
@@ -173,6 +174,33 @@ cd frontend && npm run build         # vue-tsc + vite 빌드 성공
 - **로그인·권한** — 지시서가 "RACI 기반 권한 체계 전면 개편"을 범위에서 제외했다.
 - **알림·외부 도구 연동** — 지시서 범위 제외.
 - **진척률 변경 이력 화면** — `change_logs`에 자리는 있으나 화면이 없다(요구사항 8.2).
+
+## 5-1. 보고서 작성 뒤의 후속 변경 — 메뉴 구조 정정
+
+이 보고서를 쓴 뒤, 화면 구조가 설계서 §2.2와 어긋나 있다는 지적을 받고 바로잡았다. Step 7까지
+기능은 다 만들었지만 **메뉴 배치를 설계서대로 하지 않은 것**이 남아 있었다.
+
+| | 고치기 전 | 고친 뒤 (설계서 §2.2) |
+|---|---|---|
+| Agile 묶음 | 없음 — Backlog·Sprint가 최상위에 평평하게 | `Agile` 아래 Backlog · Sprint · Board |
+| Board | Sprint 화면에 끼워 넣음 | 독립 라우트 `/board`. Sprint 화면은 계획만 다루고 링크 |
+| Dashboard | 두 번째, 라벨 "대시보드" | 맨 끝, 라벨 `Dashboard` |
+| 진척 | 최상위 메뉴 | `Dashboard`의 탭 (`/dashboard?tab=progress`) |
+
+- **진척을 Dashboard 탭으로 넣은 근거**: 요약은 읽기 전용 집계이고 진척은 그 숫자의 *근거를 입력*
+  하는 곳이라 한 화면의 두 면이다. 이렇게 해야 최상위 메뉴가 설계서의 일곱 개로 떨어진다.
+  "Dashboard는 읽기 전용"이라는 규칙은 `DashboardService`와 `/dashboard` API에 대한 것이지 화면이
+  다른 컴포넌트를 품지 못한다는 뜻이 아니다 — 진척 탭은 기존 진척 API를 그대로 쓰므로 변경 경로가
+  늘지 않는다.
+- `ProgressView.vue` → `features/progress/ProgressPanel.vue`로 옮겼다(껍데기만 벗김).
+  예전 `/progress`는 진척 탭으로 리다이렉트하므로 기존 링크가 살아 있다.
+- **탭 전환 시 요약을 다시 읽는다.** 탭은 같은 컴포넌트 안이라 마운트가 다시 일어나지 않는데,
+  진척 탭에서 기준선을 승인하면 요약이 낡는다. `useProgress`의 모든 변경이 `markWbsChanged()`를
+  부르고 대시보드 캐시 키에 WBS 리비전이 들어 있어, 요약으로 돌아올 때 `ensureLoaded`가 다시 읽는다.
+
+검증: 프론트엔드 95건·빌드 통과에 더해 **브라우저에서 직접 확인**했다 — 메뉴 일곱 개와 Agile 하위 줄,
+Board 화면, Sprint의 계획 전용 화면, Dashboard의 두 탭, 그리고 진척 탭에서 기준선을 v2로 승인한 뒤
+요약 탭이 v2로 갱신되는 것까지.
 
 ## 6. 남은 문제
 

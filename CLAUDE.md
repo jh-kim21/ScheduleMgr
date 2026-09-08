@@ -125,6 +125,7 @@ backend/
 frontend/
   src/api/            # REST API 클라이언트 (fetch 기반)
   src/features/        # projects, dashboard, wbs, backlog, sprint, progress, gantt, raci, raid
+  src/views/           # 라우트별 화면. 메뉴 구조는 설계서 §2.2를 따른다 (아래 "화면 구조")
   src/shared/          # 여러 feature가 공유하는 도메인 개념 (delay 상태 라벨 등)
   src/stores/          # 화면 간 공유 상태 (선택된 프로젝트, 캐시 무효화 신호)
   src/views/           # 라우트별 화면
@@ -530,6 +531,31 @@ Story·Sprint에 걸려도 원본은 하나로 관리해야 하기 때문입니�
 - **`formatVersion 5` 이하의 단일 `wbsItemId`도 계속 읽습니다** — `WBS_ITEM` 링크 하나가 됩니다
   (V21이 DB에 한 것과 같습니다). 내보낼 때는 `links`만 쓰고 `wbsItemId`는 비웁니다.
 
+### 화면 구조 (설계서 §2.2)
+
+```text
+프로젝트 | WBS | Agile | 간트 차트 | RACI | RAID | Dashboard
+                 ├─ Backlog                              ├─ 요약
+                 ├─ Sprint                               └─ 진척
+                 └─ Board
+```
+
+- **Agile은 자기 화면이 없는 묶음**입니다. 상단 링크는 `/backlog`로 가고, 그 묶음 안에 있을 때만
+  하위 줄(Backlog·Sprint·Board)이 펼쳐집니다. 드롭다운으로 하지 않은 이유는 팝업이 바깥 클릭·키보드·
+  잘림 처리를 다 요구하는 데 비해(내보내기 메뉴가 그렇습니다) 얻는 것이 항목 세 개를 감추는 것뿐이기
+  때문입니다.
+- **Board는 독립 라우트**(`/board`)입니다. Sprint 화면은 계획(목록·배정·시작·종료)만 다루고 Board로
+  링크합니다 — 설계서가 "Sprint별 Board 조회"라고 적은 그대로입니다. 두 화면은 `useSprints`의
+  `selectedSprintId`를 공유하므로 Sprint에서 고른 것이 Board에서 열립니다.
+- **진척은 Dashboard의 탭**입니다(`/dashboard?tab=progress`). 요약은 읽기 전용 집계이고 진척은 그
+  숫자의 *근거를 입력하는* 곳(가중치·체크포인트·기준선·스냅샷)이라 한 화면의 두 면으로 두었습니다.
+  이렇게 해야 최상위 메뉴가 설계서의 일곱 개로 떨어집니다. 예전 `/progress`는 이 탭으로 리다이렉트
+  하므로 기존 링크가 살아 있습니다.
+  - **탭 전환 시 요약을 다시 확인합니다.** 진척 탭에서 기준선을 승인하면 요약의 숫자가 낡는데,
+    탭은 같은 컴포넌트 안이라 마운트가 다시 일어나지 않습니다. `useProgress`의 모든 변경이
+    `markWbsChanged()`를 부르고 대시보드 캐시 키에 WBS 리비전이 들어 있어, 요약으로 돌아올 때
+    `ensureLoaded`를 부르면 키가 달라져 있어 다시 읽습니다. 캐시가 유효하면 아무 일도 하지 않습니다.
+
 ### 대시보드 설계상 알아둘 점 (Step 7)
 
 [`DashboardService`](backend/src/main/java/com/projectflow/application/DashboardService.java)는
@@ -676,7 +702,7 @@ Story·Sprint에 걸려도 원본은 하나로 관리해야 하기 때문입니�
 | `PUT` | `/api/projects/{projectId}/progress/checkpoints/{checkpointId}/approval` | 승인·승인 취소 |
 | `POST` | `/api/projects/{projectId}/progress/baselines` | 기준선 승인 (명시적 행위, 자동 경로 없음) |
 | `GET` `POST` | `/api/projects/{projectId}/progress/snapshots` | 보고 스냅샷 조회 / 저장 |
-| `GET` | `/api/projects/{projectId}/dashboard` | 대시보드 (다른 조회들을 한 기준일로 모은 것, 읽기 전용) |
+| `GET` | `/api/projects/{projectId}/dashboard` | 대시보드 요약 (다른 조회들을 한 기준일로 모은 것, 읽기 전용) |
 | `GET` `POST` | `/api/projects/{projectId}/raid` | RAID 로그 조회 / 항목 추가 (`links`로 WBS·Sprint·Backlog에 복수 연결) |
 | `PUT` `DELETE` | `/api/projects/{projectId}/raid/{itemId}` | 항목 수정 / 삭제 |
 | `GET` | `/api/projects/{projectId}/export` | 프로젝트 전체를 JSON 한 파일로 내려받기 (attachment) |
