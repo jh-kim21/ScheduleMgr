@@ -20,6 +20,8 @@ import java.util.Set;
  *   <li><b>Summary progress</b> — leaf-weighted: a parent's progress is the average of the leaf
  *       progress values beneath it, so a branch does not count more heavily just for being nested
  *       shallowly.</li>
+ *   <li><b>Execution mode summary</b> — how the Work Packages beneath a summary are executed,
+ *       counted per mode, since a summary has no mode of its own (설계 §5).</li>
  * </ul>
  *
  * Siblings are ordered by {@code sortOrder}, with id as a stable tiebreak.
@@ -83,8 +85,12 @@ public final class WbsTreeAssembler {
         List<WbsItem> childItems = childrenByParent.getOrDefault(item.getId(), List.of());
         if (childItems.isEmpty()) {
             WbsNode leaf = new WbsNode(item, code, level,
-                    item.getStartDate(), item.getEndDate(), item.getProgress(), List.of());
-            return new Assembled(leaf, 1);
+                    item.getStartDate(), item.getEndDate(), item.getProgress(), null, List.of());
+            // A childless entry contributes its own mode upward, but only if it is a Work Package:
+            // one converted to SUMMARY ahead of its children has no mode to report.
+            return new Assembled(leaf, 1,
+                    item.workPackage() ? ExecutionModeSummary.of(item.getExecutionMode())
+                                        : ExecutionModeSummary.EMPTY);
         }
 
         List<WbsNode> children = new ArrayList<>(childItems.size());
@@ -92,6 +98,7 @@ public final class WbsTreeAssembler {
         LocalDate end = null;
         int weightedProgress = 0;
         int leafCount = 0;
+        ExecutionModeSummary modes = ExecutionModeSummary.EMPTY;
 
         for (int i = 0; i < childItems.size(); i++) {
             Assembled child = assembleNode(childItems.get(i), code + "." + (i + 1), level + 1, childrenByParent);
@@ -101,11 +108,13 @@ public final class WbsTreeAssembler {
             end = latest(end, childNode.endDate());
             weightedProgress += childNode.progress() * child.leafCount();
             leafCount += child.leafCount();
+            modes = modes.plus(child.modes());
         }
 
         int progress = leafCount == 0 ? 0 : Math.round((float) weightedProgress / leafCount);
-        WbsNode summary = new WbsNode(item, code, level, start, end, progress, List.copyOf(children));
-        return new Assembled(summary, leafCount);
+        WbsNode summary = new WbsNode(item, code, level, start, end, progress, modes, List.copyOf(children));
+        // A summary's own stored mode is never counted — 설계 §5: 상위는 실행 실적을 갖지 않는다.
+        return new Assembled(summary, leafCount, modes);
     }
 
     private static LocalDate earliest(LocalDate current, LocalDate candidate) {
@@ -122,7 +131,10 @@ public final class WbsTreeAssembler {
         return current == null || candidate.isAfter(current) ? candidate : current;
     }
 
-    /** Carries the leaf count up the recursion so summary progress can be leaf-weighted. */
-    private record Assembled(WbsNode node, int leafCount) {
+    /**
+     * Carries the leaf count up the recursion so summary progress can be leaf-weighted, and the
+     * execution modes of the Work Packages below so each summary can report them.
+     */
+    private record Assembled(WbsNode node, int leafCount, ExecutionModeSummary modes) {
     }
 }

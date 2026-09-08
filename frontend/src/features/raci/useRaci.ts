@@ -1,4 +1,12 @@
 import { computed, ref } from 'vue'
+import type { InheritedRole } from '../../api/raciApi'
+
+/** One cell as the matrix component reads it. */
+export interface CellEntry {
+  roles: RaciRole[]
+  assignmentIds: number[]
+  inherited: InheritedRole[]
+}
 import { ApiError } from '../../api/http'
 import { memberApi, type MemberInput } from '../../api/memberApi'
 import { raciApi, type RaciAssignmentInput, type RaciMatrix } from '../../api/raciApi'
@@ -104,13 +112,20 @@ export function useRaci() {
       '구성원을 삭제하지 못했습니다.',
     )
 
-  /** Cell lookup keyed by `wbsItemId:memberId`, built once per matrix rather than per cell render. */
+/**
+   * Cell lookup keyed by `wbsItemId:memberId`, built once per matrix rather than per cell render.
+   *
+   * <p>Inherited letters travel with the cell so the matrix can show a phase's Accountable on the
+   * work under it. They carry no assignment id — removing one means editing the row that declares
+   * it — so the two lists stay apart rather than being merged into one set of letters.
+   */
   const cellIndex = computed(() => {
-    const index = new Map<string, { roles: RaciRole[]; assignmentIds: number[] }>()
+    const index = new Map<string, CellEntry>()
     for (const cell of data.value.cells) {
       index.set(`${cell.wbsItemId}:${cell.memberId}`, {
         roles: cell.roles,
         assignmentIds: cell.assignmentIds,
+        inherited: cell.inherited,
       })
     }
     return index

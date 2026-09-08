@@ -1,13 +1,19 @@
 package com.projectflow.presentation;
 
+import com.fasterxml.jackson.databind.exc.InvalidFormatException;
+import com.projectflow.domain.BacklogItemNotFoundException;
 import com.projectflow.domain.CircularDependencyException;
+import com.projectflow.domain.InvalidBacklogItemException;
 import com.projectflow.domain.InvalidDependencyException;
 import com.projectflow.domain.InvalidImportException;
 import com.projectflow.domain.InvalidRaciAssignmentException;
+import com.projectflow.domain.InvalidRaidLinkException;
+import com.projectflow.domain.InvalidSprintException;
 import com.projectflow.domain.InvalidWbsHierarchyException;
 import com.projectflow.domain.ProjectMemberNotFoundException;
 import com.projectflow.domain.ProjectNotFoundException;
 import com.projectflow.domain.RaidItemNotFoundException;
+import com.projectflow.domain.SprintNotFoundException;
 import com.projectflow.domain.WbsItemNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -17,8 +23,11 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -28,6 +37,8 @@ public class GlobalExceptionHandler {
             WbsItemNotFoundException.class,
             ProjectMemberNotFoundException.class,
             RaidItemNotFoundException.class,
+            BacklogItemNotFoundException.class,
+            SprintNotFoundException.class,
     })
     public ResponseEntity<Map<String, Object>> handleNotFound(RuntimeException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorBody(HttpStatus.NOT_FOUND, ex.getMessage()));
@@ -40,6 +51,9 @@ public class GlobalExceptionHandler {
             CircularDependencyException.class,
             InvalidRaciAssignmentException.class,
             InvalidImportException.class,
+            InvalidBacklogItemException.class,
+            InvalidRaidLinkException.class,
+            InvalidSprintException.class,
     })
     public ResponseEntity<Map<String, Object>> handleInvalidStructure(RuntimeException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorBody(HttpStatus.BAD_REQUEST, ex.getMessage()));
@@ -54,7 +68,31 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<Map<String, Object>> handleUnreadableBody(HttpMessageNotReadableException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorBody(HttpStatus.BAD_REQUEST,
-                "요청 내용을 읽을 수 없습니다. 형식이 올바른 JSON인지 확인하세요."));
+                unknownEnumValue(ex).orElse("요청 내용을 읽을 수 없습니다. 형식이 올바른 JSON인지 확인하세요.")));
+    }
+
+    /**
+     * A value outside an enum's constants arrives here as an unreadable body, which the generic
+     * message above describes as bad JSON — true but useless, since the JSON is fine and one field
+     * is wrong. Naming the field and listing what it accepts is the difference between a dead end
+     * and a fixable error, and every enum-valued field in the API benefits (실행 방식, RAID 종류,
+     * 프로젝트 상태 …).
+     */
+    private Optional<String> unknownEnumValue(HttpMessageNotReadableException ex) {
+        if (!(ex.getCause() instanceof InvalidFormatException cause)) {
+            return Optional.empty();
+        }
+        Class<?> target = cause.getTargetType();
+        if (target == null || !target.isEnum()) {
+            return Optional.empty();
+        }
+        String field = cause.getPath().isEmpty() ? "값"
+                : cause.getPath().getLast().getFieldName();
+        String allowed = Arrays.stream(target.getEnumConstants())
+                .map(String::valueOf)
+                .collect(Collectors.joining(", "));
+        return Optional.of("'%s'은(는) %s에 허용되지 않는 값입니다. 가능한 값: %s"
+                .formatted(cause.getValue(), field, allowed));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

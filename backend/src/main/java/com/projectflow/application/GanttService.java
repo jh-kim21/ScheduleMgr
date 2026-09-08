@@ -6,7 +6,20 @@ import com.projectflow.application.dto.GanttResponse;
 import com.projectflow.application.dto.GanttResponse.DependencyResponse;
 import com.projectflow.application.dto.GanttResponse.GanttTaskResponse;
 import com.projectflow.application.dto.ScheduleRecalculationResponse;
+import com.projectflow.domain.AcceptanceStatus;
+import com.projectflow.application.dto.GanttResponse.SprintLane;
+import com.projectflow.domain.BacklogItem;
+import com.projectflow.domain.BacklogItemRepository;
+import com.projectflow.domain.BacklogStatus;
+import com.projectflow.domain.Baseline;
+import com.projectflow.domain.BaselineItem;
+import com.projectflow.domain.BaselineRepository;
 import com.projectflow.domain.CircularDependencyException;
+import com.projectflow.domain.ProgressCalculator.ProgressResult;
+import com.projectflow.domain.Sprint;
+import com.projectflow.domain.SprintItem;
+import com.projectflow.domain.SprintItemRepository;
+import com.projectflow.domain.SprintRepository;
 import com.projectflow.domain.CriticalPathCalculator;
 import com.projectflow.domain.DelayCalculator;
 import com.projectflow.domain.DependencyGraph;
@@ -25,7 +38,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -39,13 +55,28 @@ public class GanttService {
     private final WbsItemRepository wbsItemRepository;
     private final WbsDependencyRepository dependencyRepository;
     private final ProjectRepository projectRepository;
+    private final BaselineRepository baselineRepository;
+    private final SprintRepository sprintRepository;
+    private final SprintItemRepository sprintItemRepository;
+    private final BacklogItemRepository backlogItemRepository;
+    private final ProgressService progressService;
 
     public GanttService(WbsItemRepository wbsItemRepository,
                          WbsDependencyRepository dependencyRepository,
-                         ProjectRepository projectRepository) {
+                         ProjectRepository projectRepository,
+                         BaselineRepository baselineRepository,
+                         SprintRepository sprintRepository,
+                         SprintItemRepository sprintItemRepository,
+                         BacklogItemRepository backlogItemRepository,
+                         ProgressService progressService) {
         this.wbsItemRepository = wbsItemRepository;
         this.dependencyRepository = dependencyRepository;
         this.projectRepository = projectRepository;
+        this.baselineRepository = baselineRepository;
+        this.sprintRepository = sprintRepository;
+        this.sprintItemRepository = sprintItemRepository;
+        this.backlogItemRepository = backlogItemRepository;
+        this.progressService = progressService;
     }
 
     /** Chart rows, dependencies and constraint violations in one payload (요구사항 6.4). */
@@ -124,28 +155,68 @@ public class GanttService {
         // is measured against the same "today" and a long-open browser tab cannot drift.
         LocalDate referenceDate = LocalDate.now();
 
+        // 기준 일정은 승인된 Baseline에서만 온다. 없으면 hasBaseline=false 로 내려보내고, 화면이
+        // 현재 계획을 기준선인 것처럼 그리지 않게 한다 (지시서 6-A).
+        Baseline baseline = latestBaseline(projectId);
+        Map<Long, BaselineItem> baselineByItem = new HashMap<>();
+        if (baseline != null) {
+            for (BaselineItem item : baselineRepository.findItemsByBaselineId(baseline.getId())) {
+                baselineByItem.put(item.getWbsItemId(), item);
+            }
+        }
+        // 공통 집계 결과를 그대로 쓴다 — 간트와 WBS가 다른 숫자를 보이면 안 된다 (지시서 5-C).
+        Map<Long, ProgressResult> computed = progressService.resultsByWbsItem(projectId, tree);
+        Map<Long, List<Long>> sprintsByWbsItem = new HashMap<>();
+        List<SprintLane> sprintLanes = sprintLanes(projectId, sprintsByWbsItem);
+
         List<GanttTaskResponse> tasks = flattened.stream()
                 .map(node -> {
                     DelayCalculator.DelayAssessment delay = DelayCalculator.assess(
                             node.startDate(), node.endDate(), node.progress(), referenceDate);
+                    WbsItem item = node.item();
+                    BaselineItem approved = baselineByItem.get(item.getId());
+                    ProgressResult progress = computed.get(item.getId());
+                    // 예상 종료가 없으면 현재 계획으로 판단한다 — 예측을 적지 않았다는 것이
+                    // "늦지 않는다"는 뜻은 아니다.
+                    LocalDate expectedEnd = item.getForecastEndDate() != null
+                            ? item.getForecastEndDate()
+                            : node.endDate();
+                    long slip = 0;
+                    if (approved != null && approved.getEndDate() != null && expectedEnd != null
+                            && expectedEnd.isAfter(approved.getEndDate())) {
+                        slip = ChronoUnit.DAYS.between(approved.getEndDate(), expectedEnd);
+                    }
                     return new GanttTaskResponse(
-                            node.item().getId(),
-                            node.item().getParentId(),
+                            item.getId(),
+                            item.getParentId(),
                             node.code(),
                             node.level(),
-                            node.item().getName(),
+                            item.getName(),
                             node.summary(),
                             node.startDate(),
                             node.endDate(),
                             node.progress(),
-                            analysis.earliestStarts().get(node.item().getId()),
-                            analysis.violatedTaskIds().contains(node.item().getId()),
+                            analysis.earliestStarts().get(item.getId()),
+                            analysis.violatedTaskIds().contains(item.getId()),
                             delay.status(),
                             delay.expectedProgress(),
                             delay.progressGap(),
                             delay.delayDays(),
-                            criticalPath.floatDays().get(node.item().getId()),
-                            criticalPath.criticalTaskIds().contains(node.item().getId())
+                            criticalPath.floatDays().get(item.getId()),
+                            criticalPath.criticalTaskIds().contains(item.getId()),
+                            approved == null ? null : approved.getStartDate(),
+                            approved == null ? null : approved.getEndDate(),
+                            item.getActualStartDate(),
+                            item.getActualEndDate(),
+                            item.getForecastEndDate(),
+                            slip > 0,
+                            slip,
+                            progress == null ? null : progress.percent(),
+                            progress == null ? null : progress.basis(),
+                            item.getAcceptanceStatus() == AcceptanceStatus.PENDING
+                                    && progress != null && progress.percent() != null
+                                    && progress.percent() >= 100,
+                            sprintsByWbsItem.getOrDefault(item.getId(), List.of())
                     );
                 })
                 .toList();
@@ -171,7 +242,96 @@ public class GanttService {
                 ))
                 .toList();
 
-        return new GanttResponse(chartStart, chartEnd, referenceDate, tasks, dependencyResponses);
+        // 차트 폭은 Sprint 레인과 실적·기준 막대까지 포함해야 잘리지 않는다.
+        LocalDate spanStart = earliest(chartStart, sprintLanes.stream()
+                .map(SprintLane::startDate).min(LocalDate::compareTo).orElse(null));
+        LocalDate spanEnd = latest(chartEnd, sprintLanes.stream()
+                .map(SprintLane::endDate).max(LocalDate::compareTo).orElse(null));
+        for (GanttTaskResponse task : tasks) {
+            spanStart = earliest(spanStart, task.baselineStart());
+            spanStart = earliest(spanStart, task.actualStart());
+            spanEnd = latest(spanEnd, task.baselineEnd());
+            spanEnd = latest(spanEnd, task.actualEnd());
+            spanEnd = latest(spanEnd, task.forecastEnd());
+        }
+
+        return new GanttResponse(spanStart, spanEnd, referenceDate,
+                baseline != null, baseline == null ? null : baseline.getVersion(),
+                tasks, dependencyResponses, sprintLanes);
+    }
+
+    /**
+     * Sprint periods as their own lane, plus which Work Packages each one touches.
+     *
+     * <p>One entry per Sprint. A Sprint can carry items from several Work Packages, and repeating
+     * its bar under each of them would invent schedule and progress that do not exist (설계 §7).
+     * The Work Package ids travel as a reference so selecting a row can highlight the lane.
+     */
+    private List<SprintLane> sprintLanes(Long projectId, Map<Long, List<Long>> sprintsByWbsItem) {
+        Map<Long, BacklogItem> backlogById = new HashMap<>();
+        for (BacklogItem item : backlogItemRepository.findByProjectId(projectId)) {
+            backlogById.put(item.getId(), item);
+        }
+        Map<Long, List<SprintItem>> assignmentsBySprint = new HashMap<>();
+        for (SprintItem assignment : sprintItemRepository.findByProjectId(projectId)) {
+            assignmentsBySprint.computeIfAbsent(assignment.getSprintId(), key -> new ArrayList<>())
+                    .add(assignment);
+        }
+
+        List<SprintLane> lanes = new ArrayList<>();
+        for (Sprint sprint : sprintRepository.findByProjectId(projectId).stream()
+                .sorted(java.util.Comparator.comparing(Sprint::getStartDate)
+                        .thenComparing(Sprint::getId))
+                .toList()) {
+            List<SprintItem> assignments = assignmentsBySprint.getOrDefault(sprint.getId(), List.of());
+            Map<Long, Boolean> wbsItemIds = new LinkedHashMap<>();
+            int planned = 0;
+            int done = 0;
+            for (SprintItem assignment : assignments) {
+                boolean counts = sprint.open() ? assignment.active() : assignment.getOutcome() != null;
+                if (!counts) {
+                    continue;
+                }
+                BacklogItem item = backlogById.get(assignment.getBacklogItemId());
+                if (item == null) {
+                    continue;
+                }
+                planned++;
+                if (item.getStatus() == BacklogStatus.DONE) {
+                    done++;
+                }
+                if (item.getWbsItemId() != null) {
+                    wbsItemIds.putIfAbsent(item.getWbsItemId(), Boolean.TRUE);
+                }
+            }
+            for (Long wbsItemId : wbsItemIds.keySet()) {
+                sprintsByWbsItem.computeIfAbsent(wbsItemId, key -> new ArrayList<>())
+                        .add(sprint.getId());
+            }
+            lanes.add(new SprintLane(sprint.getId(), sprint.getName(), sprint.getGoal(),
+                    sprint.getStartDate(), sprint.getEndDate(), sprint.getStatus(),
+                    planned, done, List.copyOf(wbsItemIds.keySet())));
+        }
+        return lanes;
+    }
+
+    private Baseline latestBaseline(Long projectId) {
+        List<Baseline> baselines = baselineRepository.findByProjectId(projectId);
+        return baselines.isEmpty() ? null : baselines.getLast();
+    }
+
+    private LocalDate earliest(LocalDate current, LocalDate candidate) {
+        if (candidate == null) {
+            return current;
+        }
+        return current == null || candidate.isBefore(current) ? candidate : current;
+    }
+
+    private LocalDate latest(LocalDate current, LocalDate candidate) {
+        if (candidate == null) {
+            return current;
+        }
+        return current == null || candidate.isAfter(current) ? candidate : current;
     }
 
     private void flatten(List<WbsNode> nodes, List<WbsNode> target) {

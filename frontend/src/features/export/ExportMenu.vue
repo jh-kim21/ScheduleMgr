@@ -1,12 +1,20 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { backlogApi } from '../../api/backlogApi'
 import { ApiError } from '../../api/http'
 import type { Project } from '../../api/projectApi'
 import { raciApi } from '../../api/raciApi'
 import { raidApi } from '../../api/raidApi'
 import { wbsApi } from '../../api/wbsApi'
 import { csvFileName, downloadCsv, toCsv } from '../../shared/csv'
-import { raciCsv, raciLegend, raidCsv, wbsCsv, type CsvTable } from '../../shared/exportRows'
+import {
+  backlogCsv,
+  raciCsv,
+  raciLegend,
+  raidCsv,
+  wbsCsv,
+  type CsvTable,
+} from '../../shared/exportRows'
 
 /**
  * Export controls for one project, as a Material-style menu button.
@@ -22,7 +30,7 @@ const props = defineProps<{
   project: Project
 }>()
 
-type Format = 'json' | 'wbs' | 'raci' | 'raid'
+type Format = 'json' | 'wbs' | 'backlog' | 'raci' | 'raid'
 
 interface MenuItem {
   format: Format
@@ -44,6 +52,7 @@ const PEOPLE_ICON =
 const ITEMS: MenuItem[] = [
   { format: 'json', label: '프로젝트 전체', hint: 'JSON · 다시 가져올 수 있는 형식', icon: PACKAGE_ICON },
   { format: 'wbs', label: 'WBS', hint: 'CSV · Excel에서 열기', icon: TABLE_ICON },
+  { format: 'backlog', label: 'Backlog', hint: 'CSV · Epic·Story·Bug·Task', icon: TABLE_ICON },
   { format: 'raci', label: 'RACI', hint: 'CSV · 업무 × 구성원 표', icon: PEOPLE_ICON },
   { format: 'raid', label: 'RAID', hint: 'CSV · 위험·가정·이슈·의존성', icon: TABLE_ICON },
 ]
@@ -158,6 +167,10 @@ async function tableFor(format: Exclude<Format, 'json'>): Promise<{ table: CsvTa
   if (format === 'wbs') {
     const tree = await wbsApi.tree(id)
     return { table: wbsCsv(tree.nodes, tree.referenceDate) }
+  }
+  if (format === 'backlog') {
+    const backlog = await backlogApi.list(id)
+    return { table: backlogCsv(backlog.items) }
   }
   if (format === 'raci') {
     const matrix = await raciApi.matrix(id)

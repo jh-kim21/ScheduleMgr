@@ -1,0 +1,118 @@
+import { describe, expect, it } from 'vitest'
+import type { BacklogItem } from '../../api/backlogApi'
+import { DEFAULT_FILTERS, isFiltered, visibleRows, type BacklogFilters } from './backlogFilter'
+
+let nextId = 1
+
+function item(over: Partial<BacklogItem> = {}): BacklogItem {
+  return {
+    id: nextId++,
+    wbsItemId: 10,
+    wbsCode: '1',
+    wbsName: '개발',
+    wbsExecutionMode: 'AGILE',
+    parentId: null,
+    parentTitle: null,
+    depth: 0,
+    itemType: 'STORY',
+    title: `항목 ${nextId}`,
+    description: null,
+    priority: 'MEDIUM',
+    status: 'TODO',
+    assigneeMemberId: null,
+    assigneeName: null,
+    acceptanceCriteria: null,
+    storyPoint: null,
+    progressWeight: null,
+    archivedAt: null,
+    archived: false,
+    blocked: false,
+    blockedReason: null,
+    doneAt: null,
+    openSprintName: null,
+    aggregated: true,
+    childCount: 0,
+    unlinked: false,
+    linkedToSummary: false,
+    danglingLink: false,
+    requiresExecutionModeChange: false,
+    readyForSprint: true,
+    ...over,
+  }
+}
+
+const filters = (over: Partial<BacklogFilters> = {}): BacklogFilters => ({
+  ...DEFAULT_FILTERS,
+  ...over,
+})
+
+describe('visibleRows', () => {
+  it('기본값은 보관된 항목을 감춘다 — 접어둔 것이 열린 일처럼 보이면 안 된다', () => {
+    const open = item()
+    const archived = item({ archived: true })
+
+    expect(visibleRows([open, archived], filters()).map((row) => row.item.id)).toEqual([open.id])
+  })
+
+  it('보관만 볼 수도 있다', () => {
+    const open = item()
+    const archived = item({ archived: true })
+
+    expect(visibleRows([open, archived], filters({ archive: 'ARCHIVED' })).map((r) => r.item.id))
+      .toEqual([archived.id])
+  })
+
+  it('Work Package로 걸러낸다 — WBS 화면에서 건너올 때 쓰는 경로', () => {
+    const mine = item({ wbsItemId: 10 })
+    const other = item({ wbsItemId: 20 })
+
+    expect(visibleRows([mine, other], filters({ wbsItemId: 10 })).map((r) => r.item.id))
+      .toEqual([mine.id])
+  })
+
+  it('미연결만 골라낼 수 있다', () => {
+    const linked = item({ wbsItemId: 10 })
+    const draft = item({ wbsItemId: null, unlinked: true })
+
+    expect(visibleRows([linked, draft], filters({ link: 'UNLINKED' })).map((r) => r.item.id))
+      .toEqual([draft.id])
+  })
+
+  it('유형과 상태로 걸러낸다', () => {
+    const story = item({ itemType: 'STORY', status: 'TODO' })
+    const bug = item({ itemType: 'BUG', status: 'DONE' })
+
+    expect(visibleRows([story, bug], filters({ type: 'BUG' })).map((r) => r.item.id)).toEqual([bug.id])
+    expect(visibleRows([story, bug], filters({ status: 'DONE' })).map((r) => r.item.id)).toEqual([bug.id])
+  })
+
+  it('걸러진 하위의 상위는 맥락으로 남긴다 — Task만 떠 있으면 어디 소속인지 알 수 없다', () => {
+    const epic = item({ itemType: 'EPIC', title: '묶음', aggregated: false })
+    const story = item({ itemType: 'STORY', parentId: epic.id, depth: 1 })
+    const task = item({ itemType: 'TASK', parentId: story.id, depth: 2, aggregated: false })
+
+    const rows = visibleRows([epic, story, task], filters({ type: 'TASK' }))
+
+    expect(rows.map((row) => [row.item.id, row.context])).toEqual([
+      [epic.id, true],
+      [story.id, true],
+      [task.id, false],
+    ])
+  })
+
+  it('아무것도 맞지 않으면 맥락도 남기지 않는다', () => {
+    expect(visibleRows([item({ itemType: 'STORY' })], filters({ type: 'BUG' }))).toEqual([])
+  })
+})
+
+describe('isFiltered', () => {
+  it('기본값은 필터가 걸리지 않은 상태다', () => {
+    expect(isFiltered(filters())).toBe(false)
+  })
+
+  it('하나라도 바뀌면 걸린 상태다', () => {
+    expect(isFiltered(filters({ wbsItemId: 10 }))).toBe(true)
+    expect(isFiltered(filters({ archive: 'ALL' }))).toBe(true)
+    expect(isFiltered(filters({ link: 'UNLINKED' }))).toBe(true)
+  })
+})

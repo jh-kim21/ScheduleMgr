@@ -22,6 +22,8 @@ const {
   data,
   members,
   wbsTasks,
+  sprints,
+  backlogItems,
   loading,
   error,
   filters,
@@ -233,6 +235,8 @@ async function handleRemove(item: RaidItem) {
           :editing="editing"
           :members="members"
           :wbs-tasks="wbsTasks"
+          :sprints="sprints"
+          :backlog-items="backlogItems"
           @submit="handleSubmit"
           @cancel="closeForm"
         />

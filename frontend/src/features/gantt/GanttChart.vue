@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { GanttData, GanttTask } from '../../api/ganttApi'
+import type { GanttData, GanttSprintLane, GanttTask } from '../../api/ganttApi'
 import { DELAY_LABELS, delayBadge, delayDescription, type DelayStatus } from '../../shared/delay'
+import { PROGRESS_BASIS_LABELS, progressText } from '../../shared/progress'
+import { SPRINT_STATUS_LABELS } from '../../shared/sprint'
 import {
   barGeometry,
   createScale,
@@ -25,6 +27,8 @@ const props = defineProps<{
 const MONTH_BAND_HEIGHT = 20
 const DAY_ROW_HEIGHT = 22
 const AXIS_HEIGHT = MONTH_BAND_HEIGHT + DAY_ROW_HEIGHT
+/** Sprint lanes sit above the task rows in a strip of their own. */
+const SPRINT_ROW_HEIGHT = 22
 
 /** UNSCHEDULED is left out: those rows have no bar to colour. */
 const LEGEND_STATUSES: DelayStatus[] = ['COMPLETED', 'ON_TRACK', 'AT_RISK', 'DELAYED', 'NOT_STARTED']
@@ -49,6 +53,122 @@ const rows = computed<Row[]>(() =>
 )
 
 const rowsById = computed(() => new Map(rows.value.map((row) => [row.task.id, row])))
+
+/**
+ * The row the user clicked, used to highlight the Sprints working on it — and, from a lane, the
+ * rows that Sprint touches. Selection lives here rather than in the parent: nothing outside the
+ * chart acts on it.
+ */
+const selectedTaskId = ref<number | null>(null)
+const selectedSprintId = ref<number | null>(null)
+
+function selectTask(taskId: number) {
+  selectedSprintId.value = null
+  selectedTaskId.value = selectedTaskId.value === taskId ? null : taskId
+}
+
+function selectSprint(sprintId: number) {
+  selectedTaskId.value = null
+  selectedSprintId.value = selectedSprintId.value === sprintId ? null : sprintId
+}
+
+/** Sprints related to the current selection, whichever side it was made from. */
+const highlightedSprintIds = computed(() => {
+  if (selectedSprintId.value !== null) return new Set([selectedSprintId.value])
+  if (selectedTaskId.value === null) return new Set<number>()
+  const task = props.data.tasks.find((candidate) => candidate.id === selectedTaskId.value)
+  return new Set(task?.sprintIds ?? [])
+})
+
+const highlightedTaskIds = computed(() => {
+  if (selectedTaskId.value !== null) return new Set([selectedTaskId.value])
+  if (selectedSprintId.value === null) return new Set<number>()
+  const lane = props.data.sprints.find((candidate) => candidate.id === selectedSprintId.value)
+  return new Set(lane?.wbsItemIds ?? [])
+})
+
+const selectionActive = computed(
+  () => selectedTaskId.value !== null || selectedSprintId.value !== null,
+)
+
+interface SprintRow {
+  lane: GanttSprintLane
+  index: number
+  bar: BarGeometry | null
+}
+
+/**
+ * One row per Sprint, never one per Work Package it touches. A Sprint spanning three Work Packages
+ * drawn three times would look like three periods of work and three sets of points (지시서 6-A).
+ */
+const sprintRows = computed<SprintRow[]>(() =>
+  props.data.sprints.map((lane, index) => ({
+    lane,
+    index,
+    bar: scale.value ? barGeometry(scale.value, lane.startDate, lane.endDate) : null,
+  })),
+)
+
+const sprintHeight = computed(() => sprintRows.value.length * SPRINT_ROW_HEIGHT)
+
+/**
+ * The approved baseline, drawn as its own thin bar above the plan.
+ *
+ * <p>Absent when no baseline has been approved: the current plan is never drawn in its place, or
+ * the chart could never show a slip (지시서 6-A).
+ */
+const baselineBars = computed(() => {
+  const current = scale.value
+  if (!current || !props.data.hasBaseline) return []
+  return rows.value.flatMap((row) => {
+    const bar = barGeometry(current, row.task.baselineStart, row.task.baselineEnd)
+    return bar ? [{ id: row.task.id, bar, y: row.index * ROW_HEIGHT + 3 }] : []
+  })
+})
+
+/** What really happened. An open-ended actual (started, not finished) runs to the reference date. */
+const actualBars = computed(() => {
+  const current = scale.value
+  if (!current) return []
+  return rows.value.flatMap((row) => {
+    const start = row.task.actualStart
+    if (!start) return []
+    const end = row.task.actualEnd ?? props.data.referenceDate
+    const bar = barGeometry(current, start, end)
+    return bar
+      ? [
+          {
+            id: row.task.id,
+            bar,
+            y: row.index * ROW_HEIGHT + ROW_HEIGHT - 8,
+            open: row.task.actualEnd === null,
+          },
+        ]
+      : []
+  })
+})
+
+/** Where the work is now expected to end, marked only when it differs from the plan. */
+const forecastMarkers = computed(() => {
+  const current = scale.value
+  if (!current) return []
+  return rows.value.flatMap((row) =>
+    row.task.forecastEnd && row.task.forecastEnd !== row.task.endDate
+      ? [
+          {
+            id: row.task.id,
+            x: xFor(current, row.task.forecastEnd) + current.dayWidth,
+            y: row.index * ROW_HEIGHT,
+            exceeded: row.task.baselineExceeded,
+          },
+        ]
+      : [],
+  )
+})
+
+const exceededCount = computed(
+  () => props.data.tasks.filter((task) => task.baselineExceeded).length,
+)
 const bodyHeight = computed(() => Math.max(rows.value.length * ROW_HEIGHT, ROW_HEIGHT))
 
 /**
@@ -219,6 +339,7 @@ const tooltipStyle = computed(() => {
 const chartVars = computed(() => ({
   '--row-height': `${ROW_HEIGHT}px`,
   '--axis-height': `${AXIS_HEIGHT}px`,
+  '--sprint-row-height': `${SPRINT_ROW_HEIGHT}px`,
 }))
 </script>
 
@@ -234,11 +355,39 @@ const chartVars = computed(() => ({
   <div v-else class="gantt" :class="{ 'focus-critical': criticalActive }" :style="chartVars">
     <div class="task-pane">
       <div class="axis-spacer">업무</div>
+
+      <div v-if="sprintRows.length > 0" class="sprint-labels">
+        <button
+          v-for="row in sprintRows"
+          :key="row.lane.id"
+          type="button"
+          class="sprint-label"
+          :class="{
+            selected: selectedSprintId === row.lane.id,
+            dimmed: selectionActive && !highlightedSprintIds.has(row.lane.id),
+          }"
+          :title="row.lane.goal ?? row.lane.name"
+          @click="selectSprint(row.lane.id)"
+        >
+          <span class="sprint-name">{{ row.lane.name }}</span>
+          <span class="sprint-status">{{ SPRINT_STATUS_LABELS[row.lane.status] }}</span>
+        </button>
+      </div>
+
       <div
         v-for="row in rows"
         :key="row.task.id"
         class="task-row"
-        :class="{ critical: criticalActive && row.task.criticalPath }"
+        :class="{
+          critical: criticalActive && row.task.criticalPath,
+          selected: selectedTaskId === row.task.id,
+          dimmed: selectionActive && !highlightedTaskIds.has(row.task.id),
+        }"
+        role="button"
+        tabindex="0"
+        @click="selectTask(row.task.id)"
+        @keydown.enter.prevent="selectTask(row.task.id)"
+        @keydown.space.prevent="selectTask(row.task.id)"
       >
         <span class="code">{{ row.task.code }}</span>
         <span
@@ -278,6 +427,56 @@ const chartVars = computed(() => ({
             >{{ dayNumbersVisible ? tick.dayOfMonth : '' }}</div>
           </div>
         </div>
+
+        <!-- Sprint 레인. 업무 막대와 같은 축을 쓰지만 행은 Sprint 하나에 하나다. -->
+        <svg
+          v-if="sprintRows.length > 0"
+          class="sprint-lane"
+          :width="scale.width"
+          :height="sprintHeight"
+          role="img"
+          aria-label="Sprint 구간"
+        >
+          <rect
+            v-for="tick in ticks.filter((t) => t.weekend)"
+            :key="`sprint-weekend-${tick.date}`"
+            class="weekend-band"
+            :x="tick.x"
+            y="0"
+            :width="scale.dayWidth"
+            :height="sprintHeight"
+          />
+          <line
+            v-if="todayX !== null"
+            class="today"
+            :x1="todayX"
+            :x2="todayX"
+            y1="0"
+            :y2="sprintHeight"
+          />
+          <template v-for="row in sprintRows" :key="`sprint-${row.lane.id}`">
+            <rect
+              v-if="row.bar"
+              class="sprint-bar"
+              :class="{
+                selected: highlightedSprintIds.has(row.lane.id),
+                dimmed: selectionActive && !highlightedSprintIds.has(row.lane.id),
+              }"
+              :data-status="row.lane.status"
+              :x="row.bar.x"
+              :y="row.index * SPRINT_ROW_HEIGHT + 4"
+              :width="row.bar.width"
+              :height="SPRINT_ROW_HEIGHT - 8"
+              rx="3"
+              @click="selectSprint(row.lane.id)"
+            >
+              <title>
+                {{ row.lane.name }} · {{ row.lane.startDate }} ~ {{ row.lane.endDate }} ·
+                완료 {{ row.lane.doneItems }}/{{ row.lane.plannedItems }}
+              </title>
+            </rect>
+          </template>
+        </svg>
 
         <svg
           class="body"
@@ -341,6 +540,18 @@ const chartVars = computed(() => ({
             :y2="bodyHeight"
           />
 
+          <!-- 승인된 기준 일정. 없으면 아예 그리지 않는다 — 현재 계획으로 대신하지 않는다. -->
+          <rect
+            v-for="baseline in baselineBars"
+            :key="`baseline-bar-${baseline.id}`"
+            class="baseline-bar"
+            :x="baseline.bar.x"
+            :y="baseline.y"
+            :width="baseline.bar.width"
+            :height="4"
+            rx="2"
+          />
+
           <!-- 일정 막대. 채움 색은 지연 상태를, 점선 외곽선은 선후행 위반을 나타낸다. -->
           <g v-for="row in rows" :key="`bar-${row.task.id}`">
             <template v-if="row.bar">
@@ -373,6 +584,28 @@ const chartVars = computed(() => ({
               />
             </template>
           </g>
+
+          <!-- 실제 실적. 종료 실적이 없으면 기준일까지 열어 둔다. -->
+          <rect
+            v-for="actual in actualBars"
+            :key="`actual-${actual.id}`"
+            class="actual-bar"
+            :class="{ open: actual.open }"
+            :x="actual.bar.x"
+            :y="actual.y"
+            :width="actual.bar.width"
+            :height="4"
+            rx="2"
+          />
+
+          <!-- 예상 종료. 기준 종료일을 넘기면 경고 색으로 표시한다. -->
+          <path
+            v-for="marker in forecastMarkers"
+            :key="`forecast-${marker.id}`"
+            class="forecast"
+            :class="{ exceeded: marker.exceeded }"
+            :d="`M ${marker.x} ${marker.y + ROW_HEIGHT / 2 - 7} l 5 7 l -5 7 z`"
+          />
 
           <!-- 지연 위험 항목의 기대 진행률 위치 -->
           <line
@@ -426,7 +659,41 @@ const chartVars = computed(() => ({
         </dd>
 
         <dt>진행률</dt>
-        <dd>{{ hover.task.progress }}% · {{ DELAY_LABELS[hover.task.delayStatus] }}</dd>
+        <dd>
+          {{ progressText(hover.task.computedProgress) }}
+          <span v-if="hover.task.progressBasis" class="tooltip-basis">
+            ({{ PROGRESS_BASIS_LABELS[hover.task.progressBasis] }})
+          </span>
+          · {{ DELAY_LABELS[hover.task.delayStatus] }}
+        </dd>
+
+        <template v-if="data.hasBaseline">
+          <dt>기준 일정</dt>
+          <dd v-if="hover.task.baselineStart">
+            {{ hover.task.baselineStart }} ~ {{ hover.task.baselineEnd }}
+          </dd>
+          <dd v-else class="tooltip-none">기준선에 없는 항목</dd>
+        </template>
+
+        <template v-if="hover.task.actualStart">
+          <dt>실적</dt>
+          <dd>{{ hover.task.actualStart }} ~ {{ hover.task.actualEnd ?? '진행 중' }}</dd>
+        </template>
+
+        <template v-if="hover.task.forecastEnd">
+          <dt>예상 종료</dt>
+          <dd :class="{ 'tooltip-violation': hover.task.baselineExceeded }">
+            {{ hover.task.forecastEnd }}
+            <template v-if="hover.task.baselineExceeded">
+              (기준 대비 {{ hover.task.baselineSlipDays }}일 초과)
+            </template>
+          </dd>
+        </template>
+
+        <template v-if="hover.task.acceptancePending">
+          <dt>인수</dt>
+          <dd class="tooltip-violation">실행 100% · 인수 대기</dd>
+        </template>
 
         <dt>여유</dt>
         <dd>{{ floatLabel(hover.task) }}</dd>
@@ -445,6 +712,14 @@ const chartVars = computed(() => ({
     </span>
     <span class="legend-item"><span class="swatch violation-swatch"></span>선후행 위반</span>
     <span class="legend-item"><span class="swatch baseline-swatch"></span>기대 진행률</span>
+    <span v-if="data.hasBaseline" class="legend-item">
+      <span class="swatch baseline-bar-swatch"></span>기준 일정 (v{{ data.baselineVersion }})
+    </span>
+    <span v-else class="legend-item baseline-missing">기준 일정 미등록</span>
+    <span class="legend-item"><span class="swatch actual-swatch"></span>실적</span>
+    <span v-if="exceededCount > 0" class="legend-item exceeded-note">
+      기준 종료일 초과 {{ exceededCount }}건
+    </span>
     <span v-if="criticalActive" class="legend-item">
       <span class="swatch critical-swatch"></span>임계 경로
     </span>
@@ -453,6 +728,131 @@ const chartVars = computed(() => ({
 </template>
 
 <style scoped>
+/*
+ * 기준·계획·실적을 한 행 안에 위아래로 쌓는다. 세 줄을 따로 두면 행이 세 배로 늘어 접힌 WBS의
+ * 이점이 사라지고, 같은 업무의 세 일정을 눈으로 잇기 어려워진다.
+ */
+.baseline-bar {
+  fill: var(--text-faint);
+  opacity: 0.55;
+}
+
+.actual-bar {
+  fill: var(--status-completed);
+}
+
+/* 종료 실적이 없는 막대는 "아직 끝나지 않았다"를 흐린 끝으로 말한다. */
+.actual-bar.open {
+  opacity: 0.6;
+}
+
+.forecast {
+  fill: var(--text-muted);
+}
+
+.forecast.exceeded {
+  fill: var(--danger);
+}
+
+/* Sprint 레인: 실행 주기이지 업무가 아니므로 업무 막대와 다른 형태로 둔다. */
+.sprint-labels {
+  border-bottom: 1px solid var(--border);
+}
+
+.sprint-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  height: var(--sprint-row-height);
+  padding: 0 0.5rem;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-align: left;
+}
+
+.sprint-label .sprint-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sprint-label .sprint-status {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 0.7rem;
+}
+
+.sprint-label.selected {
+  color: var(--text-h);
+  font-weight: 600;
+}
+
+.sprint-label.dimmed,
+.task-row.dimmed {
+  opacity: 0.4;
+}
+
+.task-row.selected {
+  background: var(--state-hover);
+}
+
+.sprint-lane {
+  display: block;
+  border-bottom: 1px solid var(--border);
+}
+
+.sprint-bar {
+  fill: var(--accent);
+  opacity: 0.35;
+  cursor: pointer;
+}
+
+.sprint-bar[data-status='ACTIVE'] {
+  opacity: 0.6;
+}
+
+.sprint-bar[data-status='CLOSED'] {
+  fill: var(--text-faint);
+  opacity: 0.3;
+}
+
+.sprint-bar.selected {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  opacity: 0.75;
+}
+
+.sprint-bar.dimmed {
+  opacity: 0.15;
+}
+
+.baseline-bar-swatch {
+  background: var(--text-faint);
+}
+
+.actual-swatch {
+  background: var(--status-completed);
+}
+
+.baseline-missing,
+.exceeded-note {
+  color: var(--text-faint);
+}
+
+.exceeded-note {
+  color: var(--danger);
+}
+
+.tooltip-basis,
+.tooltip-none {
+  color: var(--text-faint);
+}
+
 .gantt {
   display: flex;
   border: 1px solid var(--border);

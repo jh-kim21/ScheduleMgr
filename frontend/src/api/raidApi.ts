@@ -1,5 +1,5 @@
 import { http } from './http'
-import type { RaidLevel, RaidStatus, RaidType } from '../shared/raid'
+import type { RaidLevel, RaidLinkTarget, RaidStatus, RaidType } from '../shared/raid'
 
 /** Judgement fields (`exposure`, `overdue`) are computed server-side; see `RaidAssessor`. */
 export interface RaidItem {
@@ -13,11 +13,12 @@ export interface RaidItem {
   ownerMemberId: number | null
   /** Resolved server-side, so the list needs no second lookup. */
   ownerName: string | null
-  /** The WBS task this entry is about, or null when it concerns the project as a whole. */
-  wbsItemId: number | null
-  /** WBS code and name, resolved server-side — the code is derived from tree position. */
-  wbsCode: string | null
-  wbsName: string | null
+  /**
+   * What this entry is attached to — WBS 업무, Sprint, Backlog 항목. Empty when it concerns the
+   * project as a whole. Names are resolved server-side: a WBS code is derived from tree position,
+   * and the register does not otherwise hold Sprint or Story names.
+   */
+  links: RaidLink[]
   dueDate: string | null
   response: string | null
   /** 확률 × 영향 (1–9). Null unless both are set. */
@@ -25,6 +26,17 @@ export interface RaidItem {
   exposureLevel: RaidLevel | null
   overdue: boolean
   overdueDays: number
+}
+
+/** @see RaidItem.links */
+export interface RaidLink {
+  id: number
+  targetType: RaidLinkTarget
+  targetId: number
+  /** WBS 코드처럼 표시용 식별자. Sprint·Backlog에는 없다. */
+  targetCode: string | null
+  /** Null when the target is gone — the link is not a foreign key, and that is not hidden. */
+  targetName: string | null
 }
 
 export interface RaidLog {
@@ -41,9 +53,14 @@ export interface RaidItemInput {
   probability: RaidLevel | null
   impact: RaidLevel | null
   ownerMemberId: number | null
-  wbsItemId: number | null
+  links: RaidLinkInput[]
   dueDate: string | null
   response: string | null
+}
+
+export interface RaidLinkInput {
+  targetType: RaidLinkTarget
+  targetId: number
 }
 
 export const raidApi = {

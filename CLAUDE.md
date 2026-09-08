@@ -14,6 +14,15 @@
 **지연 업무 자동 판정**, **임계 경로(Critical Path) 표시**, **다크 모드**, **프로젝트 구성원 관리**,
 **RACI 매트릭스**, **RAID 로그**가 end-to-end로 동작합니다. 설계서의 화면은 모두 채워졌습니다.
 
+여기에 얹은 **WBS + Agile 하이브리드 관리**
+([설계서/agile_design/](설계서/agile_design/), 7단계)는 **Step 7까지 모두 완료**했습니다 —
+관리 단위·실행 방식, Product Backlog, Sprint·Board, 공통 진척 집계, 간트·RACI·RAID 연계,
+프로젝트 대시보드까지 동작합니다. 단계별 결과 보고서는
+[설계서/agile_design/results/](설계서/agile_design/results/)에 있고, **쓰는 법과 알려진 제한은
+[운영 안내](설계서/agile_design/results/Hybrid_PM_Operation_Guide.md)** 에 정리돼 있습니다.
+**팀은 하나를 전제합니다** (사용자 결정) — 그래서 팀 테이블이 없고, 실행 중인 Sprint도 하나뿐이며,
+속도 추세도 계열이 하나입니다.
+
 - 백엔드: Spring Boot 3.5.16 (Java 21) + Spring Data JPA + Flyway, `desktop`(H2 파일 DB) / `server`(PostgreSQL) 프로필 분리 완료.
 - 프론트엔드: Vue 3 + TypeScript + Vite, `vue-router`로 화면 라우팅.
 - 패키징: jpackage 스크립트, 서버용 Dockerfile 작성 완료 (아직 실행/검증은 안 함).
@@ -94,11 +103,16 @@ docker build -f packaging/server/Dockerfile -t project-flow-backend .   # 서버
 backend/
   src/main/java/com/projectflow/
     domain/           # 엔티티, 리포지토리 포트, 도메인 예외,
-                       #   WbsTreeAssembler(트리·코드·집계), ScheduleCalculator(FS 일정 계산),
+                       #   WbsTreeAssembler(트리·코드·집계·실행 방식 요약), ScheduleCalculator(FS 일정 계산),
                        #   DependencyGraph(순환 검증), DelayCalculator(지연 판정),
                        #   CriticalPathCalculator(임계 경로), RaciValidator(RACI 규칙 검증),
-                       #   RaidAssessor(노출도·기한 초과 판정)
-    application/       # ProjectService / WbsService / GanttService /
+                       #   RaidAssessor(노출도·기한 초과 판정),
+                       #   WbsNodeType·ExecutionMode·ExecutionModeSummary(관리 단위와 실행 방식),
+                       #   BacklogItemType·BacklogAssessor(실행 항목과 연결 판정),
+                       #   Sprint·SprintItem·SprintAssessor·CompletionCheck(실행 주기와 완료 절차)
+    application/       # ProjectService / WbsService / GanttService / BacklogService / SprintService /
+                       #   ProgressService(공통 집계) / ProgressBasisService(가중치·체크포인트·Baseline) /
+                       #   DashboardService(다른 서비스의 응답을 모으기만 함) /
                        #   ProjectMemberService / RaciService / RaidService(유스케이스), dto/
     infrastructure/     # JPA 리포지토리 구현체, CORS 설정
     presentation/       # 컨트롤러, 전역 예외 핸들러
@@ -110,7 +124,7 @@ backend/
 
 frontend/
   src/api/            # REST API 클라이언트 (fetch 기반)
-  src/features/        # projects, wbs, gantt, raci, raid
+  src/features/        # projects, dashboard, wbs, backlog, sprint, progress, gantt, raci, raid
   src/shared/          # 여러 feature가 공유하는 도메인 개념 (delay 상태 라벨 등)
   src/stores/          # 화면 간 공유 상태 (선택된 프로젝트, 캐시 무효화 신호)
   src/views/           # 라우트별 화면
@@ -145,7 +159,165 @@ WBS나 그 위에 얹는 기능(간트, 진행 관리 등)을 건드릴 때 아�
 - **모든 변경 API가 트리 전체를 반환**합니다(`POST`/`PUT`/`DELETE` 포함). 부분 응답으로는 다른 행의 코드 변경을
   클라이언트가 알 수 없습니다.
 - **삭제는 하위 항목까지 함께 지웁니다.** `wbs_items.parent_id`의 `ON DELETE CASCADE`에 의존합니다.
+  단 **연결된 Backlog가 있으면 삭제 자체를 거부**합니다(아래 Backlog 절) — 이 연쇄가 실행 기록까지
+  끌고 가기 때문입니다.
 - **순환 이동은 서버에서 거부**합니다(400). 프론트엔드도 드롭 자체를 막지만, 서버 검증이 최종 방어선입니다.
+
+### 실행 방식(Execution Mode) 설계상 알아둘 점
+
+WBS와 Agile을 잇는 하이브리드 설계의 첫 조각입니다
+([설계서/agile_design/](설계서/agile_design/), 결과 보고서는 `results/` 아래).
+
+- **관리 단위 구분은 저장하고(`wbs_items.node_type`), 일정 집계는 여전히 자식 유무로 판단합니다.**
+  두 값은 다른 질문에 답합니다 — `nodeType`은 "이 항목이 최하위 관리 단위(Work Package)인가",
+  [`WbsNode.summary()`](backend/src/main/java/com/projectflow/domain/WbsNode.java)는 "이 행의 일정·진행률이
+  하위에서 온 것인가"입니다. 마이그레이션이 자식 유무로 백필했으므로 기존 데이터에서는 둘이 항상
+  일치하고, **`SUMMARY`로 전환했지만 아직 자식이 없는 과도 상태에서만 갈라집니다.** 이때 일정까지
+  `nodeType` 기준으로 바꾸면 그 항목의 날짜가 빈칸이 되어 입력한 값이 화면에서 사라집니다.
+- **실행 방식 미지정은 `NULL`입니다.** `ExecutionMode`에 `UNSPECIFIED` 상수를 두지 마세요 — 드롭다운에서
+  고를 수 있는 값이 되어 "아직 정하지 않음"과 구분할 수 없게 됩니다. `WATERFALL`을 기본값으로 두는 것도
+  안 됩니다: 설계의 Waterfall 진척은 승인 체크포인트 가중치 비율이라 체크포인트가 없는 기존 데이터가
+  전부 0%가 됩니다.
+- **Work Package에는 하위를 둘 수 없습니다**(생성·이동 모두 400). 하위를 두려면 구분을 `SUMMARY`로
+  명시적으로 전환해야 합니다. 파생으로 두면 자식 하나를 추가하는 순간 실행 방식과 Backlog 귀속이
+  말없이 고아가 됩니다.
+- **전환할 때 실행 방식을 지우지 않고 보관합니다.** 그래서 "Summary에 실행 방식 금지"는 *"null이어야
+  한다"가 아니라 "바꿀 수 없다"*로 구현되어 있습니다 — 편집 폼이 보관값을 그대로 되돌려 보내므로,
+  값이 같으면 변경이 아니라 통과시켜야 합니다. 되돌리지 마세요.
+- **상위는 하위 Work Package의 실행 방식을 개수로 요약합니다**(`ExecutionModeSummary`). 손자까지 세며,
+  0건인 모드는 빼고 `미지정`은 숨기지 않습니다(배정되지 않은 Work Package가 확인 대상입니다).
+  자식이 없는 항목에서는 `null`입니다. 상위가 보관 중인 값은 **요약에 넣지 않습니다.**
+- **진행률 집계식은 Step 5에서 실행 방식 기반으로 바뀌었습니다**(아래 "진척 집계" 절). 다만 실행
+  방식 미지정과 가중치 없는 가지는 예전 계산을 그대로 씁니다 — 아무것도 지정하지 않은 프로젝트의
+  화면 숫자가 변하지 않게 하려는 전환 정책입니다.
+- **실행 방식 변경 이력은 값이 실제로 달라질 때만** 남깁니다(`wbs_execution_mode_changes`). 양방향
+  (미지정↔지정) 모두 기록해서 두 컬럼이 NULL을 허용합니다. **변경자·사유 컬럼은 두지 않았습니다** —
+  로그인이 없고 사유를 받을 화면도 없어 아무도 채우지 않는 값이 됩니다. **이 표는 Step 5에서
+  `change_logs`가 흡수했습니다**(V18이 행을 옮긴 뒤 삭제) — 이제 실행 방식 변경도 거기에 쌓입니다.
+- **가져오기는 `node_type`을 파일 값 그대로 믿지 않습니다.** 자식이 있으면 파일이 `WORK_PACKAGE`라고
+  적어도 `SUMMARY`로 바로잡습니다(`code`를 다시 계산하는 것과 같은 이유). 값이 없는 구형 파일
+  (`formatVersion 1`)도 같은 규칙으로 채웁니다.
+- **enum 범위를 벗어난 값은 필드명과 가능한 값을 담아 400을 돌려줍니다**
+  ([`GlobalExceptionHandler`](backend/src/main/java/com/projectflow/presentation/GlobalExceptionHandler.java)의
+  `unknownEnumValue`). 예전에는 Jackson 실패가 "요청 내용을 읽을 수 없습니다"로만 나와 무엇이 틀렸는지
+  알 수 없었습니다.
+
+### Backlog 설계상 알아둘 점
+
+WBS(범위)와 Agile(실행)을 잇는 실제 연결 지점입니다. 자세한 근거는
+[Step 03 결과 보고서](설계서/agile_design/results/Hybrid_PM_Step03_Result.md).
+
+- **귀속은 상속합니다 — 검증하는 것이 아니라 불가능하게 만듭니다.** 상위가 있는 항목의
+  `wbs_item_id`는 상위에서 가져오고, 상위를 재귀속하면 하위 전체가 따라갑니다. 요청이 다른 값을
+  지정하면 조용히 덮어쓰지 않고 400으로 거부합니다 — 클라이언트가 "Task를 다른 Work Package로
+  옮겼다"고 착각하면 안 됩니다.
+- **Backlog는 최하위 Work Package에만 붙습니다.** Summary 귀속은 400입니다. 단 Step 2가 Work Package
+  → Summary 전환을 허용하므로 **이미 붙은 뒤에 대상이 Summary가 되는 일은 생깁니다** — 그때는
+  `linkedToSummary`로 표시하고 Sprint 대상에서 빼되 막지는 않습니다. **Step 5부터는 살아 있는
+  Backlog가 붙은 Work Package의 Summary 전환 자체를 거부**하므로(사용자 결정) 새로 생기지는 않지만,
+  그전 데이터에는 남아 있을 수 있어 표시는 유지합니다(대시보드의 "데이터 누락"도 이것을 셉니다).
+- **Product Backlog는 정렬된 목록이지 계층 노드가 아닙니다**(설계 §4.1). WBS처럼 코드를 파생하지
+  않고, `depth`는 화면 들여쓰기 전용입니다.
+- **집계 대상은 Story·Bug만**입니다(`BacklogItemType.aggregated()`). Epic을 그 안의 Story와 함께,
+  Task를 그 Story와 함께 세면 같은 일을 두 번 셉니다. Step 5의 집계는 이 한 곳만 물어보면 됩니다.
+- **`storyPoint`와 `progressWeight`는 다른 값입니다.** 포인트는 팀의 추정, 가중치는 같은 Work
+  Package 안에서의 비중입니다. 같은 단위로 합산하지 마세요(설계 §11.2).
+- **보관(`archived_at`)은 상태와 직교합니다.** 보관해도 마지막 상태가 남아야 하고, 상태를 한 칸
+  늘리면 Board 상태 전이에 "보관"이 섞여 듭니다.
+- **연결된 Backlog가 있는 WBS 항목은 삭제되지 않습니다.** 삭제 범위(자기 + 모든 하위) 전체를 보고
+  거부하며, **보관된 항목만 남았으면** 사유(`WBS_ITEM_DELETED`)를 남기고 분리한 뒤 지웁니다.
+  `wbs_items.parent_id`가 `ON DELETE CASCADE`라 이 가드가 없으면 상위 하나를 지우는 것으로 실행
+  기록이 조용히 사라집니다. **DB 쪽은 `SET NULL`로 두세요** — 마지막 방어선이 데이터를 지우는 쪽이면
+  안 됩니다. Backlog 자체의 삭제도 같은 태도입니다(하위가 있으면 거부).
+- **순환 검사는 지금 도달할 수 없습니다.** 유형 규칙(Story·Bug의 상위는 Epic뿐, Epic은 상위 없음)이
+  이미 순환을 막습니다. 검사는 Epic 중첩이 허용되는 날을 위한 안전장치로 남겨 두었고, 테스트는
+  실제로 일어나는 거부(계층 위반)를 검증합니다.
+- **캐시 리비전이 둘입니다.** WBS 트리가 연결 Backlog 수를 실어서 Backlog 변경도 WBS를 낡게 만들지만,
+  간트는 Backlog를 모릅니다. 그래서 `markBacklogChanged()`를 따로 두고 `wbsCacheKeyFor`에만 넣습니다.
+  Backlog 자신의 키에는 **WBS 리비전이 들어갑니다**(행마다 Work Package 코드·실행 방식을 보여주므로).
+- **record에 bean 모양의 `isX()`를 두지 마세요.** Jackson이 프로퍼티로 읽어 응답에 새 필드가
+  생깁니다 — `BacklogSummary.isEmpty()`가 모든 WBS 노드에 `"empty": false`를 흘렸고 `hasNone()`으로
+  바꿔 고쳤습니다.
+
+### Sprint·Board 설계상 알아둘 점
+
+실행 주기입니다. 자세한 근거는
+[Step 04 결과 보고서](설계서/agile_design/results/Hybrid_PM_Step04_Result.md).
+
+- **팀 테이블이 없습니다 — 단일 팀 전제입니다.** 그래서 **실행 중인 Sprint는 프로젝트당 하나**이고,
+  이 규칙이 "동시에 두 활성 Sprint에 배정하지 않는다"를 보장합니다. 팀을 도입한다면 `teams` +
+  `sprints.team_id`를 추가하고 기존 행을 기본 팀으로 백필한 뒤, **이 규칙을 팀 단위로 바꿔야 합니다.**
+  잊으면 두 팀이 각자 Sprint를 돌릴 수 없습니다.
+- **한 항목의 살아 있는 배정은 열린 Sprint 전체에서 하나**입니다. 계획 중인 다음 Sprint에 미리 넣어
+  두는 것도 막습니다 — 지금 하는 일을 다음 계획에도 세면 계획이 두 배가 됩니다.
+- **배정 행은 이력입니다.** 제거는 `removed_at`을, 종료는 `outcome`·`points_at_close`를 찍습니다.
+  **`(sprint_id, backlog_item_id)`에 UNIQUE를 걸지 마세요** — 설계 §11.3-4는 권하지만, 그러면 뺐다가
+  다시 넣을 때 "한 번 빠졌다"가 사라집니다. 살아 있는 배정이 하나라는 제약은 애플리케이션이 지킵니다
+  (부분 유니크 인덱스는 PostgreSQL에만 있고 H2에는 없습니다).
+- **완료 실적은 정확히 한 Sprint에만 쌓입니다.** 이월된 항목은 원 Sprint에 `CARRIED_OVER`, 다음
+  Sprint에 `DONE`으로 남습니다. 종료된 Sprint의 숫자는 그 뒤에 무슨 일이 있어도 움직이지 않습니다.
+- **종료는 항목의 상태를 바꾸지 않습니다.** 종료는 Sprint의 진술이고, 일이 Review에 있는지는 항목의
+  사정입니다. 이 분리가 이월을 가능하게 합니다.
+- **차단(`blocked`)은 상태와 직교합니다.** 칸은 그대로 두고 표시만 하며, 차단된 항목은 완료할 수
+  없습니다. 상태를 한 칸 늘리지 마세요 — Board 전이에 "차단"이 섞여 듭니다(보관도 같은 이유로 분리).
+- **완료로 가는 전이에는 확인 표시가 필요합니다**([`CompletionCheck`](backend/src/main/java/com/projectflow/domain/CompletionCheck.java)).
+  시스템에 Definition of Done이 없으므로 "확인했다"는 사실을 호출자가 밝혀야 합니다. **Board와
+  Backlog 폼 양쪽에 적용**되어 있습니다 — 한쪽만 막으면 절차가 장식이 됩니다. 단 *전이*만 검사하므로
+  이미 완료인 항목을 다시 저장할 때는 묻지 않습니다.
+- **Task를 모두 완료해도 Story는 자동 완료되지 않습니다.** 대신 완료되지 않은 하위 수를 카드와 확인
+  대화상자에 실어 사람이 판단합니다. 하위가 남아 있어도 완료는 가능합니다(불필요해진 Task가 정상입니다).
+- **재오픈은 `done_at`만 비웁니다.** 종료된 Sprint의 `outcome`은 불변이고, 그 배정은 `reopened`로
+  표시됩니다 — 현재 상태와 과거 실적은 다른 사실입니다.
+- **진행 중 Sprint에 배정된 Backlog 항목은 보관·삭제할 수 없습니다.** `sprint_items`가 Backlog 항목에
+  CASCADE라서 지우면 그 Sprint의 배정 기록까지 사라집니다(WBS 삭제 가드와 같은 이유).
+- **캐시 리비전이 셋입니다** (WBS / Backlog / Sprint). Board 이동은 Backlog 상태 변경이라 두 화면이
+  함께 낡지만, 간트는 둘 다 모릅니다. 하나로 묶으면 카드를 한 번 옮길 때마다 간트까지 다시 읽습니다.
+- **새 도메인 예외를 만들면 `GlobalExceptionHandler`에 함께 등록하세요.** Step 4에서 빠뜨려 Sprint의
+  모든 거부가 500으로 나갔고, 서비스 단위 테스트로는 드러나지 않았습니다.
+
+### 진척 집계 설계상 알아둘 점 (Step 5)
+
+[`ProgressCalculator`](backend/src/main/java/com/projectflow/domain/ProgressCalculator.java)가
+Work Package의 실행 방식에 따라 네 가지 식으로 계산하고, 상위는 가중치로 올려 접습니다.
+
+| 실행 방식 | 분자 / 분모 |
+|---|---|
+| `AGILE` | 완료 Story·Bug / 전체 Story·Bug |
+| `WATERFALL` | 승인된 체크포인트 가중치 / 전체 체크포인트 가중치 |
+| `HYBRID` | Agile × α + Waterfall × (1−α). α는 `wbs_items.agile_ratio` |
+| 미지정(`null`) | 입력한 `progress` 그대로 (`MANUAL`) |
+
+- **산정 전(`null`)은 0%가 아닙니다.** 분모가 없으면 `null`을 돌려주고, 부모는 그 자식을 조용히
+  빼지 않고 `incompleteChildren`으로 전파합니다. 화면도 막대를 그리지 않고 "산정 전"이라 적습니다.
+  이 구분을 없애면 착수 전 프로젝트가 "0% 진행"으로 보이고, 정말 0%인 것과 구별되지 않습니다.
+- **전환 정책으로 기존 숫자를 지켰습니다.** 실행 방식 미지정은 `MANUAL`, 가중치가 하나도 없는 가지는
+  예전과 같은 leaf 개수 가중 평균(`LEGACY_ROLLUP`)입니다. **아무것도 지정하지 않은 프로젝트의 화면
+  숫자는 Step 5 이전과 같습니다.** 되돌리지 마세요.
+- **계획 진척은 승인된 Baseline에서만 나옵니다.** 없으면 미산정이고, 시간이 지났다는 것만으로 실제
+  진척을 채우지 않습니다. 편차는 **기준선에 든 항목만으로** 양쪽을 계산해 뺍니다 — 범위가 다르면
+  뺄 수 없는 두 숫자입니다.
+- **`storyPoint`·`progressWeight`·`weight`는 서로 다른 값**입니다. 포인트는 팀의 추정, `progressWeight`는
+  Backlog 항목의 비중, `weight`는 WBS 형제 사이의 비중입니다. 같은 단위로 합산하지 마세요.
+- **인수(`acceptance_status`)는 진척과 직교**합니다. 실행이 100%여도 인수가 남았으면 완료로 보지
+  않습니다(`acceptancePending`).
+- **모든 화면이 이 서비스 하나를 읽습니다.** WBS 트리·간트·대시보드가 각자 계산하면 같은 프로젝트에
+  세 가지 숫자가 생깁니다. 새 화면을 만들 때도 `ProgressService`를 부르세요.
+
+### 간트의 세 가지 일정과 Sprint 레인 (Step 6-A)
+
+한 행에 위에서부터 **기준 일정 · 현재 계획 · 실적**을 쌓습니다. 행을 셋으로 늘리지 않은 이유는 접어둔
+WBS의 이점이 사라지고 같은 업무의 세 일정을 눈으로 잇기 어려워지기 때문입니다.
+
+- **기준선이 없으면 `hasBaseline: false`**를 내려보내고 화면이 "기준 일정 미등록"이라 적습니다.
+  **현재 계획을 기준선 자리에 복사하지 마세요** — 그러면 초과를 영원히 못 봅니다.
+- **초과 판정은 예상 종료 우선, 없으면 현재 계획**입니다. 예측을 적지 않았다는 것이 "늦지 않는다"는
+  뜻은 아닙니다.
+- **Sprint 종료일을 `actual_end_date`로 복사하지 않습니다.** Sprint가 끝난 것과 Work Package의
+  산출물이 완료된 것은 다른 사실이고, 한 Sprint가 여러 Work Package에 걸칠 수 있습니다.
+- **Sprint 레인은 Sprint당 한 줄**입니다. 여러 Work Package에 걸쳐도 반복해 그리지 않습니다 —
+  없는 일정과 진척을 만들게 됩니다. 양방향 참조(`sprintIds` / `wbsItemIds`)는 **강조 전용**이며
+  어떤 값도 파생시키지 않습니다.
+- 차트 폭은 기준·실적·예상·Sprint까지 포함해 잡습니다. 그러지 않으면 계획 밖으로 나간 실적이 잘립니다.
 
 ### 간트/일정 설계상 알아둘 점
 
@@ -276,7 +448,28 @@ WBS나 그 위에 얹는 기능(간트, 진행 관리 등)을 건드릴 때 아�
 - **삭제는 DB 연쇄에 의존합니다.** `raci_assignments`의 `member_id`·`wbs_item_id`가
   `ON DELETE CASCADE`라서 구성원이나 WBS 항목을 지우면 배정도 함께 사라집니다.
 - **RACI 캐시 키에는 날짜가 들어가지 않습니다**(`raciCacheKeyFor`). 행은 WBS에서 오지만 "오늘"을
-  기준으로 판정하는 값이 없습니다.
+  기준으로 판정하는 값이 없습니다. 단 Step 6에서 행마다 Backlog 담당자가 붙어 **Backlog 리비전은
+  들어갑니다.**
+
+### RACI 상속 설계상 알아둘 점 (Step 6-B)
+
+[`RaciInheritance`](backend/src/main/java/com/projectflow/domain/RaciInheritance.java)가 조회 시점에
+계산합니다. **아무것도 저장하지 않습니다** — WBS 코드·상위 일정과 같은 이유로, 저장하면 항목을 옮길 때
+조상의 글자가 하위에 복사본으로 남습니다.
+
+- **역할별로 상속합니다.** 자기 R이 있어도 상위 A는 그대로 옵니다. 자기 글자 하나를 전체 재정의로
+  보면 담당자를 적는 순간 단계의 책임자가 조용히 사라집니다.
+- **가장 가까운 상위가 이깁니다.** 하위가 같은 역할에 다른 사람을 지정하면 *재정의*이고, 상위의
+  글자는 셀에 남기되 취소선으로 무효임을 보입니다. 숨기면 왜 다른지 알 수 없습니다.
+- **셀은 자기 글자(`roles`)와 상속 글자(`inherited`)를 나눠 싣습니다.** 상속 글자에는 배정 id가
+  없습니다 — 이 행에서 지울 수 없고, 그 글자를 가진 행을 고쳐야 합니다.
+- **검증 규칙이 Step 6에서 바뀌었습니다** (의도한 변경):
+  - 누락(A·R)은 **상속까지 본 뒤 leaf에만**. 단계의 A를 물려받은 Work Package는 누락이 아닙니다.
+  - 책임자 중복은 **그 글자를 실제로 가진 행에**(Summary 포함) 한 번만. 하위마다 되풀이하면 실수
+    하나가 leaf 수만큼 불어납니다. **조용히 지우지 않고** 정리 대상으로 알립니다.
+- **Backlog 담당자는 RACI 역할이 아닙니다**(`storyAssignees`). 열이 아니라 행 머리의 주석으로
+  그립니다 — 열이 되면 RACI 글자와 나란히 서서 역할처럼 읽힙니다. 담당자를 바꾸는 경로와
+  `raci_assignments`를 쓰는 경로 사이에 코드가 없습니다.
 
 ### RAID 설계상 알아둘 점
 
@@ -300,9 +493,10 @@ WBS나 그 위에 얹는 기능(간트, 진행 관리 등)을 건드릴 때 아�
 - **항목을 WBS 업무에 연결할 수 있습니다**(선택, `raid_items.wbs_item_id`). 소유자와 같은 이유로
   `ON DELETE SET NULL`입니다 — WBS 항목이 지워져도 위험 기록 자체는 남아야 합니다. 표시용 WBS
   코드는 트리 위치에서 파생되므로 **서버가 트리를 조립해 코드·이름을 함께 실어 보냅니다**.
-- **RAID 캐시 키는 `(프로젝트, WBS 리비전, 로컬 날짜)`입니다.** WBS 리비전이 들어가는 이유는 위 연결
-  때문입니다 — 업무가 이동·개명되면 목록과 선택기의 코드가 낡습니다. 로컬 날짜는 기한 초과가
-  날짜 기준이라 필요합니다(표시하는 기준일은 항상 서버의 `referenceDate`).
+- **RAID 캐시 키는 `(프로젝트, WBS·Backlog·Sprint 리비전, 로컬 날짜)`입니다.** 세 리비전이 모두
+  들어가는 이유는 위 연결 때문입니다 — 항목이 WBS 업무·Sprint·Backlog 어디에나 붙고, 등록부가 그
+  대상의 이름을 보여주므로 어느 쪽이 이동·개명돼도 낡습니다. 로컬 날짜는 기한 초과가 날짜 기준이라
+  필요합니다(표시하는 기준일은 항상 서버의 `referenceDate`).
 - **필터·정렬은 클라이언트에서** 합니다([`raidFilter.ts`](frontend/src/features/raid/raidFilter.ts)).
   로그는 한 화면 분량이고, 이건 데이터가 아니라 "지금 이 화면"에 대한 질문이라 서버로 보내면
   드롭다운마다 왕복이 생기고 조합마다 캐시 키가 필요해집니다. 순수 함수라 vitest로 검증합니다.
@@ -315,6 +509,48 @@ WBS나 그 위에 얹는 기능(간트, 진행 관리 등)을 건드릴 때 아�
   필터를 걸어서 숫자가 줄면 잘못 읽힙니다. 필터를 따르는 것은 표뿐입니다.
 - **정렬에서 값이 없는 항목은 뒤로 보냅니다.** 기한 없는 위험이 내일 마감보다 급하지 않고,
   등급 미지정이 가장 노출된 것도 아닙니다. 동점은 id 순이라 편집 중에 행이 튀지 않습니다.
+
+### RAID 복수 연결 설계상 알아둘 점 (Step 6-C)
+
+`raid_items.wbs_item_id` 하나였던 연결이 **`raid_links` 표**가 되었습니다(V21). 같은 위험이 여러
+Story·Sprint에 걸려도 원본은 하나로 관리해야 하기 때문입니다.
+
+- **`target_id`에 외래 키가 없습니다.** 세 종류(WBS·Sprint·Backlog)를 한 컬럼으로 가리키기 때문이고,
+  대상 존재와 프로젝트 일치는 `RaidService`가 검증합니다. **그래서 참조가 끊어지는 것을 막는 유일한
+  장치가 애플리케이션입니다** — 새 삭제 경로를 만들면 `RaidService.detachTargets`를 함께 부르세요.
+- **삭제하면 연결만 끊고 항목은 남깁니다.** 예전 `ON DELETE SET NULL`과 같은 태도입니다 — 계획이
+  사라진다고 위험 기록까지 사라지면 안 됩니다. **보관은 연결을 건드리지 않습니다**(복구하면 함께
+  돌아와야 합니다).
+- **수정은 남길 것을 남깁니다.** 전부 지우고 다시 넣으면 살아남은 연결도 새 id와 새 `created_at`을
+  받아, 무관한 편집마다 "언제 붙였나"가 오늘로 바뀝니다. 차집합만 지우고 새것만 넣습니다.
+- **같은 대상 중복은 애플리케이션에서 400으로 먼저 막습니다.** UNIQUE 위반은 500으로 나가고,
+  "이미 연결됨"은 화면이 보여줄 수 있는 말입니다.
+- **RAID의 `DEPENDENCY`와 WBS 선후행은 다릅니다.** 전자는 프로젝트 밖에서 받아야 하는 것,
+  후자는 안쪽의 순서 제약입니다. 링크는 연관일 뿐 일정 제약이 아닙니다.
+- **`formatVersion 5` 이하의 단일 `wbsItemId`도 계속 읽습니다** — `WBS_ITEM` 링크 하나가 됩니다
+  (V21이 DB에 한 것과 같습니다). 내보낼 때는 `links`만 쓰고 `wbsItemId`는 비웁니다.
+
+### 대시보드 설계상 알아둘 점 (Step 7)
+
+[`DashboardService`](backend/src/main/java/com/projectflow/application/DashboardService.java)는
+**아무것도 계산하지 않습니다.** 진척·간트·Sprint·Backlog·RACI·RAID 서비스를 한 번씩 불러 배치할
+뿐입니다.
+
+- **자체 산술을 넣지 마세요.** "WBS·간트·대시보드의 진척이 일치한다"가 완료 기준이고, 대시보드가
+  자기 식으로 계산하면 같은 프로젝트에 네 번째 의견이 생깁니다.
+- **한 요청, 한 기준일.** 여섯 payload를 서버가 모아 하나의 `referenceDate`와 함께 줍니다.
+  브라우저가 여섯 번 부르면 카드마다 다른 "오늘"이 될 수 있습니다.
+- **카드당 5건만 싣되 id는 남깁니다.** 대시보드는 "어디를 볼지" 정하는 화면이고, 전체 목록은 각
+  화면에 있습니다. 숫자에서 원인 항목으로 갈 수 없으면 카드가 막다른 길이 됩니다.
+- **데이터 누락을 별도 카드로 보고합니다**(실행 방식 미지정·가중치 없음·산정 불가·미연결 Backlog).
+  각주로 두면 헤드라인만 읽고 지나갑니다. **임의로 채우지 않습니다.**
+- **속도 추세는 종료된 Sprint만.** 진행 중인 것은 아직 움직이는 숫자라 Sprint 중간에 보면 매번
+  하락으로 읽힙니다(`inProgress`로 따로 싣습니다). 단일 팀이라 계열은 하나이고, **팀이 생기면
+  나뉘어야 하며 합산해서는 안 됩니다.**
+- **읽기 전용입니다.** 변경 API가 없습니다 — 같은 값을 고치는 경로가 둘이면 검증 규칙도 두 벌이
+  됩니다.
+- **캐시 키에 모든 리비전과 로컬 날짜가 들어갑니다**(`dashboardCacheKeyFor`). 여섯 화면의 데이터를
+  읽으므로 어느 편집도 카드를 움직일 수 있습니다.
 
 ### 데이터 내보내기 설계상 알아둘 점
 
@@ -390,7 +626,9 @@ WBS나 그 위에 얹는 기능(간트, 진행 관리 등)을 건드릴 때 아�
 첫 프로젝트로 되돌아가고 매번 재요청이 발생합니다.
 
 공유 캐시에는 무효화가 따라와야 합니다. [`stores/scheduleCache.ts`](frontend/src/stores/scheduleCache.ts)의
-캐시 키는 `(프로젝트, WBS 리비전, 로컬 날짜)`이고, 아래 규칙을 지킵니다.
+캐시 키는 화면마다 다르고, 그 화면이 읽는 것을 모두 담습니다. 간트는
+`(프로젝트, WBS·Backlog·Sprint 리비전, 로컬 날짜)`이고 — Step 6부터 Sprint 레인과 공통 진척을 함께
+싣기 때문입니다 — 대시보드는 여섯 화면을 읽으므로 같은 조합을 씁니다. 아래 규칙을 지킵니다.
 
 - **WBS 항목이 바뀌면 리비전을 올립니다** → 간트가 다음 방문에 다시 읽습니다.
 - **선후행 관계 추가/삭제는 리비전을 올리지 않습니다** → 의존성은 WBS 트리에 없으므로 WBS는 그대로 둡니다.
@@ -423,7 +661,23 @@ WBS나 그 위에 얹는 기능(간트, 진행 관리 등)을 건드릴 때 아�
 | `GET` | `/api/projects/{projectId}/raci` | RACI 매트릭스 (열 + 행 + 셀 + 규칙 위반) |
 | `POST` | `/api/projects/{projectId}/raci/assignments` | 역할 배정 (`wbsItemId`, `memberId`, `role`) |
 | `DELETE` | `/api/projects/{projectId}/raci/assignments/{assignmentId}` | 역할 해제 (글자 하나) |
-| `GET` `POST` | `/api/projects/{projectId}/raid` | RAID 로그 조회 / 항목 추가 (`wbsItemId`로 업무 연결 가능) |
+| `GET` `POST` | `/api/projects/{projectId}/backlog` | Product Backlog 조회 / 항목 추가 |
+| `PUT` `DELETE` | `/api/projects/{projectId}/backlog/{itemId}` | 항목 수정(재귀속 포함) / 삭제 |
+| `PUT` | `/api/projects/{projectId}/backlog/{itemId}/archive` | 보관·복구 (`{"archived": true}`) |
+| `GET` `POST` | `/api/projects/{projectId}/sprints` | Sprint 목록(+배정·집계) / 생성 |
+| `PUT` `DELETE` | `/api/projects/{projectId}/sprints/{sprintId}` | 수정 / 삭제(계획 상태의 빈 Sprint만) |
+| `POST` | `/api/projects/{projectId}/sprints/{sprintId}/start` | 시작 (다른 활성 Sprint가 없어야 함) |
+| `POST` | `/api/projects/{projectId}/sprints/{sprintId}/close` | 종료 (`carryOverToSprintId`로 미완료 재배정) |
+| `POST` `DELETE` | `/api/projects/{projectId}/sprints/{sprintId}/items[/{backlogItemId}]` | 배정 / 제거 |
+| `PUT` | `/api/projects/{projectId}/sprints/{sprintId}/board/{backlogItemId}` | Board 이동 (상태·차단·완료 확인) |
+| `GET` | `/api/projects/{projectId}/progress` | 공통 진척 집계 (프로젝트·Work Package별, 계획 대비 편차, 범위 비교) |
+| `GET` `POST` | `/api/projects/{projectId}/progress/checkpoints` | 승인 체크포인트 목록/추가 (Waterfall·Hybrid의 분모) |
+| `PUT` `DELETE` | `/api/projects/{projectId}/progress/checkpoints/{checkpointId}` | 수정 / 삭제 |
+| `PUT` | `/api/projects/{projectId}/progress/checkpoints/{checkpointId}/approval` | 승인·승인 취소 |
+| `POST` | `/api/projects/{projectId}/progress/baselines` | 기준선 승인 (명시적 행위, 자동 경로 없음) |
+| `GET` `POST` | `/api/projects/{projectId}/progress/snapshots` | 보고 스냅샷 조회 / 저장 |
+| `GET` | `/api/projects/{projectId}/dashboard` | 대시보드 (다른 조회들을 한 기준일로 모은 것, 읽기 전용) |
+| `GET` `POST` | `/api/projects/{projectId}/raid` | RAID 로그 조회 / 항목 추가 (`links`로 WBS·Sprint·Backlog에 복수 연결) |
 | `PUT` `DELETE` | `/api/projects/{projectId}/raid/{itemId}` | 항목 수정 / 삭제 |
 | `GET` | `/api/projects/{projectId}/export` | 프로젝트 전체를 JSON 한 파일로 내려받기 (attachment) |
 | `POST` | `/api/projects/import` | 내보낸 파일로 **새 프로젝트** 생성 (본문 = export 응답 그대로) |
@@ -433,8 +687,10 @@ WBS·간트의 모든 변경 API는 부분 응답이 아니라 갱신된 전체 
 ## 다음 단계 (설계서/요구사항_WBS.md 기준)
 
 - 4.3 프로젝트 상태 관리(세부 규칙)
-- 8. 진행 관리 — 8.3 지연 업무 판정은 완료. 남은 것은 8.2 진행률 변경 이력, 8.4 프로젝트 대시보드
-  (대시보드는 간트 API의 `delayStatus` 집계를 그대로 쓰면 됩니다)
+- 8. 진행 관리 — 8.3 지연 판정, 8.4 대시보드 완료. 남은 것은 **8.2 진행률 변경 이력 화면**
+  (`change_logs`에 자리는 있으나 보여 주는 화면이 없습니다)
 - 3.5 Docker 환경 구성 실제 빌드/검증, 10. 테스트 및 배포
+- **PostgreSQL에서 마이그레이션 전체를 한 번 돌려 보기.** 특히 V18(이력 표 흡수)과 V21(RAID 컬럼
+  이전)은 데이터를 옮기는 마이그레이션인데 H2로만 확인했습니다
 - 일정 기능 확장 후보: 영업일/휴일 달력(지연 일수·기대 진행률이 함께 정확해집니다),
   FS 이외의 관계 종류(SS/FF/SF)

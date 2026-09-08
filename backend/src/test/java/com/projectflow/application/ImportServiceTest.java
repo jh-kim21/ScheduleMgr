@@ -1,12 +1,28 @@
 package com.projectflow.application;
 
 import com.projectflow.application.dto.ProjectExportResponse;
+import com.projectflow.application.dto.ProjectExportResponse.ExportedBacklogItem;
 import com.projectflow.application.dto.ProjectExportResponse.ExportedDependency;
 import com.projectflow.application.dto.ProjectExportResponse.ExportedMember;
 import com.projectflow.application.dto.ProjectExportResponse.ExportedProject;
 import com.projectflow.application.dto.ProjectExportResponse.ExportedRaciAssignment;
 import com.projectflow.application.dto.ProjectExportResponse.ExportedRaidItem;
+import com.projectflow.application.dto.ProjectExportResponse.ExportedSprint;
+import com.projectflow.application.dto.ProjectExportResponse.ExportedRaidLink;
 import com.projectflow.application.dto.ProjectExportResponse.ExportedWbsItem;
+import com.projectflow.domain.AcceptanceCheckpoint;
+import com.projectflow.domain.AcceptanceCheckpointRepository;
+import com.projectflow.domain.BacklogItem;
+import com.projectflow.domain.Baseline;
+import com.projectflow.domain.BaselineItem;
+import com.projectflow.domain.BaselineRepository;
+import com.projectflow.domain.ProgressSnapshot;
+import com.projectflow.domain.ProgressSnapshotRepository;
+import com.projectflow.domain.BacklogItemRepository;
+import com.projectflow.domain.BacklogItemType;
+import com.projectflow.domain.BacklogPriority;
+import com.projectflow.domain.BacklogStatus;
+import com.projectflow.domain.ExecutionMode;
 import com.projectflow.domain.InvalidImportException;
 import com.projectflow.domain.Project;
 import com.projectflow.domain.ProjectMember;
@@ -17,13 +33,22 @@ import com.projectflow.domain.RaciAssignment;
 import com.projectflow.domain.RaciAssignmentRepository;
 import com.projectflow.domain.RaciRole;
 import com.projectflow.domain.RaidItem;
+import com.projectflow.domain.RaidLink;
+import com.projectflow.domain.RaidLinkRepository;
+import com.projectflow.domain.RaidLinkTarget;
 import com.projectflow.domain.RaidItemRepository;
 import com.projectflow.domain.RaidStatus;
 import com.projectflow.domain.RaidType;
+import com.projectflow.domain.Sprint;
+import com.projectflow.domain.SprintStatus;
+import com.projectflow.domain.SprintItem;
+import com.projectflow.domain.SprintItemRepository;
+import com.projectflow.domain.SprintRepository;
 import com.projectflow.domain.WbsDependency;
 import com.projectflow.domain.WbsDependencyRepository;
 import com.projectflow.domain.WbsItem;
 import com.projectflow.domain.WbsItemRepository;
+import com.projectflow.domain.WbsNodeType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -54,6 +79,14 @@ class ImportServiceTest {
     private final List<WbsDependency> dependencies = new ArrayList<>();
     private final List<RaciAssignment> raciAssignments = new ArrayList<>();
     private final List<RaidItem> raidItems = new ArrayList<>();
+    private final List<RaidLink> raidLinks = new ArrayList<>();
+    private final List<BacklogItem> backlogItems = new ArrayList<>();
+    private final List<Sprint> sprints = new ArrayList<>();
+    private final List<SprintItem> sprintItems = new ArrayList<>();
+    private final List<AcceptanceCheckpoint> checkpoints = new ArrayList<>();
+    private final List<Baseline> baselines = new ArrayList<>();
+    private final List<BaselineItem> baselineItems = new ArrayList<>();
+    private final List<ProgressSnapshot> snapshots = new ArrayList<>();
 
     private ImportService service;
 
@@ -61,7 +94,10 @@ class ImportServiceTest {
     void setUp() {
         service = new ImportService(
                 projectRepository(), memberRepository(), wbsItemRepository(),
-                dependencyRepository(), raciAssignmentRepository(), raidItemRepository());
+                dependencyRepository(), raciAssignmentRepository(), raidItemRepository(),
+                raidLinkRepository(), backlogItemRepository(), sprintRepository(),
+                sprintItemRepository(), checkpointRepository(), baselineRepository(),
+                snapshotRepository());
     }
 
     @Nested
@@ -110,9 +146,13 @@ class ImportServiceTest {
                 assertThat(assignment.getMemberId()).isEqualTo(members.getFirst().getId());
             });
 
-            assertThat(raidItems).singleElement().satisfies(item -> {
-                assertThat(item.getOwnerMemberId()).isEqualTo(members.getFirst().getId());
-                assertThat(item.getWbsItemId()).isEqualTo(screen.getId());
+            assertThat(raidItems).singleElement().satisfies(item ->
+                    assertThat(item.getOwnerMemberId()).isEqualTo(members.getFirst().getId()));
+            // 예전 파일의 단일 wbsItemId는 WBS_ITEM 링크 하나가 되고, 그 id도 새로 매겨진다.
+            assertThat(raidLinks).singleElement().satisfies(link -> {
+                assertThat(link.getTargetType()).isEqualTo(RaidLinkTarget.WBS_ITEM);
+                assertThat(link.getTargetId()).isEqualTo(screen.getId());
+                assertThat(link.getRaidItemId()).isEqualTo(raidItems.getFirst().getId());
             });
         }
 
@@ -135,7 +175,8 @@ class ImportServiceTest {
         @DisplayName("빈 절이 있어도(null) 가져온다")
         void toleratesMissingSections() {
             ProjectExportResponse bare = new ProjectExportResponse(
-                    1, LocalDateTime.now(), project("맨몸 프로젝트"), null, null, null, null, null);
+                    1, LocalDateTime.now(), project("맨몸 프로젝트"), null, null, null, null, null, null, null, null,
+                    null, null, null);
 
             service.importProject(bare);
 
@@ -168,7 +209,8 @@ class ImportServiceTest {
         void newerFormat() {
             ProjectExportResponse future = new ProjectExportResponse(
                     99, LocalDateTime.now(), project("미래"), List.of(), List.of(), List.of(),
-                    List.of(), List.of());
+                    List.of(), List.of(), List.of(), List.of(), List.of(),
+                    List.of(), List.of(), List.of());
 
             assertThatThrownBy(() -> service.importProject(future))
                     .isInstanceOf(InvalidImportException.class)
@@ -263,13 +305,246 @@ class ImportServiceTest {
 
     // ------------------------------------------------------------- 파일 조립
 
+    @Nested
+    @DisplayName("RAID 연결 (formatVersion 6)")
+    class RaidLinks {
+
+        @Test
+        @DisplayName("여러 대상에 걸린 연결을 모두 새 id로 다시 매긴다")
+        void remapsEveryLink() {
+            service.importProject(new ProjectExportResponse(
+                    6, LocalDateTime.now(), project("AEGIS"),
+                    List.of(), List.of(wbs(1L, null, "개발")), List.of(), List.of(),
+                    List.of(raidWithLinks(1L, "외부 API 지연", null, List.of(
+                            raidLink(1L, RaidLinkTarget.WBS_ITEM, 1L),
+                            raidLink(2L, RaidLinkTarget.BACKLOG_ITEM, 50L),
+                            raidLink(3L, RaidLinkTarget.SPRINT, 60L)))),
+                    List.of(backlog(50L, 1L, null, BacklogItemType.STORY, "로그인 화면", null)),
+                    List.of(new ExportedSprint(60L, "Sprint 1", null,
+                            LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 14),
+                            SprintStatus.PLANNED, null)), List.of(),
+                    List.of(), List.of(), List.of()));
+
+            Long newWbsId = byName("개발").getId();
+            assertThat(raidLinks).hasSize(3);
+            assertThat(raidLinks)
+                    .filteredOn(link -> link.getTargetType() == RaidLinkTarget.WBS_ITEM)
+                    .singleElement()
+                    .satisfies(link -> assertThat(link.getTargetId()).isEqualTo(newWbsId));
+            // 파일의 id(50, 60)를 그대로 쓰지 않는다 — 다른 설치본의 번호다.
+            assertThat(raidLinks).extracting(RaidLink::getTargetId).doesNotContain(50L, 60L);
+        }
+
+        @Test
+        @DisplayName("파일에 없는 대상을 가리키면 거부한다")
+        void refusesDanglingLink() {
+            assertThatThrownBy(() -> service.importProject(new ProjectExportResponse(
+                    6, LocalDateTime.now(), project("AEGIS"),
+                    List.of(), List.of(wbs(1L, null, "개발")), List.of(), List.of(),
+                    List.of(raidWithLinks(1L, "위험", null, List.of(
+                            raidLink(1L, RaidLinkTarget.SPRINT, 999L)))),
+                    List.of(), List.of(), List.of(), List.of(), List.of(), List.of())))
+                    .isInstanceOf(InvalidImportException.class)
+                    .hasMessageContaining("연결 대상");
+            assertThat(projects).isEmpty();
+        }
+    }
+
     private ProjectExportResponse file(List<ExportedMember> members,
                                         List<ExportedWbsItem> wbs,
                                         List<ExportedDependency> deps,
                                         List<ExportedRaciAssignment> raci,
                                         List<ExportedRaidItem> raid) {
         return new ProjectExportResponse(
-                1, LocalDateTime.now(), project("AEGIS"), members, wbs, deps, raci, raid);
+                1, LocalDateTime.now(), project("AEGIS"), members, wbs, deps, raci, raid, List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of());
+    }
+
+    @Nested
+    @DisplayName("실행 방식과 관리 단위 구분")
+    class ExecutionModeFields {
+
+        @Test
+        @DisplayName("구형 파일(formatVersion 1)은 자식 유무로 구분을 채우고 실행 방식은 미지정으로 둔다")
+        void fillsDefaultsForOlderFiles() {
+            service.importProject(wbsFile(1, List.of(
+                    wbs(1L, null, "부모"),
+                    wbs(2L, 1L, "자식"))));
+
+            assertThat(byName("부모").getNodeType()).isEqualTo(WbsNodeType.SUMMARY);
+            assertThat(byName("자식").getNodeType()).isEqualTo(WbsNodeType.WORK_PACKAGE);
+            assertThat(byName("부모").getExecutionMode()).isNull();
+            assertThat(byName("자식").getExecutionMode()).isNull();
+        }
+
+        @Test
+        @DisplayName("새 필드는 그대로 왕복한다")
+        void keepsNewFields() {
+            service.importProject(wbsFile(2, List.of(
+                    wbs(1L, null, "개발", WbsNodeType.WORK_PACKAGE, ExecutionMode.AGILE))));
+
+            assertThat(byName("개발").getNodeType()).isEqualTo(WbsNodeType.WORK_PACKAGE);
+            assertThat(byName("개발").getExecutionMode()).isEqualTo(ExecutionMode.AGILE);
+        }
+
+        @Test
+        @DisplayName("하위가 있으면 파일이 Work Package라 해도 Summary로 바로잡고, 실행 방식은 보관한다")
+        void normalisesParentClaimingToBeWorkPackage() {
+            service.importProject(wbsFile(2, List.of(
+                    wbs(1L, null, "부모", WbsNodeType.WORK_PACKAGE, ExecutionMode.AGILE),
+                    wbs(2L, 1L, "자식", WbsNodeType.WORK_PACKAGE, ExecutionMode.WATERFALL))));
+
+            assertThat(byName("부모").getNodeType()).isEqualTo(WbsNodeType.SUMMARY);
+            // 지우지 않는다 — 구분을 되돌리면 살아나야 하는 값이다.
+            assertThat(byName("부모").getExecutionMode()).isEqualTo(ExecutionMode.AGILE);
+            assertThat(byName("자식").getExecutionMode()).isEqualTo(ExecutionMode.WATERFALL);
+        }
+    }
+
+    @Nested
+    @DisplayName("Backlog")
+    class Backlog {
+
+        @Test
+        @DisplayName("귀속·상위·담당자 참조를 새 id로 이어 붙인다")
+        void remapsBacklogReferences() {
+            service.importProject(backlogFile(
+                    List.of(member(7L, "김재학")),
+                    List.of(wbs(1L, null, "개발", WbsNodeType.WORK_PACKAGE, ExecutionMode.AGILE)),
+                    List.of(
+                            backlog(80L, 1L, null, BacklogItemType.EPIC, "WBS 관리 기능 구현", null),
+                            backlog(81L, 1L, 80L, BacklogItemType.STORY, "WBS 계층 등록", 7L),
+                            backlog(82L, 1L, 81L, BacklogItemType.TASK, "API 작성", null))));
+
+            Long wbsId = wbsItems.getFirst().getId();
+            Long memberId = members.getFirst().getId();
+
+            assertThat(backlogItems).extracting(BacklogItem::getId).doesNotContain(80L, 81L, 82L);
+            assertThat(backlogItems).allSatisfy(item ->
+                    assertThat(item.getWbsItemId()).isEqualTo(wbsId));
+            assertThat(backlogTitled("WBS 계층 등록").getParentId())
+                    .isEqualTo(backlogTitled("WBS 관리 기능 구현").getId());
+            assertThat(backlogTitled("API 작성").getParentId())
+                    .isEqualTo(backlogTitled("WBS 계층 등록").getId());
+            assertThat(backlogTitled("WBS 계층 등록").getAssigneeMemberId()).isEqualTo(memberId);
+        }
+
+        @Test
+        @DisplayName("하위의 귀속은 파일 값이 아니라 상위에서 물려받는다")
+        void childInheritsParentLink() {
+            service.importProject(backlogFile(
+                    List.of(),
+                    List.of(
+                            wbs(1L, null, "개발", WbsNodeType.WORK_PACKAGE, ExecutionMode.AGILE),
+                            wbs(2L, null, "인수", WbsNodeType.WORK_PACKAGE, ExecutionMode.WATERFALL)),
+                    List.of(
+                            backlog(80L, 1L, null, BacklogItemType.EPIC, "묶음", null),
+                            // 파일이 다른 Work Package를 가리켜도 상위를 따른다 — 이 모델에서 하위의
+                            // 귀속 값은 정보를 담고 있지 않다.
+                            backlog(81L, 2L, 80L, BacklogItemType.STORY, "이야기", null))));
+
+            assertThat(backlogTitled("이야기").getWbsItemId())
+                    .isEqualTo(backlogTitled("묶음").getWbsItemId());
+        }
+
+        @Test
+        @DisplayName("보관 상태는 파일과 함께 넘어온다")
+        void keepsArchivedState() {
+            LocalDateTime archivedAt = LocalDateTime.parse("2026-09-01T10:00:00");
+            service.importProject(backlogFile(
+                    List.of(),
+                    List.of(wbs(1L, null, "개발", WbsNodeType.WORK_PACKAGE, ExecutionMode.AGILE)),
+                    List.of(new ExportedBacklogItem(80L, 1L, null, BacklogItemType.STORY, "접어둔 것",
+                            null, BacklogPriority.LOW, BacklogStatus.TODO, null, null, null, null,
+                            archivedAt, 0, false, null, null))));
+
+            assertThat(backlogTitled("접어둔 것").archived()).isTrue();
+            assertThat(backlogTitled("접어둔 것").getArchivedAt()).isEqualTo(archivedAt);
+        }
+
+        @Test
+        @DisplayName("미연결(초안)은 그대로 가져온다 — 표시할 문제이지 거부할 문제가 아니다")
+        void keepsUnlinkedDraft() {
+            service.importProject(backlogFile(List.of(), List.of(),
+                    List.of(backlog(80L, null, null, BacklogItemType.STORY, "초안", null))));
+
+            assertThat(backlogTitled("초안").getWbsItemId()).isNull();
+        }
+
+        @Test
+        @DisplayName("상위 없는 Task는 거부한다")
+        void rejectsOrphanTask() {
+            assertThatThrownBy(() -> service.importProject(backlogFile(List.of(), List.of(),
+                    List.of(backlog(80L, null, null, BacklogItemType.TASK, "떠도는 Task", null)))))
+                    .isInstanceOf(InvalidImportException.class)
+                    .hasMessageContaining("Task");
+            assertThat(projects).isEmpty();
+        }
+
+        @Test
+        @DisplayName("허용되지 않는 계층(Epic 아래 Task)은 거부한다")
+        void rejectsInvalidHierarchy() {
+            assertThatThrownBy(() -> service.importProject(backlogFile(List.of(), List.of(),
+                    List.of(
+                            backlog(80L, null, null, BacklogItemType.EPIC, "묶음", null),
+                            backlog(81L, null, 80L, BacklogItemType.TASK, "잘못된 Task", null)))))
+                    .isInstanceOf(InvalidImportException.class)
+                    .hasMessageContaining("하위가 될 수 없습니다");
+            assertThat(projects).isEmpty();
+        }
+
+        @Test
+        @DisplayName("파일에 없는 상위를 가리키면 거부한다")
+        void rejectsDanglingParent() {
+            assertThatThrownBy(() -> service.importProject(backlogFile(List.of(), List.of(),
+                    List.of(backlog(81L, null, 999L, BacklogItemType.STORY, "고아", null)))))
+                    .isInstanceOf(InvalidImportException.class)
+                    .hasMessageContaining("상위 항목");
+            assertThat(projects).isEmpty();
+        }
+
+        @Test
+        @DisplayName("서로를 상위로 가리키면 거부한다 (유형 규칙이 순환보다 먼저 잡는다)")
+        void rejectsMutualParents() {
+            // Story의 상위는 Epic뿐이고 Epic은 상위를 가질 수 없어, 유형 규칙만으로 순환이 이미
+            // 불가능하다. 그래서 여기서는 계층 위반으로 먼저 거부된다 —
+            // ImportService의 순환 검사는 그 뒤를 받치는 안전장치다.
+            assertThatThrownBy(() -> service.importProject(backlogFile(List.of(), List.of(),
+                    List.of(
+                            backlog(80L, null, 81L, BacklogItemType.STORY, "가", null),
+                            backlog(81L, null, 80L, BacklogItemType.STORY, "나", null)))))
+                    .isInstanceOf(InvalidImportException.class)
+                    .hasMessageContaining("하위가 될 수 없습니다");
+            assertThat(projects).isEmpty();
+        }
+    }
+
+    private ProjectExportResponse backlogFile(List<ExportedMember> members,
+                                               List<ExportedWbsItem> wbs,
+                                               List<ExportedBacklogItem> backlog) {
+        return new ProjectExportResponse(3, LocalDateTime.now(), project("AEGIS"), members, wbs,
+                List.of(), List.of(), List.of(), backlog, List.of(), List.of(),
+                List.of(), List.of(), List.of());
+    }
+
+    private ExportedBacklogItem backlog(Long id, Long wbsItemId, Long parentId,
+                                         BacklogItemType type, String title, Long assigneeId) {
+        return new ExportedBacklogItem(id, wbsItemId, parentId, type, title, null,
+                BacklogPriority.MEDIUM, BacklogStatus.TODO, assigneeId, null, null, null, null, 0,
+                false, null, null);
+    }
+
+    private BacklogItem backlogTitled(String title) {
+        return backlogItems.stream()
+                .filter(item -> item.getTitle().equals(title))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Backlog 항목이 없습니다: " + title));
+    }
+
+    private ProjectExportResponse wbsFile(int formatVersion, List<ExportedWbsItem> wbs) {
+        return new ProjectExportResponse(formatVersion, LocalDateTime.now(), project("AEGIS"),
+                List.of(), wbs, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of());
     }
 
     private ExportedProject project(String name) {
@@ -281,13 +556,62 @@ class ImportServiceTest {
         return new ExportedMember(id, name, null, "PM");
     }
 
+    /** The formatVersion 1 shape: no {@code nodeType}, no {@code executionMode}. */
     private ExportedWbsItem wbs(Long id, Long parentId, String name) {
-        return new ExportedWbsItem(id, parentId, "무시됨", name, null, null, null, 0, 0);
+        return new ExportedWbsItem(id, parentId, "무시됨", name, null, null, null, 0, 0, null, null,
+                null, null, null, null, null, null);
     }
 
+    private ExportedWbsItem wbs(Long id, Long parentId, String name,
+                                 WbsNodeType nodeType, ExecutionMode executionMode) {
+        return new ExportedWbsItem(id, parentId, "무시됨", name, null, null, null, 0, 0,
+                nodeType, executionMode, null, null, null, null, null, null);
+    }
+
+    /** formatVersion 5 이하의 모양 — 단일 {@code wbsItemId}, links 없음. */
     private ExportedRaidItem raid(Long id, String title, Long ownerId, Long wbsItemId) {
         return new ExportedRaidItem(id, RaidType.RISK, title, null, RaidStatus.OPEN,
-                null, null, ownerId, wbsItemId, null, null);
+                null, null, ownerId, wbsItemId, null, null, null);
+    }
+
+    /** formatVersion 6의 모양 — 연결이 여럿일 수 있다. */
+    private ExportedRaidItem raidWithLinks(Long id, String title, Long ownerId,
+                                            List<ExportedRaidLink> links) {
+        return new ExportedRaidItem(id, RaidType.RISK, title, null, RaidStatus.OPEN,
+                null, null, ownerId, null, links, null, null);
+    }
+
+    private ExportedRaidLink raidLink(Long id, RaidLinkTarget targetType, Long targetId) {
+        return new ExportedRaidLink(id, targetType, targetId);
+    }
+
+    private RaidLinkRepository raidLinkRepository() {
+        return new RaidLinkRepository() {
+            @Override
+            public RaidLink save(RaidLink link) {
+                ReflectionTestUtils.setField(link, "id", ids.incrementAndGet());
+                raidLinks.add(link);
+                return link;
+            }
+
+            @Override
+            public List<RaidLink> saveAll(List<RaidLink> batch) {
+                batch.forEach(this::save);
+                return batch;
+            }
+
+            @Override
+            public List<RaidLink> findByProjectId(Long projectId) {
+                return raidLinks.stream()
+                        .filter(link -> link.getProjectId().equals(projectId))
+                        .toList();
+            }
+
+            @Override
+            public void deleteAll(List<RaidLink> removed) {
+                raidLinks.removeAll(removed);
+            }
+        };
     }
 
     private WbsItem byName(String name) {
@@ -304,6 +628,156 @@ class ImportServiceTest {
     }
 
     // ------------------------------------------------------------- 인메모리 저장소
+
+    private BacklogItemRepository backlogItemRepository() {
+        return new BacklogItemRepository() {
+            @Override
+            public BacklogItem save(BacklogItem item) {
+                backlogItems.add(withId(item));
+                return item;
+            }
+
+            @Override
+            public List<BacklogItem> saveAll(List<BacklogItem> items) {
+                items.forEach(this::save);
+                return items;
+            }
+
+            @Override
+            public Optional<BacklogItem> findById(Long id) {
+                return backlogItems.stream().filter(i -> i.getId().equals(id)).findFirst();
+            }
+
+            @Override
+            public List<BacklogItem> findByProjectId(Long projectId) {
+                return backlogItems.stream().filter(i -> i.getProjectId().equals(projectId)).toList();
+            }
+
+            @Override
+            public void delete(BacklogItem item) {
+                backlogItems.remove(item);
+            }
+        };
+    }
+
+    private SprintRepository sprintRepository() {
+        return new SprintRepository() {
+            @Override
+            public Sprint save(Sprint sprint) {
+                sprints.add(withId(sprint));
+                return sprint;
+            }
+
+            @Override
+            public Optional<Sprint> findById(Long id) {
+                return sprints.stream().filter(s -> s.getId().equals(id)).findFirst();
+            }
+
+            @Override
+            public List<Sprint> findByProjectId(Long projectId) {
+                return sprints.stream().filter(s -> s.getProjectId().equals(projectId)).toList();
+            }
+
+            @Override
+            public void delete(Sprint sprint) {
+                sprints.remove(sprint);
+            }
+        };
+    }
+
+    private SprintItemRepository sprintItemRepository() {
+        return new SprintItemRepository() {
+            @Override
+            public SprintItem save(SprintItem item) {
+                sprintItems.add(withId(item));
+                return item;
+            }
+
+            @Override
+            public List<SprintItem> saveAll(List<SprintItem> items) {
+                items.forEach(this::save);
+                return items;
+            }
+
+            @Override
+            public List<SprintItem> findByProjectId(Long projectId) {
+                return sprintItems.stream().filter(i -> i.getProjectId().equals(projectId)).toList();
+            }
+        };
+    }
+
+    private AcceptanceCheckpointRepository checkpointRepository() {
+        return new AcceptanceCheckpointRepository() {
+            @Override
+            public AcceptanceCheckpoint save(AcceptanceCheckpoint checkpoint) {
+                if (checkpoint.getId() == null) {
+                    withId(checkpoint);
+                }
+                if (!checkpoints.contains(checkpoint)) {
+                    checkpoints.add(checkpoint);
+                }
+                return checkpoint;
+            }
+
+            @Override
+            public Optional<AcceptanceCheckpoint> findById(Long id) {
+                return checkpoints.stream().filter(c -> c.getId().equals(id)).findFirst();
+            }
+
+            @Override
+            public List<AcceptanceCheckpoint> findByProjectId(Long projectId) {
+                return checkpoints.stream().filter(c -> c.getProjectId().equals(projectId)).toList();
+            }
+
+            @Override
+            public void delete(AcceptanceCheckpoint checkpoint) {
+                checkpoints.remove(checkpoint);
+            }
+        };
+    }
+
+    private BaselineRepository baselineRepository() {
+        return new BaselineRepository() {
+            @Override
+            public Baseline save(Baseline baseline) {
+                baselines.add(withId(baseline));
+                return baseline;
+            }
+
+            @Override
+            public List<BaselineItem> saveItems(List<BaselineItem> items) {
+                items.forEach(item -> baselineItems.add(withId(item)));
+                return items;
+            }
+
+            @Override
+            public List<Baseline> findByProjectId(Long projectId) {
+                return baselines.stream().filter(b -> b.getProjectId().equals(projectId)).toList();
+            }
+
+            @Override
+            public List<BaselineItem> findItemsByBaselineId(Long baselineId) {
+                return baselineItems.stream()
+                        .filter(item -> item.getBaselineId().equals(baselineId))
+                        .toList();
+            }
+        };
+    }
+
+    private ProgressSnapshotRepository snapshotRepository() {
+        return new ProgressSnapshotRepository() {
+            @Override
+            public ProgressSnapshot save(ProgressSnapshot snapshot) {
+                snapshots.add(withId(snapshot));
+                return snapshot;
+            }
+
+            @Override
+            public List<ProgressSnapshot> findByProjectId(Long projectId) {
+                return snapshots.stream().filter(s -> s.getProjectId().equals(projectId)).toList();
+            }
+        };
+    }
 
     private <T> T withId(T entity) {
         ReflectionTestUtils.setField(entity, "id", ids.incrementAndGet());

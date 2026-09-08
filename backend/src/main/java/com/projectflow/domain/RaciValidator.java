@@ -18,10 +18,20 @@ import java.util.Set;
  * an unsatisfiable structure (a dependency cycle) is refused, while a plan that merely disagrees
  * with itself is flagged.
  *
- * <p>Only leaves are checked. A summary with no Responsible is not a gap — the work lives in its
- * children, and counting summaries too would report the same missing assignment several times,
- * once per level. Assignments may still be made on a summary; an Accountable for a whole phase
- * is a normal thing to record.
+ * <p>Only leaves are checked <em>for gaps</em>. A summary with no Responsible is not a gap — the
+ * work lives in its children, and counting summaries too would report the same missing assignment
+ * several times, once per level. Assignments may still be made on a summary; an Accountable for a
+ * whole phase is a normal thing to record, and since Step 6 it is inherited by the work inside it.
+ *
+ * <p><b>Gaps are judged against inherited roles</b> ({@link RaciInheritance}). A Work Package under
+ * a phase whose Accountable is named is not missing one. What counts as missing changed when
+ * inheritance arrived, and reporting it the old way would have told users to re-enter letters the
+ * matrix already had.
+ *
+ * <p><b>A clash is reported where it is declared</b> — on the row carrying the two Accountables,
+ * leaf or summary. That is where the cleanup happens, and it keeps one mistake to one issue instead
+ * of repeating it on every descendant that inherits it. Two Accountables is still never deleted
+ * silently (지시서 6-B): it is listed as 정리 대상.
  */
 public final class RaciValidator {
 
@@ -61,28 +71,50 @@ public final class RaciValidator {
         }
 
         Map<Long, Map<RaciRole, Set<Long>>> byTask = index(assignments);
+        Map<Long, Map<RaciRole, RaciInheritance.EffectiveRole>> effective =
+                RaciInheritance.resolve(tree, assignments);
 
         List<RaciIssue> issues = new ArrayList<>();
-        for (WbsNode leaf : leaves(tree)) {
-            Long taskId = leaf.item().getId();
-            Map<RaciRole, Set<Long>> roles = byTask.getOrDefault(taskId, Map.of());
 
-            Set<Long> accountable = roles.getOrDefault(RaciRole.ACCOUNTABLE, Set.of());
-            if (accountable.size() > 1) {
-                List<String> names = accountable.stream()
+        // Clashes first, on the row that declares them — including summaries, whose Accountable now
+        // reaches every Work Package below it.
+        for (WbsNode node : all(tree)) {
+            Long taskId = node.item().getId();
+            Set<Long> declared = byTask.getOrDefault(taskId, Map.of())
+                    .getOrDefault(RaciRole.ACCOUNTABLE, Set.of());
+            if (declared.size() > 1) {
+                List<String> names = declared.stream()
                         .map(id -> memberNames.getOrDefault(id, "?"))
                         .sorted()
                         .toList();
                 issues.add(new RaciIssue(taskId, IssueType.MULTIPLE_ACCOUNTABLE, names));
-            } else if (accountable.isEmpty()) {
+            }
+        }
+
+        // Gaps only on leaves, and only when nothing up the chain fills them either.
+        for (WbsNode leaf : leaves(tree)) {
+            Long taskId = leaf.item().getId();
+            if (RaciInheritance.holders(effective, taskId, RaciRole.ACCOUNTABLE).isEmpty()) {
                 issues.add(new RaciIssue(taskId, IssueType.MISSING_ACCOUNTABLE, List.of()));
             }
-
-            if (roles.getOrDefault(RaciRole.RESPONSIBLE, Set.of()).isEmpty()) {
+            if (RaciInheritance.holders(effective, taskId, RaciRole.RESPONSIBLE).isEmpty()) {
                 issues.add(new RaciIssue(taskId, IssueType.MISSING_RESPONSIBLE, List.of()));
             }
         }
         return List.copyOf(issues);
+    }
+
+    private static List<WbsNode> all(List<WbsNode> nodes) {
+        List<WbsNode> found = new ArrayList<>();
+        collectAll(nodes, found);
+        return found;
+    }
+
+    private static void collectAll(List<WbsNode> nodes, List<WbsNode> found) {
+        for (WbsNode node : nodes) {
+            found.add(node);
+            collectAll(node.children(), found);
+        }
     }
 
     private static Map<Long, Map<RaciRole, Set<Long>>> index(List<RaciAssignment> assignments) {

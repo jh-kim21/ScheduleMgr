@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { RaciIssue, RaciMatrix, RaciTask } from '../../api/raciApi'
+import type { InheritedRole, RaciIssue, RaciMatrix, RaciTask } from '../../api/raciApi'
+import type { CellEntry } from './useRaci'
 import {
   issueSummary,
   RACI_DESCRIPTIONS,
@@ -13,7 +14,7 @@ import {
 const props = defineProps<{
   data: RaciMatrix
   /** `wbsItemId:memberId` → the letters that cell holds, from `useRaci`. */
-  cellIndex: Map<string, { roles: RaciRole[]; assignmentIds: number[] }>
+  cellIndex: Map<string, CellEntry>
   issuesByTask: Map<number, RaciIssue[]>
 }>()
 
@@ -56,8 +57,33 @@ function rowIssueTitle(task: RaciTask): string {
     .join(' · ')
 }
 
-function cellTitle(task: RaciTask, memberName: string, role: RaciRole): string {
-  return `${task.code} ${task.name} · ${memberName} · ${RACI_LABELS[role]}(${RACI_LETTERS[role]})`
+/**
+ * The inherited letter for this cell and role, when there is one.
+ *
+ * <p>An overridden one is still returned: the point of showing inheritance is that you can see the
+ * phase said something different, not that the disagreement is hidden.
+ */
+function inheritedRole(task: RaciTask, memberId: number, role: RaciRole): InheritedRole | null {
+  return cell(task, memberId)?.inherited.find((entry) => entry.role === role) ?? null
+}
+
+function cellTitle(task: RaciTask, member: { id: number; name: string }, role: RaciRole): string {
+  const base = `${task.code} ${task.name} · ${member.name} · ${RACI_LABELS[role]}(${RACI_LETTERS[role]})`
+  const inherited = inheritedRole(task, member.id, role)
+  if (!inherited) return base
+  const from = `${inherited.sourceCode ?? '상위'}에서 상속`
+  return inherited.overridden ? `${base} · ${from} (이 행에서 재정의됨)` : `${base} · ${from}`
+}
+
+/** 이 행이 상위의 역할을 다시 정한 경우 — 행 머리에 한 번만 알린다. */
+function overriddenRoles(task: RaciTask): RaciRole[] {
+  const roles = new Set<RaciRole>()
+  for (const member of props.data.members) {
+    for (const entry of cell(task, member.id)?.inherited ?? []) {
+      if (entry.overridden) roles.add(entry.role)
+    }
+  }
+  return RACI_ORDER.filter((role) => roles.has(role))
 }
 </script>
 
@@ -96,6 +122,19 @@ function cellTitle(task: RaciTask, memberName: string, role: RaciRole): string {
               :title="rowIssueTitle(task)"
               aria-hidden="true"
             >!</span>
+            <span
+              v-if="overriddenRoles(task).length > 0"
+              class="row-override"
+              :title="`상위의 ${overriddenRoles(task).map((role) => RACI_LABELS[role]).join(', ')}을(를) 이 행에서 재정의했습니다.`"
+            >재정의</span>
+            <span
+              v-if="task.storyAssignees.length > 0"
+              class="row-assignees"
+              title="Backlog 담당자입니다. RACI 역할이 아니며, 여기서 바꿀 수 없습니다."
+            >
+              담당
+              {{ task.storyAssignees.map((one) => `${one.memberName}(${one.itemCount})`).join(', ') }}
+            </span>
           </th>
 
           <td v-for="member in data.members" :key="member.id">
@@ -106,8 +145,17 @@ function cellTitle(task: RaciTask, memberName: string, role: RaciRole): string {
                 type="button"
                 class="letter"
                 :data-role="role"
-                :class="{ held: assignmentIdFor(task, member.id, role) !== null }"
-                :title="cellTitle(task, member.name, role)"
+                :class="{
+                  held: assignmentIdFor(task, member.id, role) !== null,
+                  inherited:
+                    assignmentIdFor(task, member.id, role) === null &&
+                    inheritedRole(task, member.id, role) !== null &&
+                    !inheritedRole(task, member.id, role)!.overridden,
+                  superseded:
+                    assignmentIdFor(task, member.id, role) === null &&
+                    inheritedRole(task, member.id, role)?.overridden === true,
+                }"
+                :title="cellTitle(task, member, role)"
                 :aria-pressed="assignmentIdFor(task, member.id, role) !== null"
                 @click="toggle(task, member.id, role)"
               >{{ RACI_LETTERS[role] }}</button>
@@ -123,13 +171,54 @@ function cellTitle(task: RaciTask, memberName: string, role: RaciRole): string {
       <span class="letter held" :data-role="role">{{ RACI_LETTERS[role] }}</span>
       {{ RACI_LABELS[role] }}
     </span>
+    <span class="legend-item">
+      <span class="letter inherited" data-role="ACCOUNTABLE">A</span>
+      상위에서 상속
+    </span>
     <span class="legend-item legend-note">
-      글자를 눌러 배정하고 다시 눌러 해제합니다. Summary 행은 검증하지 않습니다.
+      글자를 눌러 배정하고 다시 눌러 해제합니다. 상속된 글자는 그 글자를 가진 상위 행에서
+      해제합니다. 누락 검증은 상속까지 본 뒤 leaf 행에만 적용하고, 책임자가 둘인 것은 그 글자를
+      실제로 가진 행에 표시합니다.
     </span>
   </div>
 </template>
 
 <style scoped>
+/*
+ * 상속된 글자는 색을 새로 만들지 않고 같은 역할 색을 옅게 쓴다 — 배정된 글자와 나란히 있으므로
+ * 다른 색을 더하면 무엇이 역할이고 무엇이 출처인지 헷갈린다.
+ */
+.letter.inherited {
+  opacity: 0.45;
+  border-style: dashed;
+}
+
+/* 상위가 말했지만 이 행이 다시 정한 글자. 남겨서 보이되 취소선으로 무효임을 말한다. */
+.letter.superseded {
+  opacity: 0.3;
+  text-decoration: line-through;
+}
+
+.row-override {
+  margin-left: 0.3rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: var(--surface-alt);
+  color: var(--text-faint);
+  font-size: 0.68rem;
+}
+
+/* Backlog 담당자는 매트릭스의 글자가 아니다 — 열이 아니라 행 머리의 주석으로 둔다. */
+.row-assignees {
+  display: block;
+  margin-top: 0.15rem;
+  color: var(--text-faint);
+  font-size: 0.7rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .matrix-wrap {
   overflow-x: auto;
   border: 1px solid var(--border);

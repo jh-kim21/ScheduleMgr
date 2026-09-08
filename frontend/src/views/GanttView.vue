@@ -39,6 +39,22 @@ onMounted(async () => {
 
 const violations = computed(() => data.value.tasks.filter((task) => task.scheduleViolation))
 
+/**
+ * 예상 종료가 승인된 기준 종료일을 넘긴 항목 (지시서 6-A). Worst first — the point of the banner
+ * is which one to look at, and the WBS link goes straight to that row.
+ */
+const exceeded = computed(() =>
+  data.value.tasks
+    .filter((task) => task.baselineExceeded)
+    .slice()
+    .sort((a, b) => b.baselineSlipDays - a.baselineSlipDays),
+)
+
+/** 실행은 100%인데 인수가 남은 항목 — 완료로 세면 안 되는 상태 (설계 §6.5). */
+const acceptancePending = computed(() =>
+  data.value.tasks.filter((task) => task.acceptancePending),
+)
+
 /** Leaf rows only: a summary would double-count the work its children already report. */
 const leafTasks = computed(() => data.value.tasks.filter((task) => !task.summary))
 const delayed = computed(() => leafTasks.value.filter((task) => task.delayStatus === 'DELAYED'))
@@ -158,6 +174,28 @@ async function handleRecalculate() {
       </p>
 
       <p v-else-if="leafTasks.length > 0" class="ok">기준일 현재 지연된 업무가 없습니다.</p>
+
+      <p v-if="data.tasks.length > 0 && !data.hasBaseline" class="no-baseline">
+        승인된 기준 일정이 없습니다. 현재 계획을 기준선으로 표시하지 않으므로 기준 대비 초과도
+        판정하지 않습니다.
+        <RouterLink to="/progress">진척 화면에서 기준선 승인</RouterLink>
+      </p>
+
+      <p v-if="exceeded.length > 0" class="violation">
+        <strong>기준 종료일 초과 {{ exceeded.length }}건</strong> — 예상 종료가 승인된 기준 일정을
+        넘겼습니다.
+        <span v-for="task in exceeded" :key="task.id" class="exceeded-item">
+          <RouterLink :to="{ path: '/wbs', query: { focus: task.id } }">
+            {{ task.code }} {{ task.name }}
+          </RouterLink>
+          ({{ task.baselineSlipDays }}일)
+        </span>
+      </p>
+
+      <p v-if="acceptancePending.length > 0" class="acceptance">
+        실행이 끝났지만 인수가 남은 업무가 {{ acceptancePending.length }}건 있습니다 —
+        {{ acceptancePending.map((task) => `${task.code} ${task.name}`).join(', ') }}.
+      </p>
 
       <p v-if="violations.length > 0" class="violation">
         선행 업무보다 먼저 시작하는 업무가 {{ violations.length }}개 있습니다 —
@@ -284,6 +322,23 @@ h1 {
 }
 
 /* 선후행 위반은 지연과 다른 문제이므로 색도 다르게 쓴다 (차트의 점선 외곽선과 동일 계열). */
+.no-baseline {
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  margin-bottom: 0.75rem;
+}
+
+.exceeded-item {
+  margin-left: 0.4rem;
+  white-space: nowrap;
+}
+
+.acceptance {
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  margin-bottom: 0.75rem;
+}
+
 .violation {
   font-size: 0.85rem;
   color: var(--violation-text);

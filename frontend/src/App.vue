@@ -14,7 +14,11 @@ import {
       <div class="brand">일정관리</div>
       <nav>
         <RouterLink to="/projects">프로젝트</RouterLink>
+        <RouterLink to="/dashboard">대시보드</RouterLink>
         <RouterLink to="/wbs">WBS</RouterLink>
+        <RouterLink to="/backlog">Backlog</RouterLink>
+        <RouterLink to="/sprint">Sprint</RouterLink>
+        <RouterLink to="/progress">진척</RouterLink>
         <RouterLink to="/gantt">간트 차트</RouterLink>
         <RouterLink to="/raci">RACI</RouterLink>
         <RouterLink to="/raid">RAID</RouterLink>

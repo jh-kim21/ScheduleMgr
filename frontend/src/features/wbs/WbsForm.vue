@@ -1,6 +1,16 @@
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue'
 import type { WbsItemInput, WbsNode } from '../../api/wbsApi'
+import {
+  ACCEPTANCE_STATUS_LABELS,
+  ACCEPTANCE_STATUS_ORDER,
+} from '../../shared/progress'
+import {
+  EXECUTION_MODE_LABELS,
+  EXECUTION_MODE_ORDER,
+  NODE_TYPE_LABELS,
+  executionModeLabel,
+} from '../../shared/executionMode'
 
 const props = defineProps<{
   editing: WbsNode | null
@@ -18,6 +28,12 @@ const empty: WbsItemInput = {
   startDate: null,
   endDate: null,
   progress: 0,
+  weight: null,
+  agileRatio: null,
+  acceptanceStatus: null,
+  // 새 항목은 자식이 없으니 최하위 관리 단위로 시작한다. 서버 기본값과 같다.
+  nodeType: 'WORK_PACKAGE',
+  executionMode: null,
 }
 
 const form = reactive<WbsItemInput>({ ...empty })
@@ -27,6 +43,21 @@ const form = reactive<WbsItemInput>({ ...empty })
  * here would be silently discarded — the inputs are disabled instead.
  */
 const rolledUp = computed(() => props.editing?.summary ?? false)
+
+/** 실행 방식은 최하위 Work Package의 것이다 (설계 §5). Summary는 하위 요약만 보여준다. */
+const modeDisabled = computed(() => form.nodeType === 'SUMMARY')
+
+/**
+ * A summary still holding a mode from before it was converted. The value is kept on purpose so
+ * converting back restores it, but it is not in effect — saying so is better than showing a
+ * disabled dropdown with a value in it and no explanation.
+ */
+const retainedMode = computed(() =>
+  form.nodeType === 'SUMMARY' && form.executionMode ? executionModeLabel(form.executionMode) : null,
+)
+
+/** 하위가 있는 항목을 Work Package로 되돌릴 수는 없다 — 서버도 거부한다. */
+const canBeWorkPackage = computed(() => (props.editing?.children.length ?? 0) === 0)
 
 const title = computed(() => {
   if (props.editing) return `항목 수정 — ${props.editing.code} ${props.editing.name}`
@@ -43,6 +74,13 @@ watch(
       form.startDate = item.startDate
       form.endDate = item.endDate
       form.progress = item.progress
+      form.weight = item.weight
+      form.agileRatio = item.agileRatio
+      form.acceptanceStatus = item.acceptanceStatus
+      form.nodeType = item.nodeType
+      // 보관된 값도 그대로 담아 되돌려 보낸다. Summary에서 값을 비워 보내면 서버가
+      // "실행 방식을 바꾸려 한다"고 보고 거부한다.
+      form.executionMode = item.executionMode
     } else {
       Object.assign(form, empty)
     }
@@ -89,8 +127,77 @@ function onSubmit() {
       </label>
     </div>
 
+    <div class="row">
+      <label>
+        구분
+        <select v-model="form.nodeType">
+          <option value="WORK_PACKAGE" :disabled="!canBeWorkPackage">
+            {{ NODE_TYPE_LABELS.WORK_PACKAGE }}
+          </option>
+          <option value="SUMMARY">{{ NODE_TYPE_LABELS.SUMMARY }}</option>
+        </select>
+      </label>
+      <label>
+        실행 방식
+        <select v-model="form.executionMode" :disabled="modeDisabled">
+          <option :value="null">미지정</option>
+          <option v-for="mode in EXECUTION_MODE_ORDER" :key="mode" :value="mode">
+            {{ EXECUTION_MODE_LABELS[mode] }}
+          </option>
+        </select>
+      </label>
+    </div>
+
+    <div class="row">
+      <label>
+        가중치
+        <input v-model.number="form.weight" type="number" min="0" placeholder="형제 간 비중" />
+      </label>
+      <label>
+        Hybrid 비중 α (%)
+        <input
+          v-model.number="form.agileRatio"
+          type="number"
+          min="0"
+          max="100"
+          :disabled="form.executionMode !== 'HYBRID'"
+          placeholder="Agile 요소 비중"
+        />
+      </label>
+      <label>
+        인수 상태
+        <select v-model="form.acceptanceStatus">
+          <option :value="null">해당 없음</option>
+          <option v-for="value in ACCEPTANCE_STATUS_ORDER" :key="value" :value="value">
+            {{ ACCEPTANCE_STATUS_LABELS[value] }}
+          </option>
+        </select>
+      </label>
+    </div>
+
+    <p class="hint muted">
+      가중치를 비워 두면 이 가지는 예전처럼 하위 평균으로 집계됩니다. 0은 "진척에 기여하지 않음"이라
+      미입력과 다릅니다.
+    </p>
+
+    <p v-if="form.executionMode === 'HYBRID' && form.agileRatio === null" class="hint">
+      Hybrid는 비중(α)이 있어야 진척을 셀 수 있습니다. 비워 두면 산정 전으로 표시됩니다.
+    </p>
+
     <p v-if="rolledUp" class="hint">
       하위 항목이 있는 Summary 항목입니다. 일정과 진행률은 하위 항목에서 자동 집계되므로 직접 입력할 수 없습니다.
+    </p>
+
+    <p v-if="modeDisabled" class="hint">
+      Summary 항목은 실행 방식을 갖지 않고 하위 Work Package의 실행 방식을 요약해서 보여줍니다.
+      <template v-if="retainedMode">
+        전환 전의 실행 방식({{ retainedMode }})은 지우지 않고 보관 중이며, 구분을 Work Package로 되돌리면 다시 적용됩니다.
+      </template>
+    </p>
+
+    <!-- 위 힌트와 배타적이지 않다: Summary 안내와 "왜 Work Package를 고를 수 없는지"는 다른 이야기다. -->
+    <p v-if="editing && !canBeWorkPackage" class="hint">
+      하위 항목이 있어 Work Package로 되돌릴 수 없습니다. 하위 항목을 먼저 옮기거나 삭제하세요.
     </p>
 
     <div class="actions">
@@ -128,14 +235,16 @@ label.grow {
   flex: 1;
 }
 
-input {
+input,
+select {
   padding: 0.45rem 0.6rem;
   border: 1px solid var(--border-input);
   border-radius: 6px;
   font: inherit;
 }
 
-input:disabled {
+input:disabled,
+select:disabled {
   background: var(--surface-sunken);
   color: var(--text-faint);
 }
@@ -143,6 +252,11 @@ input:disabled {
 .row {
   display: flex;
   gap: 0.75rem;
+}
+
+.hint.muted {
+  color: var(--text-muted);
+  background: var(--surface-sunken);
 }
 
 .hint {

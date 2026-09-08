@@ -164,6 +164,79 @@ class RaciValidatorTest {
         }
     }
 
+    @Nested
+    @DisplayName("상속을 반영한 판정 (Step 6)")
+    class Inheritance {
+
+        @Test
+        @DisplayName("상위의 A·R을 물려받은 leaf는 누락이 아니다")
+        void inheritedRolesFillTheGap() {
+            List<WbsItem> items = List.of(
+                    item(1L, null, "설계"),
+                    item(2L, 1L, "화면 설계")
+            );
+            List<RaciAssignment> assignments = List.of(
+                    assignment(10L, 1L, 100L, RaciRole.ACCOUNTABLE),
+                    assignment(11L, 1L, 200L, RaciRole.RESPONSIBLE)
+            );
+
+            var issues = RaciValidator.validate(
+                    WbsTreeAssembler.assemble(items), assignments,
+                    List.of(member(100L, "PM"), member(200L, "PL")));
+
+            assertThat(issues).isEmpty();
+        }
+
+        @Test
+        @DisplayName("책임자가 둘인 것은 그 글자를 실제로 가진 행에 한 번만 보고한다")
+        void clashIsReportedWhereItIsDeclared() {
+            List<WbsItem> items = List.of(
+                    item(1L, null, "설계"),
+                    item(2L, 1L, "화면 설계"),
+                    item(3L, 1L, "데이터 설계")
+            );
+            List<RaciAssignment> assignments = List.of(
+                    assignment(10L, 1L, 100L, RaciRole.ACCOUNTABLE),
+                    assignment(11L, 1L, 200L, RaciRole.ACCOUNTABLE),
+                    assignment(12L, 1L, 300L, RaciRole.RESPONSIBLE)
+            );
+
+            var issues = RaciValidator.validate(
+                    WbsTreeAssembler.assemble(items), assignments,
+                    List.of(member(100L, "PM"), member(200L, "PL"), member(300L, "개발")));
+
+            // 하위 둘이 각각 물려받지만, 정리해야 할 행은 배정을 가진 상위 하나다.
+            assertThat(issues)
+                    .filteredOn(issue -> issue.type() == RaciValidator.IssueType.MULTIPLE_ACCOUNTABLE)
+                    .singleElement()
+                    .satisfies(issue -> {
+                        assertThat(issue.wbsItemId()).isEqualTo(1L);
+                        assertThat(issue.memberNames()).containsExactly("PL", "PM");
+                    });
+        }
+
+        @Test
+        @DisplayName("하위가 다시 정하면 상위의 A는 그 행에 적용되지 않는다")
+        void overrideReplacesTheInheritedRole() {
+            List<WbsItem> items = List.of(
+                    item(1L, null, "설계"),
+                    item(2L, 1L, "화면 설계")
+            );
+            List<RaciAssignment> assignments = List.of(
+                    assignment(10L, 1L, 100L, RaciRole.ACCOUNTABLE),
+                    assignment(11L, 2L, 200L, RaciRole.ACCOUNTABLE),
+                    assignment(12L, 2L, 300L, RaciRole.RESPONSIBLE)
+            );
+
+            var issues = RaciValidator.validate(
+                    WbsTreeAssembler.assemble(items), assignments,
+                    List.of(member(100L, "PM"), member(200L, "PL"), member(300L, "개발")));
+
+            // 두 A가 서로 다른 행에 있으므로 충돌이 아니다.
+            assertThat(issues).isEmpty();
+        }
+    }
+
     private static WbsItem item(Long id, Long parentId, String name) {
         WbsItem item = new WbsItem(PROJECT_ID, parentId, name, null, null, null, 0, 0);
         ReflectionTestUtils.setField(item, "id", id);

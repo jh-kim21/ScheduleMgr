@@ -107,7 +107,7 @@ class RaidAssessorTest {
     private static RaidItem item(RaidType type, RaidStatus status,
                                   RaidLevel probability, RaidLevel impact, String dueDate) {
         return new RaidItem(
-                PROJECT_ID, type, "제목", null, status, probability, impact, null, null,
+                PROJECT_ID, type, "제목", null, status, probability, impact, null,
                 dueDate == null ? null : LocalDate.parse(dueDate), null);
     }
 }

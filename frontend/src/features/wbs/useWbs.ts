@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { ApiError } from '../../api/http'
 import { wbsApi, type WbsItemInput, type WbsMoveInput, type WbsNode, type WbsTree } from '../../api/wbsApi'
-import { cacheKeyFor, markWbsChanged } from '../../stores/scheduleCache'
+import { markWbsChanged, wbsCacheKeyFor } from '../../stores/scheduleCache'
 
 /** Shared at module scope so the tree survives navigating away and back. */
 const tree = ref<WbsNode[]>([])
@@ -21,7 +21,7 @@ export function useWbs() {
   function apply(result: WbsTree, projectId: number) {
     tree.value = result.nodes
     referenceDate.value = result.referenceDate
-    cacheKey = cacheKeyFor(projectId)
+    cacheKey = wbsCacheKeyFor(projectId)
   }
 
   async function load(projectId: number) {
@@ -41,7 +41,7 @@ export function useWbs() {
 
   /** Refetches only when the cached tree is for another project, another day, or now stale. */
   function ensureLoaded(projectId: number): Promise<void> {
-    const key = cacheKeyFor(projectId)
+    const key = wbsCacheKeyFor(projectId)
     if (cacheKey === key) return Promise.resolve()
     // A route change can mount a view and fire its selection watcher in the same tick; without
     // this both would issue the same request.

@@ -7,8 +7,11 @@ const EMPTY: GanttData = {
   chartStart: null,
   chartEnd: null,
   referenceDate: null,
+  hasBaseline: false,
+  baselineVersion: null,
   tasks: [],
   dependencies: [],
+  sprints: [],
 }
 
 /** Shared at module scope so the chart survives navigating away and back. */

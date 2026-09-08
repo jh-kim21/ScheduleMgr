@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import type { WbsItemInput, WbsMoveInput, WbsNode } from '../api/wbsApi'
 import WbsForm from '../features/wbs/WbsForm.vue'
 import WbsTree from '../features/wbs/WbsTree.vue'
@@ -8,6 +8,26 @@ import { useWbs } from '../features/wbs/useWbs'
 import { useProjects } from '../features/projects/useProjects'
 import { ensureSelection, selectedProjectId } from '../stores/projectSelection'
 import { needsAttention } from '../shared/delay'
+
+const route = useRoute()
+const router = useRouter()
+
+/**
+ * Arriving from a Backlog entry's WBS link: reveal that row (Step 3 지시서 7항). The query is
+ * cleared right away so a later reload does not scroll the user somewhere they did not ask for,
+ * while the id kept here still drives the highlight.
+ */
+const focusId = ref<number | null>(null)
+watch(
+  () => route.query.focus,
+  async (value) => {
+    if (value === undefined) return
+    const id = Number(Array.isArray(value) ? value[0] : value)
+    focusId.value = Number.isFinite(id) ? id : null
+    await router.replace({ path: '/wbs' })
+  },
+  { immediate: true },
+)
 
 const { projects, error: projectsError, ensureLoaded: ensureProjects } = useProjects()
 const { tree, referenceDate, loading, error, ensureLoaded, create, update, move, remove } = useWbs()
@@ -136,6 +156,7 @@ async function handleMove(itemId: number, input: WbsMoveInput) {
       <WbsTree
         v-else
         :tree="tree"
+        :focus-id="focusId"
         @add-child="startAddChild"
         @edit="startEdit"
         @remove="handleRemove"

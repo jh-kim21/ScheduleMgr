@@ -39,6 +39,37 @@ export const RAID_LEVEL_LABELS: Record<RaidLevel, string> = {
   HIGH: '높음',
 }
 
+/**
+ * What a RAID entry can be attached to (설계 §9). One entry can name several targets — the same
+ * risk often hits a Story, its Sprint and the Work Package above both, and copying it three times
+ * would make three things to close instead of one.
+ *
+ * <p>`DEPENDENCY` the RAID type and a WBS 선후행 관계 are different things: the first is something
+ * owed from outside the project, the second is an ordering constraint inside it. A link here is an
+ * association, never a schedule constraint.
+ */
+export type RaidLinkTarget = 'WBS_ITEM' | 'SPRINT' | 'BACKLOG_ITEM'
+
+export const RAID_LINK_TARGET_ORDER: RaidLinkTarget[] = ['WBS_ITEM', 'SPRINT', 'BACKLOG_ITEM']
+
+export const RAID_LINK_TARGET_LABELS: Record<RaidLinkTarget, string> = {
+  WBS_ITEM: 'WBS 업무',
+  SPRINT: 'Sprint',
+  BACKLOG_ITEM: 'Backlog',
+}
+
+/** 한 연결의 표시 문구. 대상이 사라졌으면 그 사실을 적는다 — 링크는 FK가 아니다. */
+export function raidLinkLabel(link: {
+  targetType: RaidLinkTarget
+  targetId: number
+  targetCode: string | null
+  targetName: string | null
+}): string {
+  if (!link.targetName) return `${RAID_LINK_TARGET_LABELS[link.targetType]} #${link.targetId} (없음)`
+  const prefix = link.targetCode ? `${link.targetCode} ` : ''
+  return `${prefix}${link.targetName}`
+}
+
 /** 기한 열의 문구. 서버가 판정한 값을 그대로 쓴다. */
 export function dueLabel(dueDate: string | null, overdue: boolean, overdueDays: number): string {
   if (!dueDate) return '-'

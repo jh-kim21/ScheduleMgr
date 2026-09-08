@@ -63,12 +63,9 @@ public class RaidItem {
     @Column(name = "owner_member_id")
     private Long ownerMemberId;
 
-    /**
-     * The {@link WbsItem} this entry is about, or null when it concerns the project as a whole.
-     * Optional on purpose: plenty of risks and assumptions are not about one task.
-     */
-    @Column(name = "wbs_item_id")
-    private Long wbsItemId;
+    // 무엇에 대한 항목인지는 raid_links 가 가진다. 예전에는 wbs_item_id 컬럼 하나였지만, 같은
+    // 위험이 여러 Story·Sprint에 걸리는 경우를 한 항목으로 관리하려면 연결이 여러 개여야 한다
+    // (설계 §9). 그 컬럼은 V21에서 링크로 옮기고 지웠다.
 
     /** 대응·확인 기한. Null when there is no date to be late against. */
     @Column(name = "due_date")
@@ -90,7 +87,7 @@ public class RaidItem {
 
     public RaidItem(Long projectId, RaidType type, String title, String description,
                      RaidStatus status, RaidLevel probability, RaidLevel impact,
-                     Long ownerMemberId, Long wbsItemId, LocalDate dueDate, String response) {
+                     Long ownerMemberId, LocalDate dueDate, String response) {
         this.projectId = projectId;
         this.type = type;
         this.title = title;
@@ -99,7 +96,6 @@ public class RaidItem {
         this.probability = probability;
         this.impact = impact;
         this.ownerMemberId = ownerMemberId;
-        this.wbsItemId = wbsItemId;
         this.dueDate = dueDate;
         this.response = response;
     }
@@ -119,7 +115,7 @@ public class RaidItem {
     /** The type is editable too: an assumption that turns out false often becomes an issue. */
     public void update(RaidType type, String title, String description, RaidStatus status,
                         RaidLevel probability, RaidLevel impact, Long ownerMemberId,
-                        Long wbsItemId, LocalDate dueDate, String response) {
+                        LocalDate dueDate, String response) {
         this.type = type;
         this.title = title;
         this.description = description;
@@ -127,7 +123,6 @@ public class RaidItem {
         this.probability = probability;
         this.impact = impact;
         this.ownerMemberId = ownerMemberId;
-        this.wbsItemId = wbsItemId;
         this.dueDate = dueDate;
         this.response = response;
     }
@@ -166,10 +161,6 @@ public class RaidItem {
 
     public Long getOwnerMemberId() {
         return ownerMemberId;
-    }
-
-    public Long getWbsItemId() {
-        return wbsItemId;
     }
 
     public LocalDate getDueDate() {

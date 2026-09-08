@@ -1,10 +1,17 @@
+import type { BacklogSummary } from '../shared/backlog'
 import type { DelayInfo } from '../shared/delay'
+import type { AcceptanceStatus, ProgressBasis } from '../shared/progress'
+import type {
+  ExecutionMode,
+  ExecutionModeSummary,
+  WbsNodeType,
+} from '../shared/executionMode'
 import { http } from './http'
 
 /**
- * A WBS tree node. `code`, `level`, `summary`, the delay fields and — for summary nodes —
- * `startDate`, `endDate` and `progress` are derived by the server from tree position, children and
- * the reference date, so the client renders them as-is.
+ * A WBS tree node. `code`, `level`, `summary`, `executionModeSummary`, the delay fields and — for
+ * summary nodes — `startDate`, `endDate` and `progress` are derived by the server from tree
+ * position, children and the reference date, so the client renders them as-is.
  */
 export interface WbsNode extends DelayInfo {
   id: number
@@ -14,7 +21,33 @@ export interface WbsNode extends DelayInfo {
   name: string
   description: string | null
   endDate: string | null
+  /** Whether the schedule and progress above were rolled up from children. */
   summary: boolean
+  nodeType: WbsNodeType
+  /**
+   * The entry's own mode; `null` is 미지정. On a `SUMMARY` entry a non-null value is a mode
+   * retained from before it was converted — the screen flags it rather than using it.
+   */
+  executionMode: ExecutionMode | null
+  /** How the Work Packages below are executed; `null` when the entry has no children. */
+  executionModeSummary: ExecutionModeSummary | null
+  /**
+   * Linked Backlog counts, rolled up from below; `null` when this branch has none. Only a
+   * `WORK_PACKAGE` row's count points at one place, so only that row links to the Backlog screen.
+   */
+  backlogSummary: BacklogSummary | null
+  weight: number | null
+  agileRatio: number | null
+  acceptanceStatus: AcceptanceStatus | null
+  /**
+   * The common aggregation's figure, unrounded. `null` means 산정 전 — not 0. `progress` above is
+   * still the stored/legacy value, so nothing that read it before Step 5 changed meaning.
+   */
+  computedProgress: number | null
+  progressBasis: ProgressBasis | null
+  progressIncomplete: boolean
+  progressNote: string | null
+  acceptancePending: boolean
   children: WbsNode[]
 }
 
@@ -33,6 +66,15 @@ export interface WbsItemInput {
   startDate: string | null
   endDate: string | null
   progress: number
+  weight: number | null
+  agileRatio: number | null
+  acceptanceStatus: AcceptanceStatus | null
+  nodeType: WbsNodeType
+  /**
+   * `null` is 미지정. On a `SUMMARY` entry this must repeat the retained value — the server rejects
+   * an attempt to *change* a summary's mode, which is what the form sends back unchanged.
+   */
+  executionMode: ExecutionMode | null
 }
 
 export interface WbsMoveInput {

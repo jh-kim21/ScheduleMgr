@@ -2,11 +2,12 @@
 import { computed } from 'vue'
 import type { RaidItem } from '../../api/raidApi'
 import {
-  dueLabel,
   RAID_LEVEL_LABELS,
+  RAID_LINK_TARGET_LABELS,
   RAID_STATUS_LABELS,
   RAID_TYPE_LABELS,
   RAID_TYPE_ORDER,
+  dueLabel,
   type RaidType,
 } from '../../shared/raid'
 
@@ -67,7 +68,7 @@ function onRemove(item: RaidItem) {
               <th>상태</th>
               <th>노출도</th>
               <th>소유자</th>
-              <th>관련 업무</th>
+              <th>연결 대상</th>
               <th>기한</th>
               <th class="actions-col"></th>
             </tr>
@@ -111,9 +112,13 @@ function onRemove(item: RaidItem) {
               </td>
 
               <td>
-                <span v-if="item.wbsCode" class="wbs" :title="item.wbsName ?? ''">
-                  <span class="wbs-code">{{ item.wbsCode }}</span> {{ item.wbsName }}
-                </span>
+                <ul v-if="item.links.length > 0" class="links">
+                  <li v-for="link in item.links" :key="link.id" :class="{ dangling: !link.targetName }">
+                    <span class="kind">{{ RAID_LINK_TARGET_LABELS[link.targetType] }}</span>
+                    <span v-if="link.targetCode" class="wbs-code">{{ link.targetCode }}</span>
+                    {{ link.targetName ?? '(없음)' }}
+                  </li>
+                </ul>
                 <span v-else class="none">-</span>
               </td>
 
@@ -300,6 +305,26 @@ td.overdue {
   text-overflow: ellipsis;
   white-space: nowrap;
   vertical-align: bottom;
+}
+
+/* 연결은 여러 개일 수 있어 세로로 쌓는다 — 한 줄에 이으면 셀이 옆으로 밀린다. */
+.links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.links .kind {
+  color: var(--text-faint);
+  font-size: 0.72rem;
+  margin-right: 0.25rem;
+}
+
+.links .dangling {
+  color: var(--text-faint);
 }
 
 .wbs-code {
