@@ -2,6 +2,23 @@
 
 이 파일은 이 저장소에서 작업할 때 Claude Code(claude.ai/code)에게 제공하는 가이드입니다.
 
+# 팀 운용 방식
+
+이 프로젝트에서 Agent Teams를 사용할 때, 리더(메인) 세션은 **요구사항 분석가** 역할을 맡는다.
+
+## 요구사항 분석가(리더)의 역할
+- 사용자의 요청을 구체적인 요구사항과 작업 단위로 분석하고 정리한다.
+- 분석한 작업을 팀원(Developer1, Developer2, Tester)에게 배정한다.
+- 직접 코드를 구현하지 않고, 팀원의 작업을 조율하고 결과를 종합하는 데 집중한다. 다만 팀원이 막히거나 사용자가 직접 요청한 경우는 예외로 한다.
+- 팀원 간 작업 범위가 겹치지 않도록 파일/모듈 단위로 명확히 나눠서 배정한다.
+- 각 팀원의 보고를 받아 사용자에게 진행 상황과 완료 여부를 요약해서 전달한다.
+
+## 팀원 구성
+- `developer` 타입: 배정된 모듈/기능을 구현. Developer1, Developer2로 이름 붙여 2명 소환.
+- `tester` 타입: 구현된 기능의 테스트 작성/실행 및 버그 리포트.
+
+역할 정의는 `.claude/agents/developer.md`, `.claude/agents/tester.md` 참고.
+
 ## 프로젝트 개요
 
 일정관리 (project-flow) — 일정 관리, WBS, 간트 차트, RACI, RAID 로그를 포괄하는 프로젝트 관리 애플리케이션입니다.
@@ -163,6 +180,35 @@ WBS나 그 위에 얹는 기능(간트, 진행 관리 등)을 건드릴 때 아�
   단 **연결된 Backlog가 있으면 삭제 자체를 거부**합니다(아래 Backlog 절) — 이 연쇄가 실행 기록까지
   끌고 가기 때문입니다.
 - **순환 이동은 서버에서 거부**합니다(400). 프론트엔드도 드롭 자체를 막지만, 서버 검증이 최종 방어선입니다.
+
+### WBS 파일 가져오기(Excel·CSV) 설계상 알아둘 점
+
+프로젝트 전체 JSON 가져오기(9장)와는 다른 경로입니다. JSON은 이 앱의 내보내기 결과를 그대로
+되읽어 **새 프로젝트**를 만드는 것이고, 이 기능은 PM이 이미 갖고 있는 평범한 표를 **기존
+프로젝트의 WBS에 항목으로 추가**하는 것입니다. 그래서 형식도, 대상도, 거부 방식도 다릅니다.
+
+- **열은 레벨·업무명·시작일·종료일·진행률 다섯 개로 고정**입니다(`WbsImportParser`). 실행
+  방식·가중치·구분 같은 이 앱 고유의 값은 받지 않습니다 — 이미 있는 일반 WBS 표를 그대로
+  올릴 수 있어야 하고, 그런 값은 가져온 뒤 화면에서 채우는 것이 자연스럽기 때문입니다. 첫
+  행은 무엇이 적혀 있든 머리글로 보고 건너뜁니다.
+- **레벨은 1부터 시작하는 들여쓰기 단계**이고, 코드(`1.2.1`)가 아닙니다. 직전 행보다 두 단계
+  이상 깊어지는 레벨은 거부합니다(400) — 어느 행이 부모인지 알 수 없는 상태를 만들 수
+  없습니다. 이 제약 덕분에 트리 조립이 한 번의 훑기로 끝납니다: 각 행의 부모는 "그 레벨-1에서
+  가장 최근에 만든 행"이고, 자식이 있는지는 "바로 다음 행이 한 단계 깊은가"만 보면 됩니다.
+- **구분(Summary/Work Package)은 파일에 없고, 자식 유무로 정해집니다** — JSON 가져오기가
+  `nodeType`을 파일 값 대신 자식 유무로 다시 정하는 것과 같은 이유·같은 규칙입니다.
+- **상위 항목은 Summary만 고를 수 있습니다.** Work Package 아래로 붙이려는 요청은 단일 항목
+  추가와 똑같이 `InvalidWbsHierarchyException`으로 거부됩니다(같은 `requireCanHaveChildren`
+  검증을 그대로 재사용) — 파일로 넣는다고 이 규칙을 우회할 이유가 없습니다.
+- **검증이 삽입보다 앞섭니다.** 행 하나라도 문제가 있으면(레벨·업무명·날짜·진행률) 파일 전체를
+  거부하고 아무것도 만들지 않습니다. 문제 행은 한 번에 전부 모아 `N행: 사유` 형태로 줄바꿈해
+  돌려줍니다 — 한 행씩 고치고 다시 올리는 왕복을 피하려는 것입니다.
+- **Excel(.xlsx/.xls)과 CSV를 같은 파서가 다룹니다.** 확장자로만 갈래를 나누고(Apache POI vs
+  commons-csv), 이후 처리는 공통입니다. Excel의 날짜 서식 셀은 `DateUtil.isCellDateFormatted`로
+  구분해 `LocalDate`로 바로 읽고, 그 밖의 값은 문자열로 통일해 같은 검증 코드를 탑니다.
+- **일반 파일 업로드는 이 경로가 처음**입니다(`multipart/form-data`). `spring.servlet.multipart`
+  크기 제한을 desktop/server 공통으로 10MB로 올려 두었습니다 — 데이터는 작아도 스타일이 많은
+  실제 엑셀 파일은 기본값(1MB)을 쉽게 넘깁니다.
 
 ### 실행 방식(Execution Mode) 설계상 알아둘 점
 
@@ -703,6 +749,7 @@ Story·Sprint에 걸려도 원본은 하나로 관리해야 하기 때문입니�
 | `PUT` | `/api/projects/{projectId}/wbs/{itemId}` | WBS 항목 수정 |
 | `PUT` | `/api/projects/{projectId}/wbs/{itemId}/move` | 재부모화·재정렬 (`parentId`, `position`) |
 | `DELETE` | `/api/projects/{projectId}/wbs/{itemId}` | WBS 항목 삭제 (하위 포함) |
+| `POST` | `/api/projects/{projectId}/wbs/import` | Excel·CSV 파일로 WBS 항목 일괄 추가 (`multipart/form-data`, `file` + 선택적 `parentId`) |
 | `GET` | `/api/projects/{projectId}/gantt` | 간트 데이터 (막대 + 선후행 + 선후행 위반 + 지연 판정 + 임계 경로) |
 | `POST` | `/api/projects/{projectId}/gantt/dependencies` | 선후행 관계 등록 (`predecessorId`, `successorId`, `lagDays`) |
 | `PUT` | `/api/projects/{projectId}/gantt/dependencies/{dependencyId}` | 선후행 관계 수정 (선행·후행·`lagDays` 모두 변경 가능) |

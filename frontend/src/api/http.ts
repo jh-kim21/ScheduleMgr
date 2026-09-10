@@ -27,6 +27,23 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return (await response.json()) as T
 }
 
+/**
+ * A `FormData` body needs no `Content-Type` header at all — the browser sets
+ * `multipart/form-data; boundary=...` itself, and setting it by hand would drop the boundary.
+ * `request()` always forces a JSON content type, so a multipart upload needs its own path rather
+ * than an option on that one.
+ */
+async function requestForm<T>(path: string, form: FormData): Promise<T> {
+  const response = await fetch(`${BASE_URL}${path}`, { method: 'POST', body: form })
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    throw new ApiError(response.status, body?.message ?? `요청 실패 (${response.status})`)
+  }
+
+  return (await response.json()) as T
+}
+
 export const http = {
   get: <T>(path: string) => request<T>(path),
   post: <T>(path: string, body: unknown) =>
@@ -37,6 +54,7 @@ export const http = {
    */
   postRaw: <T>(path: string, body: string) =>
     request<T>(path, { method: 'POST', body }),
+  postForm: <T>(path: string, form: FormData) => requestForm<T>(path, form),
   put: <T>(path: string, body: unknown) =>
     request<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),

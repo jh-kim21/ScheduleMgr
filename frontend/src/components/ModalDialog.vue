@@ -195,6 +195,8 @@ function onBackdropPointerDown(event: MouseEvent) {
   background: var(--danger-weak);
   color: var(--danger);
   font-size: 0.83rem;
+  /* WBS 파일 가져오기처럼 행마다 사유를 나열하는 거부 메시지는 줄바꿈이 있어야 읽힌다. */
+  white-space: pre-line;
 }
 
 @keyframes fade {

@@ -82,6 +82,16 @@ export interface WbsMoveInput {
   position: number
 }
 
+/**
+ * 열 순서는 고정: 레벨 · 업무명 · 시작일 · 종료일 · 진행률. 실행 방식·가중치 같은 이 앱 고유 값은
+ * 받지 않는다 — PM이 이미 갖고 있는 평범한 표를 그대로 올릴 수 있어야 하기 때문이다.
+ */
+export interface WbsImportInput {
+  file: File
+  /** null이면 프로젝트 최상위에 붙는다. */
+  parentId: number | null
+}
+
 /** Every mutation returns the whole rebuilt tree, since codes and rollups shift on any change. */
 export const wbsApi = {
   tree: (projectId: number) => http.get<WbsTree>(`/projects/${projectId}/wbs`),
@@ -93,4 +103,10 @@ export const wbsApi = {
     http.put<WbsTree>(`/projects/${projectId}/wbs/${itemId}/move`, input),
   remove: (projectId: number, itemId: number) =>
     http.delete<WbsTree>(`/projects/${projectId}/wbs/${itemId}`),
+  importFile: (projectId: number, input: WbsImportInput) => {
+    const form = new FormData()
+    form.append('file', input.file)
+    const query = input.parentId !== null ? `?parentId=${input.parentId}` : ''
+    return http.postForm<WbsTree>(`/projects/${projectId}/wbs/import${query}`, form)
+  },
 }

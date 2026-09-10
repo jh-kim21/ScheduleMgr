@@ -39,6 +39,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -241,6 +242,120 @@ class WbsServiceTest {
             service.updateItem(PROJECT_ID, id, update("단계 이름 변경", null, null));
 
             assertThat(byName("단계 이름 변경").getNodeType()).isEqualTo(WbsNodeType.SUMMARY);
+        }
+    }
+
+    @Nested
+    @DisplayName("파일 가져오기")
+    class Import {
+
+        @Test
+        @DisplayName("들여쓰기 레벨 그대로 부모/자식 트리를 만들고 구분은 자식 유무로 정한다")
+        void buildsTreeFromLevels() {
+            List<WbsImportRow> rows = List.of(
+                    new WbsImportRow(2, 1, "설계", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 10), 0),
+                    new WbsImportRow(3, 2, "화면 설계", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 5), 0),
+                    new WbsImportRow(4, 3, "로그인 화면", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 3), 50),
+                    new WbsImportRow(5, 2, "DB 설계", LocalDate.of(2026, 1, 6), LocalDate.of(2026, 1, 10), 0),
+                    new WbsImportRow(6, 1, "개발", LocalDate.of(2026, 1, 11), LocalDate.of(2026, 1, 20), 0)
+            );
+
+            service.importRows(PROJECT_ID, null, rows);
+
+            WbsItem design = byName("설계");
+            WbsItem screenDesign = byName("화면 설계");
+            WbsItem login = byName("로그인 화면");
+            WbsItem dbDesign = byName("DB 설계");
+            WbsItem dev = byName("개발");
+
+            assertThat(design.getParentId()).isNull();
+            assertThat(screenDesign.getParentId()).isEqualTo(design.getId());
+            assertThat(login.getParentId()).isEqualTo(screenDesign.getId());
+            assertThat(dbDesign.getParentId()).isEqualTo(design.getId());
+            assertThat(dev.getParentId()).isNull();
+
+            // 자식이 있는 행은 Summary, leaf는 Work Package — 파일에는 이 값이 없다.
+            assertThat(design.getNodeType()).isEqualTo(WbsNodeType.SUMMARY);
+            assertThat(screenDesign.getNodeType()).isEqualTo(WbsNodeType.SUMMARY);
+            assertThat(login.getNodeType()).isEqualTo(WbsNodeType.WORK_PACKAGE);
+            assertThat(dbDesign.getNodeType()).isEqualTo(WbsNodeType.WORK_PACKAGE);
+            assertThat(dev.getNodeType()).isEqualTo(WbsNodeType.WORK_PACKAGE);
+        }
+
+        @Test
+        @DisplayName("실행 방식·가중치는 이 경로로 설정되지 않는다")
+        void leavesExecutionModeAndWeightUnset() {
+            List<WbsImportRow> rows = List.of(
+                    new WbsImportRow(2, 1, "업무", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 10), 30)
+            );
+
+            service.importRows(PROJECT_ID, null, rows);
+
+            WbsItem saved = byName("업무");
+            assertThat(saved.getExecutionMode()).isNull();
+            assertThat(saved.getWeight()).isNull();
+            assertThat(saved.getProgress()).isEqualTo(30);
+            // 실행 방식을 지정한 적이 없으므로 이력도 없다.
+            assertThat(modeChanges()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("parentId를 지정하면 그 아래에 붙는다")
+        void insertsUnderGivenParent() {
+            service.createItem(PROJECT_ID, create(null, "기존 단계", WbsNodeType.SUMMARY, null));
+            Long parent = byName("기존 단계").getId();
+
+            List<WbsImportRow> rows = List.of(
+                    new WbsImportRow(2, 1, "가져온 업무", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 2), 0)
+            );
+            service.importRows(PROJECT_ID, parent, rows);
+
+            assertThat(byName("가져온 업무").getParentId()).isEqualTo(parent);
+        }
+
+        @Test
+        @DisplayName("기존 형제 뒤에 정렬 순서를 이어 붙인다")
+        void appendsAfterExistingSiblings() {
+            service.createItem(PROJECT_ID, create(null, "기존 업무", null, null));
+
+            List<WbsImportRow> rows = List.of(
+                    new WbsImportRow(2, 1, "가져온 업무", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 2), 0)
+            );
+            service.importRows(PROJECT_ID, null, rows);
+
+            assertThat(byName("가져온 업무").getSortOrder())
+                    .isGreaterThan(byName("기존 업무").getSortOrder());
+        }
+
+        @Test
+        @DisplayName("parentId가 Work Package면 거부한다 — 단일 항목 추가와 같은 규칙")
+        void rejectsParentThatIsWorkPackage() {
+            service.createItem(PROJECT_ID, create(null, "개발", WbsNodeType.WORK_PACKAGE, ExecutionMode.AGILE));
+            Long parent = byName("개발").getId();
+
+            List<WbsImportRow> rows = List.of(
+                    new WbsImportRow(2, 1, "하위 업무", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 2), 0)
+            );
+
+            assertThatThrownBy(() -> service.importRows(PROJECT_ID, parent, rows))
+                    .isInstanceOf(InvalidWbsHierarchyException.class)
+                    .hasMessageContaining("Work Package");
+            // 거부는 삽입보다 앞서야 한다 — 미리 만들어 둔 부모 하나만 남아 있어야 한다.
+            assertThat(items).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("변경된 트리 전체를 반환한다")
+        void returnsWholeTree() {
+            List<WbsImportRow> rows = List.of(
+                    new WbsImportRow(2, 1, "업무1", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 2), 0),
+                    new WbsImportRow(3, 1, "업무2", LocalDate.of(2026, 1, 3), LocalDate.of(2026, 1, 4), 0)
+            );
+
+            WbsTreeResponse tree = service.importRows(PROJECT_ID, null, rows);
+
+            assertThat(tree.nodes()).extracting(WbsNodeResponse::name)
+                    .containsExactly("업무1", "업무2");
         }
     }
 

@@ -30,6 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -133,6 +134,59 @@ public class WbsService {
             recordChange(projectId, saved.getId(), "executionMode", null, request.executionMode(),
                     ChangeReason.REASSIGNED);
         }
+        return treeOf(projectId);
+    }
+
+    /**
+     * Bulk-adds a batch of rows parsed from an uploaded Excel/CSV file (레벨·업무명·시작일·종료일·
+     * 진행률만) under {@code parentId} (or at the project's top level when {@code null}).
+     *
+     * <p>{@code rows} arrive already validated and ordered as they appeared in the file — see
+     * {@link WbsImportParser}. Rebuilding the tree from a flat, level-numbered list works because
+     * the parser already refused any row whose level skips more than one step deeper than the row
+     * before it: that guarantee is exactly what lets a single lookahead decide each row's parent
+     * (the most recently created row at {@code level - 1}) and whether it has children (the very
+     * next row is one level deeper). No separate two-pass tree assembly is needed.
+     *
+     * <p>Rows are inserted one at a time rather than batched, because each child needs its parent's
+     * generated id — {@code IDENTITY} means {@code save} assigns it immediately, so the next row can
+     * read it straight away.
+     */
+    @Transactional
+    public WbsTreeResponse importRows(Long projectId, Long parentId, List<WbsImportRow> rows) {
+        requireProject(projectId);
+        List<WbsItem> items = wbsItemRepository.findByProjectId(projectId);
+
+        if (parentId != null) {
+            requireCanHaveChildren(requireItemOfProject(items, parentId));
+        }
+
+        // 부모별 "다음 형제 자리". 기존 항목에서 시작해, 새로 추가한 행도 바로 이 맵에 반영해 나간다.
+        Map<Long, Integer> nextSortOrder = new HashMap<>();
+        for (WbsItem item : items) {
+            nextSortOrder.merge(item.getParentId(), item.getSortOrder() + 1, Math::max);
+        }
+
+        // level(1..N) -> 그 레벨에서 가장 최근에 만든 행의 id. 파일이 위에서 아래로 적힌 순서 그대로
+        // 처리되므로, 레벨 L 행을 만날 때 level-1 자리에 있는 값이 곧 그 행의 부모다.
+        Map<Integer, Long> lastIdAtLevel = new HashMap<>();
+
+        for (int i = 0; i < rows.size(); i++) {
+            WbsImportRow row = rows.get(i);
+            Long rowParentId = row.level() == 1 ? parentId : lastIdAtLevel.get(row.level() - 1);
+            boolean hasChildRow = i + 1 < rows.size() && rows.get(i + 1).level() == row.level() + 1;
+            WbsNodeType nodeType = hasChildRow ? WbsNodeType.SUMMARY : WbsNodeType.WORK_PACKAGE;
+
+            int sortOrder = nextSortOrder.getOrDefault(rowParentId, 0);
+            nextSortOrder.put(rowParentId, sortOrder + 1);
+
+            WbsItem saved = wbsItemRepository.save(new WbsItem(
+                    projectId, rowParentId, row.name(), null,
+                    row.startDate(), row.endDate(), row.progress(), sortOrder,
+                    nodeType, null));
+            lastIdAtLevel.put(row.level(), saved.getId());
+        }
+
         return treeOf(projectId);
     }
 

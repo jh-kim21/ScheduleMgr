@@ -22,6 +22,9 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.flywaydb:flyway-core'
+    // WBS 파일 가져오기(Excel/CSV) 전용 — 이 두 형식을 읽는 곳은 여기 하나뿐이다.
+    implementation 'org.apache.poi:poi-ooxml:5.3.0'
+    implementation 'org.apache.commons:commons-csv:1.12.0'
 
     runtimeOnly 'com.h2database:h2'
     runtimeOnly 'org.postgresql:postgresql'

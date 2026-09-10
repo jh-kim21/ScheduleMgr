@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import type { WbsItemInput, WbsMoveInput, WbsNode } from '../api/wbsApi'
 import WbsForm from '../features/wbs/WbsForm.vue'
+import WbsImportForm from '../features/wbs/WbsImportForm.vue'
 import WbsTree from '../features/wbs/WbsTree.vue'
 import { useWbs } from '../features/wbs/useWbs'
 import { useProjects } from '../features/projects/useProjects'
@@ -30,13 +31,15 @@ watch(
 )
 
 const { projects, error: projectsError, ensureLoaded: ensureProjects } = useProjects()
-const { tree, referenceDate, loading, error, ensureLoaded, create, update, move, remove } = useWbs()
+const { tree, referenceDate, loading, error, ensureLoaded, create, update, move, remove, importFile } =
+  useWbs()
 
 
 const editing = ref<WbsNode | null>(null)
 const parentForNew = ref<WbsNode | null>(null)
 /** 폼은 대화상자로 띄운다 — 이 화면의 주된 행위는 트리를 읽는 것이다. */
 const formOpen = ref(false)
+const importFormOpen = ref(false)
 
 // The selection watcher is the single load path: `immediate` covers arriving with a project
 // already chosen, and `ensureSelection` below covers the first ever visit by setting one.
@@ -105,6 +108,22 @@ function closeForm() {
   parentForNew.value = null
 }
 
+function openImportForm() {
+  importFormOpen.value = true
+}
+
+function closeImportForm() {
+  importFormOpen.value = false
+}
+
+/** 거부되면(행별 사유가 줄바꿈으로 이어진 메시지) 대화상자를 열어 둔 채 보여 준다. */
+async function handleImportSubmit(input: { file: File; parentId: number | null }) {
+  const id = selectedProjectId.value
+  if (id === null) return
+  const ok = await importFile(id, input)
+  if (ok) closeImportForm()
+}
+
 async function handleRemove(node: WbsNode) {
   const id = selectedProjectId.value
   if (id === null) return
@@ -125,12 +144,10 @@ async function handleMove(itemId: number, input: WbsMoveInput) {
   <section>
     <div class="head">
       <h1>WBS</h1>
-      <button
-        v-if="projects.length > 0"
-        type="button"
-        class="add"
-        @click="openAddRoot"
-      >＋ 최상위 항목 추가</button>
+      <div v-if="projects.length > 0" class="head-actions">
+        <button type="button" class="add ghost" @click="openImportForm">＋ 파일에서 가져오기</button>
+        <button type="button" class="add" @click="openAddRoot">＋ 최상위 항목 추가</button>
+      </div>
     </div>
 
     <p v-if="projectsError" class="error">{{ projectsError }}</p>
@@ -157,6 +174,14 @@ async function handleMove(itemId: number, input: WbsMoveInput) {
         :error="error"
         @submit="handleSubmit"
         @cancel="closeForm"
+      />
+
+      <WbsImportForm
+        v-if="importFormOpen"
+        :tree="tree"
+        :error="error"
+        @submit="handleImportSubmit"
+        @cancel="closeImportForm"
       />
 
       <p v-if="error" class="error">{{ error }}</p>
@@ -197,8 +222,13 @@ h1 {
   margin: 0;
 }
 
-.add {
+.head-actions {
   margin-left: auto;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.add {
   padding: 0.4rem 0.85rem;
   border: 1px solid var(--accent);
   border-radius: 999px;
@@ -213,6 +243,12 @@ h1 {
 
 .add:hover {
   box-shadow: var(--elevation-1);
+}
+
+.add.ghost {
+  background: transparent;
+  color: var(--text-muted);
+  border-color: var(--border-input);
 }
 
 .project-picker {

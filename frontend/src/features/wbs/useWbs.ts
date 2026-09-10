@@ -1,6 +1,13 @@
 import { ref } from 'vue'
 import { ApiError } from '../../api/http'
-import { wbsApi, type WbsItemInput, type WbsMoveInput, type WbsNode, type WbsTree } from '../../api/wbsApi'
+import {
+  wbsApi,
+  type WbsImportInput,
+  type WbsItemInput,
+  type WbsMoveInput,
+  type WbsNode,
+  type WbsTree,
+} from '../../api/wbsApi'
 import { markWbsChanged, wbsCacheKeyFor } from '../../stores/scheduleCache'
 
 /** Shared at module scope so the tree survives navigating away and back. */
@@ -89,5 +96,20 @@ export function useWbs() {
   const remove = (projectId: number, itemId: number) =>
     mutate(projectId, () => wbsApi.remove(projectId, itemId), '항목을 삭제하지 못했습니다.')
 
-  return { tree, referenceDate, loading, error, load, ensureLoaded, create, update, move, remove }
+  const importFile = (projectId: number, input: WbsImportInput) =>
+    mutate(projectId, () => wbsApi.importFile(projectId, input), '파일을 가져오지 못했습니다.')
+
+  return {
+    tree,
+    referenceDate,
+    loading,
+    error,
+    load,
+    ensureLoaded,
+    create,
+    update,
+    move,
+    remove,
+    importFile,
+  }
 }

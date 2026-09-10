@@ -14,6 +14,7 @@ import com.projectflow.domain.ProjectMemberNotFoundException;
 import com.projectflow.domain.ProjectNotFoundException;
 import com.projectflow.domain.RaidItemNotFoundException;
 import com.projectflow.domain.SprintNotFoundException;
+import com.projectflow.domain.WbsImportException;
 import com.projectflow.domain.WbsItemNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -21,6 +22,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.time.LocalDateTime;
 import java.util.Arrays;
@@ -54,9 +56,17 @@ public class GlobalExceptionHandler {
             InvalidBacklogItemException.class,
             InvalidRaidLinkException.class,
             InvalidSprintException.class,
+            WbsImportException.class,
     })
     public ResponseEntity<Map<String, Object>> handleInvalidStructure(RuntimeException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorBody(HttpStatus.BAD_REQUEST, ex.getMessage()));
+    }
+
+    /** A file bigger than {@code spring.servlet.multipart.max-file-size} would otherwise surface as a bare 500. */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<Map<String, Object>> handleUploadTooLarge(MaxUploadSizeExceededException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(errorBody(HttpStatus.BAD_REQUEST, "파일이 너무 큽니다 (최대 10MB)."));
     }
 
     /**
