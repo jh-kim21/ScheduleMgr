@@ -176,11 +176,18 @@ public class ProgressBasisService {
                         blankToNull(request.note())));
 
         Map<Long, String> codes = new HashMap<>();
-        collectCodes(WbsTreeAssembler.assemble(items), codes);
+        Map<Long, WbsNode> nodesById = new HashMap<>();
+        collectNodes(WbsTreeAssembler.assemble(items), codes, nodesById);
         Map<Long, String> criteria = criteriaByWbsItem(projectId);
 
         List<BaselineItem> copied = new ArrayList<>(items.size());
         for (WbsItem item : items) {
+            // 결함 수정 (2026-09): Summary의 저장 컬럼(getStartDate/getEndDate)은 대개 비어 있다 —
+            // 일정이 하위에서 집계되는 파생값이기 때문이다(CLAUDE "WBS 설계상 알아둘 점"). 그대로
+            // 복사하면 기준선의 Summary 행이 날짜 없이 남아 간트가 기준 막대를 못 그리고
+            // baselineExceeded가 Summary에서 절대 참이 될 수 없었다. WbsNode.startDate()/endDate()는
+            // Summary·leaf 모두에 대해 이미 옳은 값(집계 또는 own)을 낸다.
+            WbsNode node = nodesById.get(item.getId());
             copied.add(new BaselineItem(
                     baseline.getId(),
                     item.getId(),
@@ -188,8 +195,8 @@ public class ProgressBasisService {
                     item.getName(),
                     item.getNodeType(),
                     item.getExecutionMode(),
-                    item.getStartDate(),
-                    item.getEndDate(),
+                    node == null ? item.getStartDate() : node.startDate(),
+                    node == null ? item.getEndDate() : node.endDate(),
                     item.getWeight(),
                     criteria.get(item.getId())
             ));
@@ -331,10 +338,13 @@ public class ProgressBasisService {
         }
     }
 
-    private static void collectCodes(List<WbsNode> nodes, Map<Long, String> codes) {
+    /** Codes and assembled nodes (for their rolled-up dates) by WBS item id, in one tree walk. */
+    private static void collectNodes(List<WbsNode> nodes, Map<Long, String> codes,
+                                      Map<Long, WbsNode> nodesById) {
         for (WbsNode node : nodes) {
             codes.put(node.item().getId(), node.code());
-            collectCodes(node.children(), codes);
+            nodesById.put(node.item().getId(), node);
+            collectNodes(node.children(), codes, nodesById);
         }
     }
 

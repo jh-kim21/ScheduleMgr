@@ -48,6 +48,16 @@ export interface WbsNode extends DelayInfo {
   progressIncomplete: boolean
   progressNote: string | null
   acceptancePending: boolean
+  /**
+   * When work really started/finished, and when it now looks like it will finish (지시서 6-A).
+   * Optional — as of this fix the WBS tree endpoint (`WbsNodeResponse`) does not yet return these
+   * three fields, only the Gantt endpoint does. The edit form still lets a user set them (they are
+   * sent on save), but cannot pre-fill a previously saved value here until the tree response is
+   * extended to carry them too — see the note in `WbsForm.vue`.
+   */
+  actualStartDate?: string | null
+  actualEndDate?: string | null
+  forecastEndDate?: string | null
   children: WbsNode[]
 }
 
@@ -75,6 +85,15 @@ export interface WbsItemInput {
    * an attempt to *change* a summary's mode, which is what the form sends back unchanged.
    */
   executionMode: ExecutionMode | null
+  /**
+   * When work really started/finished, and when it now looks like it will finish. Missing from
+   * this type used to mean every update silently wiped these three columns to null — the update
+   * endpoint takes "not present" as "clear it", not "leave it alone" (결함 3). Always send back
+   * whatever the form is currently holding, `null` included, so a plain no-op edit is a no-op here.
+   */
+  actualStartDate: string | null
+  actualEndDate: string | null
+  forecastEndDate: string | null
 }
 
 export interface WbsMoveInput {

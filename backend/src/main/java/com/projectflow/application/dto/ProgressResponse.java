@@ -34,6 +34,10 @@ public record ProgressResponse(
      * @param comparablePercent  실제 진척 over that <em>same</em> set, so the two can be subtracted
      * @param variancePoints     comparable − planned, in percentage points
      * @param acceptancePending  Work Packages at 100% whose acceptance is still outstanding
+     * @param varianceExcludedCount baselined Work Packages left out of {@code plannedPercent} and
+     *                              {@code comparablePercent} because they are still 산정 전 — dropping
+     *                              them from <em>both</em> sides is what keeps the two numbers over the
+     *                              same denominator (설계 §6.5); this is how many were dropped
      */
     public record ProjectProgress(
             Double actualPercent,
@@ -44,7 +48,8 @@ public record ProgressResponse(
             Double plannedPercent,
             Double comparablePercent,
             Double variancePoints,
-            int acceptancePending
+            int acceptancePending,
+            int varianceExcludedCount
     ) {
     }
 

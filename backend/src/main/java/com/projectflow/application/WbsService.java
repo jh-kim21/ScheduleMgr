@@ -126,8 +126,20 @@ public class WbsService {
                 nodeType,
                 request.executionMode()
         ));
-        if (request.weight() != null) {
-            saved.restoreProgressBasis(request.weight(), null, null);
+        // 새 항목은 자식이 없어 결함 2의 롤업 문제가 없다 — weight·agileRatio·acceptanceStatus·
+        // 실적/예상 일자는 update()가 아니라 이 별도 호출로만 채워지므로, 값이 하나도 없으면 굳이
+        // 다시 저장하지 않는다.
+        boolean hasBasis = request.weight() != null || request.agileRatio() != null
+                || request.acceptanceStatus() != null;
+        if (hasBasis) {
+            saved.restoreProgressBasis(request.weight(), request.agileRatio(), request.acceptanceStatus());
+        }
+        boolean hasActuals = request.actualStartDate() != null || request.actualEndDate() != null
+                || request.forecastEndDate() != null;
+        if (hasActuals) {
+            saved.restoreActualDates(request.actualStartDate(), request.actualEndDate(), request.forecastEndDate());
+        }
+        if (hasBasis || hasActuals) {
             wbsItemRepository.save(saved);
         }
         if (request.executionMode() != null) {
@@ -225,12 +237,23 @@ public class WbsService {
         // Summary로 전환할 때 값을 지우지 않는다 (설계 §5). 되돌리면 그대로 살아난다.
         ExecutionMode nextMode = nodeType == WbsNodeType.SUMMARY ? previousMode : request.executionMode();
 
+        // 결함 2: 하위가 있는 항목의 일정·진행률은 WbsTreeAssembler가 매번 다시 계산하는 집계값이다
+        // (CLAUDE.md "파생 값은 저장하지 않습니다"). 화면이 그 세 칸을 비활성화해 두긴 하지만, 폼
+        // 상태에는 여전히 집계값이 담겨 그대로 제출된다 — 그걸 저장 컬럼에 박으면 나중에 하위를
+        // 모두 지웠을 때 원래 입력값 대신 그 순간의 집계값이 남는다. 그래서 서버가 최종 방어선으로
+        // 하위가 있으면 요청 값을 무시하고 지금 저장된 값을 그대로 유지한다.
+        boolean rolledUp = hasChildren(items, itemId);
+        LocalDate nextStartDate = rolledUp ? item.getStartDate() : request.startDate();
+        LocalDate nextEndDate = rolledUp ? item.getEndDate() : request.endDate();
+        int nextProgress = rolledUp ? item.getProgress()
+                : (request.progress() != null ? request.progress() : 0);
+
         item.update(
                 request.name(),
                 request.description(),
-                request.startDate(),
-                request.endDate(),
-                request.progress() != null ? request.progress() : 0,
+                nextStartDate,
+                nextEndDate,
+                nextProgress,
                 nodeType,
                 nextMode,
                 request.weight(),

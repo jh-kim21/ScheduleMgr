@@ -171,11 +171,17 @@ public class GanttService {
 
         List<GanttTaskResponse> tasks = flattened.stream()
                 .map(node -> {
-                    DelayCalculator.DelayAssessment delay = DelayCalculator.assess(
-                            node.startDate(), node.endDate(), node.progress(), referenceDate);
                     WbsItem item = node.item();
                     BaselineItem approved = baselineByItem.get(item.getId());
                     ProgressResult progress = computed.get(item.getId());
+                    // 지연 판정은 저장된 progress가 아니라 공통 집계 값을 우선한다 — WbsNodeResponse와
+                    // 같은 계약(결함 수정 2026-09). 간트와 WBS가 같은 행을 다른 기준으로 지연 판정하면
+                    // 두 화면이 서로 다른 배지를 보인다.
+                    int effectiveProgress = progress != null && progress.percent() != null
+                            ? (int) Math.round(progress.percent())
+                            : node.progress();
+                    DelayCalculator.DelayAssessment delay = DelayCalculator.assess(
+                            node.startDate(), node.endDate(), effectiveProgress, referenceDate);
                     // 예상 종료가 없으면 현재 계획으로 판단한다 — 예측을 적지 않았다는 것이
                     // "늦지 않는다"는 뜻은 아니다.
                     LocalDate expectedEnd = item.getForecastEndDate() != null

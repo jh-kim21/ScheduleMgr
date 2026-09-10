@@ -1,5 +1,5 @@
 import type { BacklogItem } from '../api/backlogApi'
-import type { RaciMatrix } from '../api/raciApi'
+import type { InheritedRole, RaciMatrix } from '../api/raciApi'
 import type { RaidItem } from '../api/raidApi'
 import type { WbsNode } from '../api/wbsApi'
 import {
@@ -14,6 +14,7 @@ import {
   executionModeLabel,
   executionModeSummaryText,
 } from './executionMode'
+import type { RaciRole } from './raci'
 import { RACI_LETTERS, RACI_ORDER, sortRoles } from './raci'
 import { RAID_LEVEL_LABELS, RAID_STATUS_LABELS, RAID_TYPE_LABELS, raidLinkLabel } from './raid'
 
@@ -91,17 +92,17 @@ export function wbsCsv(nodes: WbsNode[], referenceDate: string | null): CsvTable
  * whole point of the CSV.
  */
 export function raciCsv(matrix: RaciMatrix): CsvTable {
-  const cellIndex = new Map(
-    matrix.cells.map((cell) => [`${cell.wbsItemId}:${cell.memberId}`, cell.roles]),
-  )
+  // 셀 전체(roles + inherited)를 인덱싱한다 — roles만 보면 화면에 보이는 상속된 A가 CSV에서는
+  // 빈 칸이 되어 "책임자 없음"처럼 읽힌다(결함 4).
+  const cellIndex = new Map(matrix.cells.map((cell) => [`${cell.wbsItemId}:${cell.memberId}`, cell]))
 
   const rows = matrix.tasks.map((task) => [
     task.code,
     task.name,
     task.summary ? 'Summary' : 'Leaf',
     ...matrix.members.map((member) => {
-      const roles = cellIndex.get(`${task.id}:${member.id}`)
-      return roles ? sortRoles(roles).map((role) => RACI_LETTERS[role]).join('') : ''
+      const cell = cellIndex.get(`${task.id}:${member.id}`)
+      return raciCellText(cell?.roles, cell?.inherited)
     }),
   ])
 
@@ -111,9 +112,27 @@ export function raciCsv(matrix: RaciMatrix): CsvTable {
   }
 }
 
+/**
+ * A cell's own letters plus, in parentheses, letters inherited from an ancestor — the same two
+ * things the screen shows with a solid vs. dashed letter. Overridden inherited letters (the
+ * screen's strikethrough) are left out: that letter is no longer in force for this row, so
+ * printing it would say the opposite of what the strikethrough means.
+ */
+function raciCellText(roles: RaciRole[] | undefined, inherited: InheritedRole[] | undefined): string {
+  const own = roles && roles.length > 0 ? sortRoles(roles).map((role) => RACI_LETTERS[role]).join('') : ''
+  const inheritedRoles = (inherited ?? [])
+    .filter((entry) => !entry.overridden)
+    .map((entry) => entry.role)
+  if (inheritedRoles.length === 0) return own
+  const inheritedText = sortRoles(inheritedRoles).map((role) => RACI_LETTERS[role]).join('')
+  return `${own}(${inheritedText})`
+}
+
 /** The letters legend, appended so a recipient knows what R/A/C/I mean. */
 export function raciLegend(): string {
-  return RACI_ORDER.map((role) => `${RACI_LETTERS[role]}=${role}`).join(', ')
+  const letters = RACI_ORDER.map((role) => `${RACI_LETTERS[role]}=${role}`).join(', ')
+  // 화면의 상속 표기(옅은 점선 글자)를 괄호로 옮긴 것 — 범례에 없으면 "(A)"가 오타처럼 보인다.
+  return `${letters}. 괄호 안 글자는 상위 항목에서 상속된 것입니다(이 행에서 재정의된 것은 제외).`
 }
 
 /**

@@ -4,6 +4,7 @@ import type { GanttData, GanttSprintLane, GanttTask } from '../../api/ganttApi'
 import { DELAY_LABELS, delayBadge, delayDescription, type DelayStatus } from '../../shared/delay'
 import { PROGRESS_BASIS_LABELS, progressText } from '../../shared/progress'
 import { SPRINT_STATUS_LABELS } from '../../shared/sprint'
+import { displayProgress } from './ganttProgress'
 import {
   barGeometry,
   createScale,
@@ -572,13 +573,13 @@ const chartVars = computed(() => ({
                 :aria-label="`${row.task.code} ${row.task.name} · ${row.task.startDate} ~ ${row.task.endDate} · ${DELAY_LABELS[row.task.delayStatus]} · ${delayDescription(row.task)} · ${floatLabel(row.task)}`"
               />
               <rect
-                v-if="row.task.progress > 0"
+                v-if="displayProgress(row.task) > 0"
                 class="bar-progress"
                 :class="{ critical: row.task.criticalPath }"
                 :data-status="row.task.delayStatus"
                 :x="row.bar.x"
                 :y="row.index * ROW_HEIGHT + (row.task.summary ? ROW_HEIGHT / 2 - 4 : ROW_HEIGHT / 2 - 8)"
-                :width="(row.bar.width * row.task.progress) / 100"
+                :width="(row.bar.width * displayProgress(row.task)) / 100"
                 :height="row.task.summary ? 8 : 16"
                 :rx="row.task.summary ? 2 : 3"
               />

@@ -42,6 +42,12 @@ import java.util.Map;
  * @param expectedProgress     progress the linear baseline expects by that date
  * @param progressGap          percentage points behind that baseline; 0 when on or ahead
  * @param delayDays            days past the planned end date while incomplete; 0 otherwise
+ * @param actualStartDate      when work actually started, {@code null} when not recorded — the same
+ *                             field {@link GanttResponse.GanttTaskResponse#actualStart()} carries, so
+ *                             an edit made here does not have to be re-entered on the Gantt
+ * @param actualEndDate        when it actually finished, {@code null} when not recorded
+ * @param forecastEndDate      when it now looks like it will finish, separate from the planned
+ *                             {@code endDate} so a slip can be stated without rewriting the plan
  */
 public record WbsNodeResponse(
         Long id,
@@ -52,6 +58,9 @@ public record WbsNodeResponse(
         String description,
         LocalDate startDate,
         LocalDate endDate,
+        LocalDate actualStartDate,
+        LocalDate actualEndDate,
+        LocalDate forecastEndDate,
         int progress,
         boolean summary,
         WbsNodeType nodeType,
@@ -79,14 +88,21 @@ public record WbsNodeResponse(
     public static WbsNodeResponse from(WbsNode node, LocalDate referenceDate,
                                         Map<Long, BacklogSummary> backlogByWbsItem,
                                         Map<Long, ProgressResult> progressByWbsItem) {
+        ProgressResult computed = progressByWbsItem.get(node.item().getId());
+        // 지연 판정은 저장된 progress가 아니라 실행 방식 기반 값을 우선한다 — 결함 수정(2026-09):
+        // Agile Work Package는 진척 칸(computedProgress)이 100%여도 저장된 progress가 그대로면
+        // 지연 배지가 낡은 값을 봤다. 미지정(MANUAL)은 computedProgress == 저장값이라 전환 정책
+        // ("아무것도 지정하지 않은 프로젝트의 화면 숫자는 그대로")을 그대로 지킨다. 반올림은
+        // displayPercent()와 같은 규칙(Math.round)을 쓴다.
+        int effectiveProgress = computed != null && computed.percent() != null
+                ? (int) Math.round(computed.percent())
+                : node.progress();
         DelayCalculator.DelayAssessment delay = DelayCalculator.assess(
-                node.startDate(), node.endDate(), node.progress(), referenceDate);
+                node.startDate(), node.endDate(), effectiveProgress, referenceDate);
 
         List<WbsNodeResponse> children = node.children().stream()
                 .map(child -> from(child, referenceDate, backlogByWbsItem, progressByWbsItem))
                 .toList();
-
-        ProgressResult computed = progressByWbsItem.get(node.item().getId());
 
         BacklogSummary backlog = backlogByWbsItem
                 .getOrDefault(node.item().getId(), BacklogSummary.EMPTY);
@@ -105,6 +121,11 @@ public record WbsNodeResponse(
                 node.item().getDescription(),
                 node.startDate(),
                 node.endDate(),
+                // 실적·예상 종료는 파생값이 아니라 항목 자신의 입력이다 — Summary라고 하위에서
+                // 집계하지 않는다(간트의 GanttTaskResponse도 item에서 직접 읽는다).
+                node.item().getActualStartDate(),
+                node.item().getActualEndDate(),
+                node.item().getForecastEndDate(),
                 node.progress(),
                 node.summary(),
                 node.item().getNodeType(),

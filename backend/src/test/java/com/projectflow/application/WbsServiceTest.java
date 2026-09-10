@@ -5,6 +5,7 @@ import com.projectflow.application.dto.WbsItemMoveRequest;
 import com.projectflow.application.dto.WbsItemUpdateRequest;
 import com.projectflow.application.dto.WbsNodeResponse;
 import com.projectflow.application.dto.WbsTreeResponse;
+import com.projectflow.domain.AcceptanceStatus;
 import com.projectflow.domain.BacklogItem;
 import com.projectflow.domain.BacklogItemRepository;
 import com.projectflow.domain.BacklogItemType;
@@ -246,6 +247,90 @@ class WbsServiceTest {
     }
 
     @Nested
+    @DisplayName("생성 시 부가 필드 — 결함 1")
+    class CreateExtras {
+
+        @Test
+        @DisplayName("agileRatio·acceptanceStatus·실적/예상 일자가 생성 시점부터 저장된다")
+        void persistsBasisAndActualDatesOnCreate() {
+            // 프론트의 WbsItemInput은 이 값들을 생성 요청에도 실어 보낸다 — DTO에 필드가 없으면
+            // Jackson이 오류 없이 버려서, Hybrid Work Package가 만들자마자 산정 전이 됐다.
+            WbsItemCreateRequest request = new WbsItemCreateRequest(
+                    null, "인수 테스트", null, null, null, null,
+                    WbsNodeType.WORK_PACKAGE, ExecutionMode.HYBRID, 3, 60,
+                    AcceptanceStatus.PENDING,
+                    LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 5), LocalDate.of(2026, 1, 7));
+
+            service.createItem(PROJECT_ID, request);
+
+            WbsItem saved = byName("인수 테스트");
+            assertThat(saved.getWeight()).isEqualTo(3);
+            assertThat(saved.getAgileRatio()).isEqualTo(60);
+            assertThat(saved.getAcceptanceStatus()).isEqualTo(AcceptanceStatus.PENDING);
+            assertThat(saved.getActualStartDate()).isEqualTo(LocalDate.of(2026, 1, 1));
+            assertThat(saved.getActualEndDate()).isEqualTo(LocalDate.of(2026, 1, 5));
+            assertThat(saved.getForecastEndDate()).isEqualTo(LocalDate.of(2026, 1, 7));
+        }
+
+        @Test
+        @DisplayName("아무 부가 필드도 보내지 않으면 예전처럼 비워 둔 채 저장된다")
+        void leavesExtrasNullWhenOmitted() {
+            service.createItem(PROJECT_ID, create(null, "평범한 업무", null, null));
+
+            WbsItem saved = byName("평범한 업무");
+            assertThat(saved.getAgileRatio()).isNull();
+            assertThat(saved.getAcceptanceStatus()).isNull();
+            assertThat(saved.getActualStartDate()).isNull();
+            assertThat(saved.getActualEndDate()).isNull();
+            assertThat(saved.getForecastEndDate()).isNull();
+        }
+    }
+
+    @Nested
+    @DisplayName("Summary 저장 시 집계값 보호 — 결함 2")
+    class RolledUpProtection {
+
+        @Test
+        @DisplayName("하위가 있는 항목을 수정하면 요청에 담긴 집계 일정·진행률을 무시하고 저장된 값을 유지한다")
+        void ignoresRolledUpFieldsOnUpdate() {
+            service.createItem(PROJECT_ID, create(null, "단계", WbsNodeType.SUMMARY, null));
+            Long stage = byName("단계").getId();
+            service.createItem(PROJECT_ID, create(stage, "하위", WbsNodeType.WORK_PACKAGE, null));
+
+            // 화면의 startDate/endDate/progress 입력칸은 비활성화돼 있지만, 값 자체는 여전히 이
+            // 항목의 집계값을 담고 있다가 그대로 제출된다 — 서버가 최종 방어선이어야 한다.
+            WbsItemUpdateRequest request = new WbsItemUpdateRequest(
+                    "단계 이름 변경", null, LocalDate.of(2099, 1, 1), LocalDate.of(2099, 1, 2), 99,
+                    WbsNodeType.SUMMARY, null, null, null, null, null, null, null);
+
+            service.updateItem(PROJECT_ID, stage, request);
+
+            WbsItem saved = byName("단계 이름 변경");
+            assertThat(saved.getStartDate()).isNull();
+            assertThat(saved.getEndDate()).isNull();
+            assertThat(saved.getProgress()).isEqualTo(0);
+        }
+
+        @Test
+        @DisplayName("하위가 없는 항목은 평소대로 요청한 일정·진행률을 저장한다")
+        void updatesOwnScheduleWhenLeaf() {
+            service.createItem(PROJECT_ID, create(null, "개발", WbsNodeType.WORK_PACKAGE, null));
+            Long id = byName("개발").getId();
+
+            WbsItemUpdateRequest request = new WbsItemUpdateRequest(
+                    "개발", null, LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 10), 40,
+                    WbsNodeType.WORK_PACKAGE, null, null, null, null, null, null, null);
+
+            service.updateItem(PROJECT_ID, id, request);
+
+            WbsItem saved = byName("개발");
+            assertThat(saved.getStartDate()).isEqualTo(LocalDate.of(2026, 3, 1));
+            assertThat(saved.getEndDate()).isEqualTo(LocalDate.of(2026, 3, 10));
+            assertThat(saved.getProgress()).isEqualTo(40);
+        }
+    }
+
+    @Nested
     @DisplayName("파일 가져오기")
     class Import {
 
@@ -451,7 +536,7 @@ class WbsServiceTest {
     private WbsItemCreateRequest create(Long parentId, String name,
                                          WbsNodeType nodeType, ExecutionMode mode) {
         return new WbsItemCreateRequest(parentId, name, null, null, null, null, nodeType,
-                mode, null);
+                mode, null, null, null, null, null, null);
     }
 
     private WbsItemUpdateRequest update(String name, WbsNodeType nodeType, ExecutionMode mode) {

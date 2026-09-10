@@ -12,6 +12,7 @@ import {
   NODE_TYPE_LABELS,
   executionModeLabel,
 } from '../../shared/executionMode'
+import { nodeToFormInput } from './wbsFormMapping'
 
 const props = defineProps<{
   editing: WbsNode | null
@@ -37,6 +38,9 @@ const empty: WbsItemInput = {
   // 새 항목은 자식이 없으니 최하위 관리 단위로 시작한다. 서버 기본값과 같다.
   nodeType: 'WORK_PACKAGE',
   executionMode: null,
+  actualStartDate: null,
+  actualEndDate: null,
+  forecastEndDate: null,
 }
 
 const form = reactive<WbsItemInput>({ ...empty })
@@ -72,18 +76,10 @@ watch(
   () => props.editing,
   (item) => {
     if (item) {
-      form.name = item.name
-      form.description = item.description ?? ''
-      form.startDate = item.startDate
-      form.endDate = item.endDate
-      form.progress = item.progress
-      form.weight = item.weight
-      form.agileRatio = item.agileRatio
-      form.acceptanceStatus = item.acceptanceStatus
-      form.nodeType = item.nodeType
-      // 보관된 값도 그대로 담아 되돌려 보낸다. Summary에서 값을 비워 보내면 서버가
-      // "실행 방식을 바꾸려 한다"고 보고 거부한다.
-      form.executionMode = item.executionMode
+      // 매핑은 wbsFormMapping.ts로 뽑아 뒀다 — "편집 중 아무것도 안 바꾸고 저장해도 모든 필드가
+      // 그대로 다시 실려야 한다"(결함 3)는 이 대입 자체가 지켜야 할 계약이라, 컴포넌트를 마운트하지
+      // 않고도 단위 테스트로 고정하려는 것이다.
+      Object.assign(form, nodeToFormInput(item))
     } else {
       Object.assign(form, empty)
     }
@@ -178,9 +174,30 @@ function onSubmit() {
         </label>
       </div>
 
+      <div class="row">
+        <label>
+          실적 시작일
+          <input v-model="form.actualStartDate" type="date" :disabled="modeDisabled" />
+        </label>
+        <label>
+          실적 종료일
+          <input v-model="form.actualEndDate" type="date" :disabled="modeDisabled" />
+        </label>
+        <label>
+          예상 종료일
+          <input v-model="form.forecastEndDate" type="date" :disabled="modeDisabled" />
+        </label>
+      </div>
+
       <p class="hint muted">
         가중치를 비워 두면 이 가지는 예전처럼 하위 평균으로 집계됩니다. 0은 "진척에 기여하지 않음"이라
         미입력과 다릅니다.
+      </p>
+
+      <p class="hint muted">
+        실적 시작일·종료일은 실제로 일한 기간을, 예상 종료일은 계획을 고치지 않고 지금 예상되는
+        완료 시점을 적습니다. 간트 차트의 실적 막대와 예상 종료 표식에 쓰입니다. Summary 항목은
+        실행 방식과 마찬가지로 최하위 Work Package에서만 의미가 있습니다.
       </p>
 
       <p v-if="form.executionMode === 'HYBRID' && form.agileRatio === null" class="hint">

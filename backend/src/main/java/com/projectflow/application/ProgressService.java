@@ -23,6 +23,7 @@ import com.projectflow.domain.ProjectRepository;
 import com.projectflow.domain.WbsItem;
 import com.projectflow.domain.WbsItemRepository;
 import com.projectflow.domain.WbsNode;
+import com.projectflow.domain.WbsNodeType;
 import com.projectflow.domain.WbsTreeAssembler;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -170,7 +171,8 @@ public class ProgressService {
                         planned.planned(),
                         planned.comparable(),
                         planned.variance(),
-                        acceptancePendingCount
+                        acceptancePendingCount,
+                        planned.excludedCount()
                 ),
                 workPackages,
                 baseline == null ? null : new BaselineSummary(baseline.getId(), baseline.getVersion(),
@@ -185,8 +187,16 @@ public class ProgressService {
      *
      * <p>Flat over the baselined Work Packages rather than hierarchical: a baseline stores a
      * snapshot list, not a tree, so the only weighting both sides can share is the baseline's own.
-     * Items without baseline dates are left out — an elapsed share of an unknown period is not a
-     * number.
+     * Summary rows are skipped by design (not just by missing dates) — a Summary's baseline
+     * schedule spans the same ground as its own Work Packages, and averaging both flat would count
+     * that ground twice; the actual side has the same shape because a Work Package is always a leaf
+     * (설계: "Work Package에는 하위를 둘 수 없다"), so its {@code ProgressResult} is never a rollup.
+     *
+     * <p><b>결함 수정 (2026-09):</b> planned와 comparable은 반드시 같은 항목 집합 위에서 계산한다.
+     * 예전 코드는 {@code weightSum}(날짜 있는 전체)과 {@code actualWeightSum}(그중 산정 가능한 것만)이
+     * 달라, variance = comparable − planned가 서로 다른 분모의 두 숫자를 빼는 셈이었다. 이제 날짜가
+     * 있고 <em>동시에</em> 산정 가능한 항목만 양쪽에 반영하고, 빠진 항목 수를
+     * {@link Planned#excludedCount()}로 실어 화면이 "N개 제외됨"을 말할 수 있게 한다.
      */
     private Planned plannedProgress(List<BaselineItem> baselineItems,
                                       Map<Long, ProgressResult> results,
@@ -194,30 +204,36 @@ public class ProgressService {
         double plannedWeighted = 0;
         double actualWeighted = 0;
         double weightSum = 0;
-        double actualWeightSum = 0;
+        int excludedCount = 0;
 
         for (BaselineItem item : baselineItems) {
+            if (item.getNodeType() != WbsNodeType.WORK_PACKAGE) {
+                continue;
+            }
             if (item.getStartDate() == null || item.getEndDate() == null) {
                 continue;
             }
+            ProgressResult actual = results.get(item.getWbsItemId());
+            if (actual == null || actual.percent() == null) {
+                // 산정 전인 항목은 실제 쪽 숫자가 없다. 계획만 넣으면 비교 불가능한 두 범위가
+                // 되므로 이 항목은 계획·실제 양쪽에서 함께 뺀다.
+                excludedCount++;
+                continue;
+            }
+
             double weight = item.getWeight() == null ? 1 : item.getWeight();
             plannedWeighted += weight * elapsedShare(item.getStartDate(), item.getEndDate(), referenceDate);
             weightSum += weight;
-
-            ProgressResult actual = results.get(item.getWbsItemId());
-            if (actual != null && actual.percent() != null) {
-                actualWeighted += weight * actual.percent();
-                actualWeightSum += weight;
-            }
+            actualWeighted += weight * actual.percent();
         }
 
         if (weightSum == 0) {
-            return new Planned(null, null, null);
+            return new Planned(null, null, null, excludedCount);
         }
         double plannedPercent = plannedWeighted / weightSum;
-        Double comparable = actualWeightSum == 0 ? null : actualWeighted / actualWeightSum;
-        Double variance = comparable == null ? null : comparable - plannedPercent;
-        return new Planned(plannedPercent, comparable, variance);
+        double comparable = actualWeighted / weightSum;
+        double variance = comparable - plannedPercent;
+        return new Planned(plannedPercent, comparable, variance, excludedCount);
     }
 
     /**
@@ -326,6 +342,6 @@ public class ProgressService {
         }
     }
 
-    private record Planned(Double planned, Double comparable, Double variance) {
+    private record Planned(Double planned, Double comparable, Double variance, int excludedCount) {
     }
 }
