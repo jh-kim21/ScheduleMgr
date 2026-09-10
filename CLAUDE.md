@@ -18,7 +18,8 @@
 - `tester` 타입: 구현된 기능의 테스트 작성/실행 및 버그 리포트.
 
 역할 정의는 `.claude/agents/developer.md`, `.claude/agents/tester.md` 참고.
-
+## 팀원 호출
+- 개발해줘 라고하는 명령어가 들어가면 팀원을 모두 호출해서 시작
 ## 프로젝트 개요
 
 일정관리 (project-flow) — 일정 관리, WBS, 간트 차트, RACI, RAID 로그를 포괄하는 프로젝트 관리 애플리케이션입니다.
