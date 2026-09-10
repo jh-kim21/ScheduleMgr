@@ -182,6 +182,38 @@ public class SprintService {
     }
 
     /**
+     * Undoes a start: {@code ACTIVE → PLANNED}. For a Sprint started by mistake — forcing a close
+     * instead would stamp a fake outcome onto every live assignment and leave it in the velocity
+     * trend forever, since a closed Sprint's results are history (see {@link SprintStatus}).
+     *
+     * <p>Only the start's own footprint is undone: each live assignment's
+     * {@link SprintItem#stampStartPoints committed points} is cleared, since starting again will
+     * re-stamp it from the (possibly since-changed) planning estimate. <b>Assignments themselves
+     * and Backlog item status are left alone</b> — cancelling is a statement about the Sprint, not
+     * about the work assigned to it, exactly like closing.
+     */
+    @Transactional
+    public SprintResponse cancelStart(Long projectId, Long sprintId) {
+        requireProject(projectId);
+        Sprint sprint = requireSprintOfProject(projectId, sprintId);
+        if (sprint.getStatus() != SprintStatus.ACTIVE) {
+            throw new InvalidSprintException("실행 중인 Sprint만 시작을 취소할 수 있습니다.");
+        }
+
+        List<SprintItem> live = liveAssignmentsOf(projectId, sprintId);
+        for (SprintItem assignment : live) {
+            assignment.stampStartPoints(null);
+        }
+        if (!live.isEmpty()) {
+            sprintItemRepository.saveAll(live);
+        }
+
+        sprint.cancelStart();
+        sprintRepository.save(sprint);
+        return build(projectId);
+    }
+
+    /**
      * Closes a Sprint, recording each assignment's outcome, and optionally re-assigns the
      * incomplete ones.
      *

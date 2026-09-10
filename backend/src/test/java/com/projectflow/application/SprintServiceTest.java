@@ -149,6 +149,78 @@ class SprintServiceTest {
         }
 
         @Test
+        @DisplayName("시작 취소: ACTIVE → PLANNED로 되돌리고, 배정과 Backlog 상태는 건드리지 않는다")
+        void cancelStartUndoesTheStart() {
+            Long sprintId = createSprint("Sprint 1");
+            Long story = addStory("이야기", 5);
+            service.assign(PROJECT_ID, sprintId, new SprintAssignRequest(story));
+            service.start(PROJECT_ID, sprintId);
+            assertThat(item(sprintId, story).pointsAtStart()).isEqualTo(5);
+
+            service.move(PROJECT_ID, sprintId, story,
+                    new BoardMoveRequest(BacklogStatus.IN_PROGRESS, null, null, null));
+
+            service.cancelStart(PROJECT_ID, sprintId);
+
+            assertThat(detail(sprintId).status()).isEqualTo(SprintStatus.PLANNED);
+            // 다시 시작할 때 다시 찍히도록 각인값은 지운다.
+            assertThat(item(sprintId, story).pointsAtStart()).isNull();
+            // 배정은 그대로 남는다 — 다시 계획하려면 배정이 있어야 한다.
+            assertThat(assignments).singleElement()
+                    .matches(SprintItem::active);
+            assertThat(item(sprintId, story).backlogItemId()).isEqualTo(story);
+            // 취소는 Sprint에 대한 진술이지 일에 대한 진술이 아니다.
+            assertThat(byTitle("이야기").getStatus()).isEqualTo(BacklogStatus.IN_PROGRESS);
+        }
+
+        @Test
+        @DisplayName("취소 후 다시 시작할 수 있고, 각인값이 다시 찍힌다")
+        void canStartAgainAfterCancel() {
+            Long sprintId = createSprint("Sprint 1");
+            Long story = addStory("이야기", 5);
+            service.assign(PROJECT_ID, sprintId, new SprintAssignRequest(story));
+            service.start(PROJECT_ID, sprintId);
+            service.cancelStart(PROJECT_ID, sprintId);
+
+            service.start(PROJECT_ID, sprintId);
+
+            assertThat(detail(sprintId).status()).isEqualTo(SprintStatus.ACTIVE);
+            assertThat(item(sprintId, story).pointsAtStart()).isEqualTo(5);
+        }
+
+        @Test
+        @DisplayName("계획·종료 상태에서는 시작을 취소할 수 없다")
+        void cancelStartOnlyFromActive() {
+            Long planned = createSprint("Sprint 1");
+            assertThatThrownBy(() -> service.cancelStart(PROJECT_ID, planned))
+                    .isInstanceOf(InvalidSprintException.class)
+                    .hasMessageContaining("실행 중인 Sprint만");
+
+            service.start(PROJECT_ID, planned);
+            service.close(PROJECT_ID, planned, null);
+            assertThatThrownBy(() -> service.cancelStart(PROJECT_ID, planned))
+                    .isInstanceOf(InvalidSprintException.class)
+                    .hasMessageContaining("실행 중인 Sprint만");
+        }
+
+        @Test
+        @DisplayName("취소하면 단일 활성 슬롯이 풀려 다른 Sprint를 시작할 수 있다")
+        void cancelStartFreesTheActiveSlot() {
+            Long first = createSprint("Sprint 1");
+            Long second = createSprint("Sprint 2");
+            service.start(PROJECT_ID, first);
+
+            assertThatThrownBy(() -> service.start(PROJECT_ID, second))
+                    .isInstanceOf(InvalidSprintException.class);
+
+            service.cancelStart(PROJECT_ID, first);
+            service.start(PROJECT_ID, second);
+
+            assertThat(detail(first).status()).isEqualTo(SprintStatus.PLANNED);
+            assertThat(detail(second).status()).isEqualTo(SprintStatus.ACTIVE);
+        }
+
+        @Test
         @DisplayName("종료된 Sprint는 수정할 수 없다")
         void closedSprintIsImmutable() {
             Long sprintId = createSprint("Sprint 1");

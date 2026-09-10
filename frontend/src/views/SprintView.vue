@@ -2,12 +2,13 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { Sprint } from '../api/sprintApi'
+import ModalDialog from '../components/ModalDialog.vue'
 import SprintForm from '../features/sprint/SprintForm.vue'
 import { useSprints } from '../features/sprint/useSprints'
 import { useProjects } from '../features/projects/useProjects'
 import { BACKLOG_TYPE_LABELS } from '../shared/backlog'
 import { localToday } from '../shared/delay'
-import { remainingLabel, SPRINT_STATUS_LABELS, sprintPeriod } from '../shared/sprint'
+import { cancelStartWarning, remainingLabel, SPRINT_STATUS_LABELS, sprintPeriod } from '../shared/sprint'
 import { ensureSelection, selectedProjectId } from '../stores/projectSelection'
 
 const { projects, error: projectsError, ensureLoaded: ensureProjects } = useProjects()
@@ -24,6 +25,7 @@ const {
   update,
   remove,
   start,
+  cancelStart,
   close,
   assign,
 } = useSprints()
@@ -34,6 +36,12 @@ const formOpen = ref(false)
 /** 종료 대화상자: 이월 대상을 고르는 자리. 종료는 되돌릴 수 없으니 한 번 묻는다. */
 const closing = ref<Sprint | null>(null)
 const carryOverTo = ref<number | null>(null)
+
+/**
+ * 시작 취소 확인 대화상자. 되돌릴 수는 있는 조작(다시 시작할 수 있다)이지만, 각인된 Story Point가
+ * 지워지고 완료 표시가 Sprint 기록에서 사라지는 부수효과는 눈에 보이지 않으므로 한 번 확인한다.
+ */
+const cancellingStart = ref<Sprint | null>(null)
 
 const assignPick = ref<number | null>(null)
 
@@ -98,6 +106,14 @@ async function confirmClose() {
   closing.value = null
   if (projectId === null || !sprint) return
   await close(projectId, sprint.id, carryOverTo.value)
+}
+
+async function confirmCancelStart() {
+  const projectId = selectedProjectId.value
+  const sprint = cancellingStart.value
+  if (projectId === null || !sprint) return
+  const ok = await cancelStart(projectId, sprint.id)
+  if (ok) cancellingStart.value = null
 }
 </script>
 
@@ -201,6 +217,12 @@ async function confirmClose() {
                 @click="openClose(selected)"
               >종료</button>
               <button
+                v-if="selected.status === 'ACTIVE'"
+                type="button"
+                class="ghost"
+                @click="cancellingStart = selected"
+              >시작 취소</button>
+              <button
                 v-if="selected.status !== 'CLOSED'"
                 type="button"
                 class="ghost"
@@ -270,6 +292,21 @@ async function confirmClose() {
         </div>
       </div>
     </div>
+
+    <ModalDialog
+      v-if="cancellingStart"
+      title="Sprint 시작 취소"
+      :error="error"
+      @close="cancellingStart = null"
+    >
+      <p class="subject">{{ cancellingStart.name }}</p>
+      <p class="explain">{{ cancelStartWarning(cancellingStart.doneItems) }}</p>
+      <p class="explain muted">배정된 항목은 그대로 남고, 상태만 계획으로 돌아갑니다.</p>
+      <div class="dialog-actions">
+        <button type="button" @click="confirmCancelStart">시작 취소</button>
+        <button type="button" class="ghost" @click="cancellingStart = null">닫기</button>
+      </div>
+    </ModalDialog>
   </section>
 </template>
 
@@ -508,19 +545,22 @@ button:disabled {
   font-size: 0.95rem;
 }
 
-.dialog-body .subject {
+.dialog-body .subject,
+.subject {
   margin: 0 0 0.4rem;
   font-weight: 600;
   font-size: 0.9rem;
 }
 
-.dialog-body .explain {
+.dialog-body .explain,
+.explain {
   margin: 0 0 0.6rem;
   font-size: 0.84rem;
   color: var(--text-muted);
 }
 
-.dialog-body .explain.muted {
+.dialog-body .explain.muted,
+.explain.muted {
   color: var(--text-faint);
 }
 

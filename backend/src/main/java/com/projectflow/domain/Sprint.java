@@ -102,6 +102,16 @@ public class Sprint {
         this.status = SprintStatus.ACTIVE;
     }
 
+    /**
+     * Undoes {@link #start()}: back to {@link SprintStatus#PLANNED}. This is a correction, not a
+     * close — it carries no {@code closedAt} and settles nothing. Callers (SprintService) are
+     * responsible for un-stamping whatever the start stamped (assignments' committed points);
+     * this method only resets the Sprint's own state.
+     */
+    public void cancelStart() {
+        this.status = SprintStatus.PLANNED;
+    }
+
     public void close() {
         this.status = SprintStatus.CLOSED;
         this.closedAt = LocalDateTime.now();

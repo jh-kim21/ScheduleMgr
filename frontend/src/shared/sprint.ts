@@ -45,3 +45,21 @@ export function remainingLabel(endDate: string, today: string): string {
   if (left === 0) return '오늘 종료'
   return `종료일 ${-left}일 경과`
 }
+
+/**
+ * The 시작 취소 confirmation dialog's warning line.
+ *
+ * Undoing an ACTIVE Sprint always erases the imprinted Story Points, but that fact alone is not
+ * what worries a user — what they want to know is whether their completed work is affected. So the
+ * wording changes with whether anything was marked 완료: with none, a light confirmation; with
+ * some, the exact count plus the reassurance that the entries' own status does not change (only the
+ * Sprint's record of having completed them does).
+ */
+export function cancelStartWarning(doneItems: number): string {
+  const points = '각인된 Story Point가 지워집니다. 다시 시작하면 그 시점 값으로 다시 찍힙니다.'
+  if (doneItems <= 0) return points
+  return (
+    `이 Sprint에서 완료 표시한 ${doneItems}건의 Sprint 기록이 사라집니다. ` +
+    `항목 자체의 완료 상태는 그대로 남습니다. ${points}`
+  )
+}

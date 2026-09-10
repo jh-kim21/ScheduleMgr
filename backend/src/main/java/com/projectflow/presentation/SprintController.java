@@ -64,6 +64,15 @@ public class SprintController {
         return sprintService.start(projectId, sprintId);
     }
 
+    /**
+     * 시작 취소: {@code ACTIVE → PLANNED}. 잘못 시작한 Sprint를 되돌린다 — 종료는 불변 이력이라
+     * 대신 쓰면 가짜 실적이 속도 추세에 영구히 남는다.
+     */
+    @PostMapping("/{sprintId}/cancel-start")
+    public SprintResponse cancelStart(@PathVariable Long projectId, @PathVariable Long sprintId) {
+        return sprintService.cancelStart(projectId, sprintId);
+    }
+
     /** 종료. 본문의 {@code carryOverToSprintId}로 미완료 항목을 곧바로 재배정할 수 있다. */
     @PostMapping("/{sprintId}/close")
     public SprintResponse close(@PathVariable Long projectId,

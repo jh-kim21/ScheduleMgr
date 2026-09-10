@@ -89,6 +89,9 @@ export const sprintApi = {
     http.delete<SprintList>(`/projects/${projectId}/sprints/${sprintId}`),
   start: (projectId: number, sprintId: number) =>
     http.post<SprintList>(`/projects/${projectId}/sprints/${sprintId}/start`, {}),
+  /** Undo, not stop: reverts an ACTIVE Sprint to PLANNED and clears the imprinted Story Points. */
+  cancelStart: (projectId: number, sprintId: number) =>
+    http.post<SprintList>(`/projects/${projectId}/sprints/${sprintId}/cancel-start`, {}),
   close: (projectId: number, sprintId: number, carryOverToSprintId: number | null) =>
     http.post<SprintList>(`/projects/${projectId}/sprints/${sprintId}/close`, {
       carryOverToSprintId,

@@ -108,6 +108,13 @@ export function useSprints() {
   const start = (projectId: number, sprintId: number) =>
     mutate(projectId, () => sprintApi.start(projectId, sprintId), 'Sprint를 시작하지 못했습니다.')
 
+  const cancelStart = (projectId: number, sprintId: number) =>
+    mutate(
+      projectId,
+      () => sprintApi.cancelStart(projectId, sprintId),
+      'Sprint 시작을 취소하지 못했습니다.',
+    )
+
   const close = (projectId: number, sprintId: number, carryOverToSprintId: number | null) =>
     mutate(
       projectId,
@@ -170,6 +177,7 @@ export function useSprints() {
     update,
     remove,
     start,
+    cancelStart,
     close,
     assign,
     unassign,

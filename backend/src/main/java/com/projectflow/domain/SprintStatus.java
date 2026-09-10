@@ -1,8 +1,13 @@
 package com.projectflow.domain;
 
 /**
- * Sprint lifecycle. Moves forward only: a closed Sprint's results are history, and re-opening one
- * would make "이 Sprint에서 무엇이 완료됐나"에 두 개의 답이 생긴다.
+ * Sprint lifecycle. <b>{@code CLOSED} never moves again</b> — its results are history, and
+ * re-opening one would make "이 Sprint에서 무엇이 완료됐나"에 두 개의 답이 생긴다.
+ *
+ * <p>{@code ACTIVE} may move backward to {@code PLANNED}, though — starting is often a mis-click
+ * (wrong Sprint, too early), and forcing a close to fix it would stamp a fake outcome onto every
+ * assignment and leave it in the velocity trend forever. Undoing a start is a statement about the
+ * Sprint only: it does not touch assignments or Backlog item status, same as closing.
  */
 public enum SprintStatus {
 
