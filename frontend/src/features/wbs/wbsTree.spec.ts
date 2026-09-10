@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { WbsNode } from '../../api/wbsApi'
-import { containsDescendant, flattenTree, resolveDropPosition } from './wbsTree'
+import { containsDescendant, findParent, flattenTree, resolveDropPosition } from './wbsTree'
 
 function node(id: number, code: string, level: number, children: WbsNode[] = []): WbsNode {
   return {
@@ -104,5 +104,35 @@ describe('containsDescendant', () => {
   it('자기 자신이나 무관한 항목은 하위가 아니다', () => {
     expect(containsDescendant(parent, 1)).toBe(false)
     expect(containsDescendant(parent, 99)).toBe(false)
+  })
+})
+
+describe('findParent', () => {
+  // id=1(최상위) 아래 id=2(자식, 아래에 손자 id=3)와 id=5(자식, 형제) — 손자의 부모가
+  // 최상위(1)가 아니라 자식(2)이어야 하고, id=5와 헷갈리지 않아야 한다.
+  const tree = [
+    node(1, '1', 1, [node(2, '1.1', 2, [node(3, '1.1.1', 3)]), node(5, '1.2', 2)]),
+    node(4, '2', 1),
+  ]
+
+  it('자식의 부모를 찾는다', () => {
+    expect(findParent(tree, 2)?.id).toBe(1)
+  })
+
+  it('손자의 부모는 자식이지 최상위가 아니다', () => {
+    expect(findParent(tree, 3)?.id).toBe(2)
+  })
+
+  it('형제가 여럿이어도 엉뚱한 형제를 부모로 찾지 않는다', () => {
+    expect(findParent(tree, 5)?.id).toBe(1)
+  })
+
+  it('최상위 노드는 부모가 없다', () => {
+    expect(findParent(tree, 1)).toBeNull()
+    expect(findParent(tree, 4)).toBeNull()
+  })
+
+  it('트리에 없는 id는 null이다', () => {
+    expect(findParent(tree, 99)).toBeNull()
   })
 })

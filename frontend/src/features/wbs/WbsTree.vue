@@ -14,6 +14,7 @@ import {
 } from '../../shared/progress'
 import {
   containsDescendant,
+  findParent,
   flattenTree,
   resolveDropPosition,
   type DropPlacement,
@@ -86,12 +87,155 @@ function ancestorIds(nodes: WbsNode[], targetId: number): number[] {
 const dragging = ref<WbsNode | null>(null)
 const dropTarget = ref<{ id: number | 'root'; placement: DropPlacement } | null>(null)
 
+/**
+ * Persistent row selection — unlike `highlighted` above, this does not fade on its own. It stays
+ * until the user picks another row, or until the node is deleted and so is gone from the tree
+ * entirely. Moving it under another parent keeps the selection: the check below only asks whether
+ * the id is still somewhere in the tree, and a moved row is still the row the user picked.
+ * Kept as its own primitive (name + type) because a later feature (keyboard navigation) reuses it.
+ */
+const selectedId = ref<number | null>(null)
+
+function selectRow(id: number) {
+  selectedId.value = id
+}
+
+function nodeExists(nodes: WbsNode[], id: number): boolean {
+  for (const node of nodes) {
+    if (node.id === id) return true
+    if (nodeExists(node.children, id)) return true
+  }
+  return false
+}
+
+watch(
+  () => props.tree,
+  (tree) => {
+    if (selectedId.value !== null && !nodeExists(tree, selectedId.value)) {
+      selectedId.value = null
+    }
+  },
+)
+
+/**
+ * Keyboard navigation lands on `selectedId`, which may be off-screen (a long tree, a row near
+ * the container's edge) — scroll it into view without stealing the smooth/centered treatment
+ * `focusId` uses above, since every arrow-key press would make that feel sluggish.
+ */
+watch(selectedId, async (id) => {
+  if (id === null) return
+  await nextTick()
+  const row = body.value?.querySelector(`[data-row-id="${id}"]`)
+  row?.scrollIntoView({ block: 'nearest' })
+})
+
+/**
+ * Pulls a hidden selection up to its nearest visible ancestor and returns it.
+ *
+ * Collapsing an ancestor with the mouse leaves `selectedId` pointing at a row that is no longer
+ * rendered. Without this, each arrow key improvised its own answer (Up/Down jumped to the first
+ * row on `findIndex` returning -1, Left/Right did nothing at all). Following the selection up to
+ * the point that was collapsed keeps all four keys working from the same visible row.
+ */
+function resolveVisibleSelection(): number | null {
+  if (selectedId.value === null) return null
+  let current: number | null = selectedId.value
+  while (current !== null && !rows.value.some((row) => row.node.id === current)) {
+    current = findParent(props.tree, current)?.id ?? null
+  }
+  selectedId.value = current
+  return current
+}
+
+/** Moves the selection to the next/previous visible row; clamps at the first/last row. */
+function moveSelection(delta: number) {
+  const list = rows.value
+  if (list.length === 0) return
+  if (selectedId.value === null) {
+    selectRow(list[0].node.id)
+    return
+  }
+  const currentIndex = list.findIndex((row) => row.node.id === selectedId.value)
+  if (currentIndex === -1) {
+    selectRow(list[0].node.id)
+    return
+  }
+  const nextIndex = currentIndex + delta
+  if (nextIndex < 0 || nextIndex >= list.length) return
+  selectRow(list[nextIndex].node.id)
+}
+
+/** → : expand a collapsed parent in place, or step into an already-expanded one's first child. */
+function expandOrDescend() {
+  const id = selectedId.value
+  if (id === null) return
+  const row = rows.value.find((r) => r.node.id === id)
+  if (!row || row.node.children.length === 0) return
+  if (collapsed.value.has(id)) {
+    collapsed.value.delete(id)
+  } else {
+    selectRow(row.node.children[0].id)
+  }
+}
+
+/** ← : collapse an expanded parent in place, or step out to its parent. */
+function collapseOrAscend() {
+  const id = selectedId.value
+  if (id === null) return
+  const row = rows.value.find((r) => r.node.id === id)
+  if (!row) return
+  if (row.node.children.length > 0 && !collapsed.value.has(id)) {
+    collapsed.value.add(id)
+    return
+  }
+  const parent = findParent(props.tree, id)
+  if (parent) selectRow(parent.id)
+}
+
+const ARROW_KEYS = ['ArrowDown', 'ArrowUp', 'ArrowRight', 'ArrowLeft']
+
+/**
+ * One listener on the tbody rather than one per row (same reasoning as the Gantt tooltip: a
+ * per-row listener would still need to know about neighbouring rows for Up/Down anyway).
+ */
+function onKeydown(event: KeyboardEvent) {
+  if (!ARROW_KEYS.includes(event.key)) return
+  event.preventDefault()
+  resolveVisibleSelection()
+  switch (event.key) {
+    case 'ArrowDown':
+      moveSelection(1)
+      break
+    case 'ArrowUp':
+      moveSelection(-1)
+      break
+    case 'ArrowRight':
+      expandOrDescend()
+      break
+    case 'ArrowLeft':
+      collapseOrAscend()
+      break
+  }
+}
+
 function toggle(node: WbsNode) {
   if (collapsed.value.has(node.id)) {
     collapsed.value.delete(node.id)
   } else {
     collapsed.value.add(node.id)
   }
+}
+
+/**
+ * Double-clicking a row opens its edit dialog — but not when the double-click landed on a
+ * button/link inside the row (toggle, 하위/수정/삭제, Backlog link). Those already have their
+ * own single-click behaviour; double-clicking one bubbles two clicks up to the row and would
+ * otherwise open edit *in addition to* whatever the control itself just did (e.g. toggling the
+ * collapse arrow twice quickly reopened the edit dialog on top of the restored collapse state).
+ */
+function onRowDblClick(event: MouseEvent, node: WbsNode) {
+  if ((event.target as HTMLElement).closest('button, a')) return
+  emit('edit', node)
 }
 
 function onDragStart(event: DragEvent, node: WbsNode) {
@@ -200,6 +344,7 @@ function rowClass(row: WbsRow) {
     'drop-after': target?.id === row.node.id && target.placement === 'after',
     'drop-inside': target?.id === row.node.id && target.placement === 'inside',
     focused: highlighted.value === row.node.id,
+    selected: selectedId.value === row.node.id,
   }
 }
 </script>
@@ -224,13 +369,16 @@ function rowClass(row: WbsRow) {
             <th></th>
           </tr>
         </thead>
-        <tbody ref="body">
+        <tbody ref="body" tabindex="0" @keydown="onKeydown">
           <tr
             v-for="row in rows"
             :key="row.node.id"
             :data-row-id="row.node.id"
             :class="rowClass(row)"
+            :aria-selected="selectedId === row.node.id"
             draggable="true"
+            @click="selectRow(row.node.id)"
+            @dblclick="onRowDblClick($event, row.node)"
             @dragstart="onDragStart($event, row.node)"
             @dragend="onDragEnd"
             @dragover="onDragOver($event, row)"
@@ -425,6 +573,32 @@ tbody tr.focused > td {
   tbody tr.focused > td {
     transition: none;
   }
+}
+
+/*
+ * 클릭으로 고른 행 — focused와 달리 사라지지 않고 다른 행을 고르거나 트리를 벗어날 때까지
+ * 유지된다. focused와 같은 배경(--accent-weak)을 쓰면 두 상태가 구분되지 않으므로
+ * --accent-container를 쓰고, 왼쪽에 굵은 강조선을 더해 옅은 배경만으로는 놓치기 쉬운
+ * "선택됨"을 분명히 한다.
+ */
+tbody tr.selected > td {
+  background: var(--accent-container);
+  color: var(--accent-container-fg);
+}
+
+tbody tr.selected > td:first-child {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+/* Keyboard focus ring on the row container, not per-row — the selected row's own highlight
+   already marks position, so this only needs to confirm "this table has keyboard focus". */
+tbody:focus {
+  outline: none;
+}
+
+tbody:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .code {

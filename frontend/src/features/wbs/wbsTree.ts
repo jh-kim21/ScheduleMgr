@@ -55,3 +55,13 @@ export function containsDescendant(node: WbsNode, candidateId: number): boolean 
     (child) => child.id === candidateId || containsDescendant(child, candidateId),
   )
 }
+
+/** The immediate parent of `targetId`, or `null` for a top-level node (or one not in the tree). */
+export function findParent(nodes: WbsNode[], targetId: number): WbsNode | null {
+  for (const node of nodes) {
+    if (node.children.some((child) => child.id === targetId)) return node
+    const found = findParent(node.children, targetId)
+    if (found) return found
+  }
+  return null
+}
