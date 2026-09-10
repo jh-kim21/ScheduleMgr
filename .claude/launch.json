@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "backend",
+      "runtimeExecutable": "D:\\Git\\ScheduleMgr\\backend\\gradlew.bat",
+      "runtimeArgs": ["-p", "D:\\Git\\ScheduleMgr\\backend", "bootRun"],
+      "port": 8080
+    },
+    {
+      "name": "frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "frontend"],
+      "port": 5173
+    },
+    {
+      "name": "manual-preview",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8877", "--directory", "설계서"],
+      "port": 8877
+    }
+  ]
+}
