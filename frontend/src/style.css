@@ -45,14 +45,14 @@
   /* 메뉴·다이얼로그처럼 표면 위에 떠 있는 면. 본문 배경과 구분되어야 한다. */
   --surface-raised: #fff;
   /* 강조색을 옅게 깐 버튼(filled tonal). 주 동작이지만 페이지를 지배하지 않을 때 쓴다. */
-  --accent-container: #e3edfd;
-  --accent-container-fg: #10457a;
+  --accent-container: #e0e7ff;
+  --accent-container-fg: #4338ca;
 
   /* 강조 (기본 동작, 활성 링크, 주요 버튼) */
-  --accent: #1f6feb;
+  --accent: #6366f1;
   --accent-fg: #fff;
-  --accent-weak: #eaf2ff;
-  --accent-border: #c9d6ea;
+  --accent-weak: #eef2ff;
+  --accent-border: #c7d2fe;
 
   /* 비활성 컨트롤 — 배경만 옅게 하면 글자가 묻히므로 글자색도 함께 정의한다. */
   --disabled-bg: #eceff4;
@@ -158,13 +158,13 @@
   --elevation-2: 0 1px 2px rgb(0 0 0 / 45%), 0 2px 6px 2px rgb(0 0 0 / 32%);
   --elevation-3: 0 1px 3px rgb(0 0 0 / 50%), 0 4px 8px 3px rgb(0 0 0 / 36%);
   --surface-raised: #242830;
-  --accent-container: #1d3252;
-  --accent-container-fg: #cfe0ff;
+  --accent-container: #312e81;
+  --accent-container-fg: #c7d2fe;
 
-  --accent: #58a0ff;
-  --accent-fg: #0b1220;
-  --accent-weak: #16273d;
-  --accent-border: #2f4a70;
+  --accent: #818cf8;
+  --accent-fg: #1e1b4b;
+  --accent-weak: #211f4d;
+  --accent-border: #4338ca;
 
   --disabled-bg: #262b33;
   --disabled-fg: #6b737e;
@@ -189,13 +189,13 @@
   --badge-neutral-bg: #262a31;
   --badge-neutral-fg: #b3bac4;
 
-  --violation: #a687e8;
+  --violation: #ac65e1;
   --violation-weak: #241d33;
   --violation-text: #c1abf0;
 
   --raci-responsible: #58a0ff;
   --raci-accountable: #f08a53;
-  --raci-consulted: #a687e8;
+  --raci-consulted: #ac65e1;
   --raci-informed: #8b939e;
 
   --raid-risk: #f08a53;
