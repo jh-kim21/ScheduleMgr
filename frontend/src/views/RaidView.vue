@@ -7,7 +7,12 @@ import RaidList from '../features/raid/RaidList.vue'
 import { useRaid } from '../features/raid/useRaid'
 import { useProjects } from '../features/projects/useProjects'
 import { ensureSelection, selectedProjectId } from '../stores/projectSelection'
-import { RAID_TYPE_LABELS, RAID_TYPE_ORDER } from '../shared/raid'
+import {
+  RAID_TYPE_DESCRIPTIONS,
+  RAID_TYPE_ENGLISH,
+  RAID_TYPE_LABELS,
+  RAID_TYPE_ORDER,
+} from '../shared/raid'
 import {
   isFiltered,
   SORT_LABELS,
@@ -128,7 +133,22 @@ async function handleRemove(item: RaidItem) {
 
 <template>
   <section>
-    <h1>RAID</h1>
+    <h1>
+      RAID
+      <span class="acronym">{{ RAID_TYPE_ORDER.map((type) => RAID_TYPE_ENGLISH[type]).join(' · ') }}</span>
+    </h1>
+    <p class="lede">프로젝트를 흔들 수 있는 것들을 한 곳에 기록하고 추적합니다</p>
+
+    <!-- 네 글자 범례. 문구는 shared/raid.ts의 상수를 그대로 렌더한다 — 두 벌로 적으면 한쪽만
+         고쳐진다. -->
+    <p class="legend">
+      <span v-for="type in RAID_TYPE_ORDER" :key="type" class="legend-item">
+        <strong>{{ RAID_TYPE_LABELS[type] }}</strong> {{ RAID_TYPE_DESCRIPTIONS[type] }}
+      </span>
+      <br />
+      노출도는 확률 × 영향으로 자동 계산합니다(저장하지 않습니다). 기한이 지난 항목은 표시되지만,
+      종결된 항목은 초과로 보지 않습니다.
+    </p>
 
     <p v-if="projectsError" class="error">{{ projectsError }}</p>
 
@@ -251,7 +271,38 @@ async function handleRemove(item: RaidItem) {
 <style scoped>
 h1 {
   font-size: 1.4rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+/* 제목 옆에 약자가 무엇의 머리글자인지 풀어 적는다. 제목과 경쟁하지 않도록 작고 옅게 둔다. */
+.acronym {
+  margin-left: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: normal;
+  color: var(--text-faint);
+}
+
+.lede {
+  font-size: 0.85rem;
+  font-weight: normal;
+  color: var(--text-muted);
+  margin: 0 0 0.75rem;
+}
+
+/* 범례는 화면의 주된 내용(로그)이 아니므로 접지 않되 시각적으로 물러나 있는다. RaciView와 같은
+   모양·같은 클래스 이름을 쓴다. */
+.legend {
+  font-size: 0.78rem;
+  line-height: 1.6;
+  color: var(--text-faint);
+  background: var(--surface-sunken);
+  border-radius: 6px;
+  padding: 0.5rem 0.7rem;
+  margin: 0 0 1rem;
+}
+
+.legend-item + .legend-item::before {
+  content: ' · ';
 }
 
 .toolbar {

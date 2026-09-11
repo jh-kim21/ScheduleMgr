@@ -7,7 +7,16 @@ import RaciMatrix from '../features/raci/RaciMatrix.vue'
 import { useRaci } from '../features/raci/useRaci'
 import { useProjects } from '../features/projects/useProjects'
 import { ensureSelection, selectedProjectId } from '../stores/projectSelection'
-import { issueSummary, type RaciIssueType, type RaciRole } from '../shared/raci'
+import {
+  issueSummary,
+  RACI_DESCRIPTIONS,
+  RACI_ENGLISH,
+  RACI_LABELS,
+  RACI_LETTERS,
+  RACI_ORDER,
+  type RaciIssueType,
+  type RaciRole,
+} from '../shared/raci'
 
 const { projects, error: projectsError, ensureLoaded: ensureProjects } = useProjects()
 const {
@@ -86,7 +95,22 @@ function handleRemoveMember(memberId: number) {
 
 <template>
   <section>
-    <h1>RACI</h1>
+    <h1>
+      RACI
+      <span class="acronym">{{ RACI_ORDER.map((role) => RACI_ENGLISH[role]).join(' · ') }}</span>
+    </h1>
+    <p class="lede">업무마다 누가 실행하고 누가 책임지는지 한 표에 적습니다</p>
+
+    <!-- 네 글자 범례. 문구는 shared/raci.ts의 상수를 그대로 렌더한다 — 두 벌로 적으면 한쪽만
+         고쳐진다. -->
+    <p class="legend">
+      <span v-for="role in RACI_ORDER" :key="role" class="legend-item">
+        <strong>{{ RACI_LETTERS[role] }}</strong> {{ RACI_LABELS[role] }} — {{ RACI_DESCRIPTIONS[role] }}
+      </span>
+      <br />
+      한 사람이 여러 글자를 겸할 수 있습니다. 상위 업무의 글자는 하위로 상속되고, 하위가 같은 역할을
+      지정하면 그것이 우선합니다(상위 글자는 취소선). 규칙 위반은 저장을 막지 않고 표시만 합니다.
+    </p>
 
     <p v-if="projectsError" class="error">{{ projectsError }}</p>
 
@@ -157,7 +181,38 @@ function handleRemoveMember(memberId: number) {
 <style scoped>
 h1 {
   font-size: 1.4rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+/* 제목 옆에 약자가 무엇의 머리글자인지 풀어 적는다. 제목과 경쟁하지 않도록 작고 옅게 둔다. */
+.acronym {
+  margin-left: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: normal;
+  color: var(--text-faint);
+}
+
+.lede {
+  font-size: 0.85rem;
+  font-weight: normal;
+  color: var(--text-muted);
+  margin: 0 0 0.75rem;
+}
+
+/* 범례는 화면의 주된 내용(매트릭스)이 아니므로 접지 않되 시각적으로 물러나 있는다. RaidView와 같은
+   모양·같은 클래스 이름을 쓴다. */
+.legend {
+  font-size: 0.78rem;
+  line-height: 1.6;
+  color: var(--text-faint);
+  background: var(--surface-sunken);
+  border-radius: 6px;
+  padding: 0.5rem 0.7rem;
+  margin: 0 0 1rem;
+}
+
+.legend-item + .legend-item::before {
+  content: ' · ';
 }
 
 .toolbar {

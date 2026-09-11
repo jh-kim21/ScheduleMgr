@@ -35,6 +35,18 @@ export const RACI_DESCRIPTIONS: Record<RaciRole, string> = {
   INFORMED: '결과를 통보받는 사람.',
 }
 
+/**
+ * 약자가 무엇의 머리글자인지. 화면이 제목 옆에 풀어 적는 데 쓴다.
+ * 단수로 적는다 — "그 글자가 무슨 단어인가"에 대한 답이라 항목 하나를 가리킬 때도 그대로 쓸 수 있다.
+ * 약자를 통째로 풀 때는 흔히 복수(Responsibilities 등)를 쓰지만, 한 벌만 두는 이상 단수가 재사용에 맞다.
+ */
+export const RACI_ENGLISH: Record<RaciRole, string> = {
+  RESPONSIBLE: 'Responsible',
+  ACCOUNTABLE: 'Accountable',
+  CONSULTED: 'Consulted',
+  INFORMED: 'Informed',
+}
+
 /** Sorts a cell's letters into RACI order regardless of the order they were assigned. */
 export function sortRoles(roles: RaciRole[]): RaciRole[] {
   return roles.slice().sort((a, b) => RACI_ORDER.indexOf(a) - RACI_ORDER.indexOf(b))

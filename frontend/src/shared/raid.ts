@@ -23,6 +23,18 @@ export const RAID_TYPE_DESCRIPTIONS: Record<RaidType, string> = {
   DEPENDENCY: '프로젝트 밖에서 받아야 하는 것. WBS의 선후행 관계와는 다릅니다.',
 }
 
+/**
+ * 약자가 무엇의 머리글자인지. 화면이 제목 옆에 풀어 적는 데 쓴다.
+ * 단수로 적는다 — "그 글자가 무슨 단어인가"에 대한 답이라 항목 하나를 가리킬 때도 그대로 쓸 수 있다.
+ * 약자를 통째로 풀 때는 흔히 복수(Risks 등)를 쓰지만, 한 벌만 두는 이상 단수가 재사용에 맞다.
+ */
+export const RAID_TYPE_ENGLISH: Record<RaidType, string> = {
+  RISK: 'Risk',
+  ASSUMPTION: 'Assumption',
+  ISSUE: 'Issue',
+  DEPENDENCY: 'Dependency',
+}
+
 export const RAID_STATUS_ORDER: RaidStatus[] = ['OPEN', 'IN_PROGRESS', 'CLOSED']
 
 export const RAID_STATUS_LABELS: Record<RaidStatus, string> = {
