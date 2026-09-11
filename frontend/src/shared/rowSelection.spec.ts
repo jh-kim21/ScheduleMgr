@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 // eslint-disable-next-line import/no-unresolved
 import {
   isDoubleClickGuarded,
+  isKeyboardNavGuarded,
   nextSelectionId,
   reconcileSelection,
 } from './rowSelection'
@@ -111,5 +112,49 @@ describe('isDoubleClickGuarded — 계약 4: button/a 안에서는 더블클릭�
 
   it('행(TR) 자체를 더블클릭해도(빈 셀) 편집을 연다', () => {
     expect(isDoubleClickGuarded(['TD', 'TR'])).toBe(false)
+  })
+})
+
+/**
+ * isKeyboardNavGuarded — 방향키(Up/Down) 행 이동을 막아야 하는 포커스 대상인지 판정한다.
+ *
+ * isDoubleClickGuarded와 목적이 다르다: 더블클릭 가드는 BUTTON/A처럼 "자기 동작이 있어 이벤트가
+ * 충돌하는" 요소를 막고, 방향키 가드는 INPUT/SELECT/TEXTAREA처럼 "그 키 자체가 입력 조작에
+ * 쓰이는" 요소를 막는다. 버튼 위에서 방향키를 누르는 것은 아무 것과도 충돌하지 않으므로
+ * BUTTON은 여기서 false다 — isDoubleClickGuarded와 반대되는 결과를 명시적으로 고정해 둔다.
+ */
+describe('isKeyboardNavGuarded — 방향키로 행을 이동시키면 안 되는 입력 요소 판정', () => {
+  it('INPUT에 포커스가 있으면 방향키 행 이동을 막는다 — 커서 이동/값 변경과 충돌한다', () => {
+    expect(isKeyboardNavGuarded('INPUT')).toBe(true)
+  })
+
+  it('SELECT에 포커스가 있으면 막는다 — 방향키가 옵션 변경에 쓰인다', () => {
+    expect(isKeyboardNavGuarded('SELECT')).toBe(true)
+  })
+
+  it('TEXTAREA에 포커스가 있으면 막는다 — 여러 줄 입력에서 방향키가 커서 이동에 쓰인다', () => {
+    expect(isKeyboardNavGuarded('TEXTAREA')).toBe(true)
+  })
+
+  it('대소문자를 가리지 않는다 — 소문자 태그명도 같은 요소로 취급한다', () => {
+    expect(isKeyboardNavGuarded('input')).toBe(true)
+  })
+
+  it('BUTTON은 막지 않는다 — 더블클릭 가드(isDoubleClickGuarded)와 달리 방향키는 버튼의 클릭 동작과 충돌하지 않는다', () => {
+    expect(isKeyboardNavGuarded('BUTTON')).toBe(false)
+  })
+
+  it('A(링크)는 막지 않는다 — 방향키가 링크 이동을 트리거하지 않는다', () => {
+    expect(isKeyboardNavGuarded('A')).toBe(false)
+  })
+
+  it('TD/TR/SPAN처럼 입력이 아닌 일반 요소는 막지 않는다', () => {
+    expect(isKeyboardNavGuarded('TD')).toBe(false)
+    expect(isKeyboardNavGuarded('TR')).toBe(false)
+    expect(isKeyboardNavGuarded('SPAN')).toBe(false)
+  })
+
+  it('빈 문자열에도 안전하게 false를 반환한다 — target이 없는 합성 이벤트를 방어한다', () => {
+    expect(isKeyboardNavGuarded('')).toBe(false)
   })
 })

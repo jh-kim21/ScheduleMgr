@@ -4,6 +4,7 @@ import com.projectflow.application.dto.ProgressRequests.BaselineApproveRequest;
 import com.projectflow.application.dto.ProgressRequests.CheckpointApprovalRequest;
 import com.projectflow.application.dto.ProgressRequests.CheckpointSaveRequest;
 import com.projectflow.application.dto.ProgressRequests.SnapshotSaveRequest;
+import com.projectflow.application.dto.ProgressRequests.WorkPackageBasisRequest;
 import com.projectflow.application.dto.ProgressResponse;
 import com.projectflow.application.dto.SnapshotResponse;
 import com.projectflow.application.dto.SnapshotResponse.SnapshotDetail;
@@ -33,6 +34,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * The basis the aggregation runs on: approval checkpoints, approved baselines, and the reports
@@ -147,6 +149,46 @@ public class ProgressBasisService {
     public ProgressResponse deleteCheckpoint(Long projectId, Long checkpointId) {
         requireProject(projectId);
         checkpointRepository.delete(requireCheckpoint(projectId, checkpointId));
+        return progressService.getProgress(projectId);
+    }
+
+    /**
+     * Replaces a Work Package's sibling weight and Hybrid α — and only those two fields.
+     *
+     * <p>The progress tab's table renders {@code ProgressResponse.WorkPackageProgress}, which has no
+     * {@code startDate}/{@code endDate}/{@code progress}/{@code description}. Calling the general
+     * {@code PUT /wbs/{itemId}} from that screen would submit those missing fields as null and erase
+     * them — the same shape of bug fixed in {@code da96ebe} for the WBS edit form. So this is a
+     * narrow, whole-replacement endpoint for just the aggregation basis.
+     *
+     * <p>Both fields are a full replace, not a partial patch: {@code null} means "미입력", a
+     * meaningful value distinct from 0 (설계 §6.1 — 산정 전은 0%가 아니다, 가중치 없는 가지는
+     * {@code LEGACY_ROLLUP}으로 간다). Treating {@code null} as "leave unchanged" would remove the
+     * only way to clear a previously entered value from this screen.
+     */
+    @Transactional
+    public ProgressResponse updateWorkPackageBasis(Long projectId, Long wbsItemId,
+                                                     WorkPackageBasisRequest request) {
+        requireProject(projectId);
+        WbsItem item = requireWorkPackage(projectId, wbsItemId);
+        Integer previousWeight = item.getWeight();
+        Integer previousRatio = item.getAgileRatio();
+
+        // 인수 상태(acceptanceStatus)는 이 화면이 다루지 않으므로 지금 값을 그대로 되먹여 보존한다 —
+        // restoreProgressBasis가 세 필드를 함께 받기 때문에, 여기서 넘기지 않으면 조용히 지워진다.
+        item.restoreProgressBasis(request.weight(), request.agileRatio(), item.getAcceptanceStatus());
+        wbsItemRepository.save(item);
+
+        // WbsService.updateItem과 같은 규칙: 값이 실제로 달라졌을 때만 남긴다. 바뀌는 경로가 둘인데
+        // 하나만 이력에 남으면 8.2(진행률 변경 이력 화면)가 구멍을 갖게 된다.
+        if (!Objects.equals(previousWeight, request.weight())) {
+            changeLogRepository.save(ChangeLog.of(projectId, ChangeLog.WBS_ITEM, wbsItemId,
+                    "weight", previousWeight, request.weight(), ChangeReason.BASIS_CHANGED));
+        }
+        if (!Objects.equals(previousRatio, request.agileRatio())) {
+            changeLogRepository.save(ChangeLog.of(projectId, ChangeLog.WBS_ITEM, wbsItemId,
+                    "agileRatio", previousRatio, request.agileRatio(), ChangeReason.BASIS_CHANGED));
+        }
         return progressService.getProgress(projectId);
     }
 
@@ -318,8 +360,10 @@ public class ProgressBasisService {
                 .findFirst()
                 .orElseThrow(() -> new WbsItemNotFoundException(wbsItemId));
         if (!item.workPackage()) {
+            // 체크포인트 추가와 근거(가중치·α) 수정 양쪽이 이 검증을 쓴다 — 문구를 어느 한쪽 전용으로
+            // 두지 않는다.
             throw new InvalidWbsHierarchyException(
-                    "'%s'은(는) Summary라 승인 체크포인트를 둘 수 없습니다. 진척은 하위에서 집계됩니다."
+                    "'%s'은(는) Summary라 진척 근거를 직접 지정할 수 없습니다. 진척은 하위에서 집계됩니다."
                             .formatted(item.getName()));
         }
         return item;

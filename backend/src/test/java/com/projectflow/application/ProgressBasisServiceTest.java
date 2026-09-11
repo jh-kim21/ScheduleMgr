@@ -1,9 +1,11 @@
 package com.projectflow.application;
 
 import com.projectflow.application.dto.ProgressRequests.BaselineApproveRequest;
+import com.projectflow.application.dto.ProgressRequests.WorkPackageBasisRequest;
 import com.projectflow.application.dto.ProgressResponse;
 import com.projectflow.domain.AcceptanceCheckpoint;
 import com.projectflow.domain.AcceptanceCheckpointRepository;
+import com.projectflow.domain.AcceptanceStatus;
 import com.projectflow.domain.BacklogItem;
 import com.projectflow.domain.BacklogItemRepository;
 import com.projectflow.domain.Baseline;
@@ -11,6 +13,8 @@ import com.projectflow.domain.BaselineItem;
 import com.projectflow.domain.BaselineRepository;
 import com.projectflow.domain.ChangeLog;
 import com.projectflow.domain.ChangeLogRepository;
+import com.projectflow.domain.ChangeReason;
+import com.projectflow.domain.InvalidWbsHierarchyException;
 import com.projectflow.domain.Project;
 import com.projectflow.domain.ProjectRepository;
 import com.projectflow.domain.ProjectStatus;
@@ -31,6 +35,7 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * 결함 수정 검증: 기준선의 Summary 행은 저장 컬럼이 아니라 집계된(하위에서 롤업된) 일정을 담아야
@@ -48,6 +53,7 @@ class ProgressBasisServiceTest {
     private final List<WbsItem> items = new ArrayList<>();
     private final List<BaselineItem> baselineItems = new ArrayList<>();
     private final List<Baseline> baselines = new ArrayList<>();
+    private final List<ChangeLog> changeLogs = new ArrayList<>();
 
     private ProgressBasisService service;
 
@@ -108,6 +114,97 @@ class ProgressBasisServiceTest {
                 .orElseThrow();
         assertThat(childABaseline.getStartDate()).isEqualTo(childAStart);
         assertThat(childABaseline.getEndDate()).isEqualTo(childAEnd);
+    }
+
+    // ------------------------------------------------------------------ 진척 근거(가중치·α) 전용 수정
+
+    @Test
+    @DisplayName("가중치·α 변경이 반영되고 전체 페이로드가 돌아온다")
+    void updatesWorkPackageBasis() {
+        WbsItem workPackage = new WbsItem(PROJECT_ID, null, "설계", "설명",
+                LocalDate.of(2026, 1, 5), LocalDate.of(2026, 1, 15), 40, 0);
+        ReflectionTestUtils.setField(workPackage, "id", ids.incrementAndGet());
+        items.add(workPackage);
+
+        ProgressResponse response = service.updateWorkPackageBasis(PROJECT_ID, workPackage.getId(),
+                new WorkPackageBasisRequest(3, 60));
+
+        assertThat(response).isNotNull();
+        assertThat(workPackage.getWeight()).isEqualTo(3);
+        assertThat(workPackage.getAgileRatio()).isEqualTo(60);
+    }
+
+    @Test
+    @DisplayName("null로 보내면 가중치·α가 지워진다 — null은 미입력이라는 뜻 있는 값이다")
+    void clearsWorkPackageBasisWithNull() {
+        WbsItem workPackage = new WbsItem(PROJECT_ID, null, "설계", null,
+                LocalDate.of(2026, 1, 5), LocalDate.of(2026, 1, 15), 0, 0);
+        ReflectionTestUtils.setField(workPackage, "id", ids.incrementAndGet());
+        workPackage.restoreProgressBasis(5, 50, null);
+        items.add(workPackage);
+
+        service.updateWorkPackageBasis(PROJECT_ID, workPackage.getId(),
+                new WorkPackageBasisRequest(null, null));
+
+        assertThat(workPackage.getWeight()).isNull();
+        assertThat(workPackage.getAgileRatio()).isNull();
+    }
+
+    @Test
+    @DisplayName("Summary 대상은 거부된다 — 진척은 하위에서 집계된다")
+    void rejectsSummaryTarget() {
+        WbsItem summary = new WbsItem(PROJECT_ID, null, "단계", null, null, null, 0, 0,
+                WbsNodeType.SUMMARY, null);
+        ReflectionTestUtils.setField(summary, "id", ids.incrementAndGet());
+        items.add(summary);
+
+        assertThatThrownBy(() -> service.updateWorkPackageBasis(PROJECT_ID, summary.getId(),
+                new WorkPackageBasisRequest(3, null)))
+                .isInstanceOf(InvalidWbsHierarchyException.class)
+                .hasMessageContaining("진척 근거를 직접 지정할 수 없습니다");
+    }
+
+    @Test
+    @DisplayName("값이 실제로 바뀔 때만 BASIS_CHANGED 이력이 남는다")
+    void recordsChangeLogOnlyWhenValueChanges() {
+        WbsItem workPackage = new WbsItem(PROJECT_ID, null, "설계", null,
+                LocalDate.of(2026, 1, 5), LocalDate.of(2026, 1, 15), 0, 0);
+        ReflectionTestUtils.setField(workPackage, "id", ids.incrementAndGet());
+        workPackage.restoreProgressBasis(3, 40, null);
+        items.add(workPackage);
+
+        // 같은 값으로 다시 저장 — 이력이 남지 않아야 한다.
+        service.updateWorkPackageBasis(PROJECT_ID, workPackage.getId(),
+                new WorkPackageBasisRequest(3, 40));
+        assertThat(changeLogs).isEmpty();
+
+        // 가중치만 바뀜 — weight 한 건만 남는다.
+        service.updateWorkPackageBasis(PROJECT_ID, workPackage.getId(),
+                new WorkPackageBasisRequest(5, 40));
+        assertThat(changeLogs).hasSize(1);
+        ChangeLog change = changeLogs.get(0);
+        assertThat(change.getField()).isEqualTo("weight");
+        assertThat(change.getBeforeValue()).isEqualTo("3");
+        assertThat(change.getAfterValue()).isEqualTo("5");
+        assertThat(change.getReason()).isEqualTo(ChangeReason.BASIS_CHANGED);
+    }
+
+    @Test
+    @DisplayName("가중치만 바꿔도 일정·진행률·설명은 그대로 남는다")
+    void preservesUnrelatedFieldsWhenBasisChanges() {
+        LocalDate start = LocalDate.of(2026, 2, 1);
+        LocalDate end = LocalDate.of(2026, 2, 10);
+        WbsItem workPackage = new WbsItem(PROJECT_ID, null, "개발", "상세 설명", start, end, 55, 0);
+        ReflectionTestUtils.setField(workPackage, "id", ids.incrementAndGet());
+        items.add(workPackage);
+
+        service.updateWorkPackageBasis(PROJECT_ID, workPackage.getId(),
+                new WorkPackageBasisRequest(4, null));
+
+        assertThat(workPackage.getStartDate()).isEqualTo(start);
+        assertThat(workPackage.getEndDate()).isEqualTo(end);
+        assertThat(workPackage.getProgress()).isEqualTo(55);
+        assertThat(workPackage.getDescription()).isEqualTo("상세 설명");
     }
 
     private WbsItemRepository wbsItemRepository() {
@@ -232,17 +329,19 @@ class ProgressBasisServiceTest {
         return new ChangeLogRepository() {
             @Override
             public ChangeLog save(ChangeLog change) {
+                changeLogs.add(change);
                 return change;
             }
 
             @Override
             public List<ChangeLog> saveAll(List<ChangeLog> toSave) {
+                changeLogs.addAll(toSave);
                 return toSave;
             }
 
             @Override
             public List<ChangeLog> findByProjectId(Long projectId) {
-                return List.of();
+                return changeLogs.stream().filter(log -> log.getProjectId().equals(projectId)).toList();
             }
         };
     }

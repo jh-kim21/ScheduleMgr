@@ -59,3 +59,25 @@ export function reconcileSelection(ids: number[], selectedId: number | null): nu
 export function isDoubleClickGuarded(ancestorTagNames: string[]): boolean {
   return ancestorTagNames.includes('BUTTON') || ancestorTagNames.includes('A')
 }
+
+/**
+ * Whether Up/Down should be left alone for the browser's own behaviour instead of moving the row
+ * selection — the guard `useRowSelection.onKeydown` checks before calling `nextSelectionId`.
+ *
+ * <p>Needed once a table grows inline `<input>`/`<select>` editing (the progress panel's inline
+ * weight/α fields): without it, arrow keys inside a number input step the row selection instead of
+ * the value, and arrow keys inside a `<select>` change the row instead of the option. `BUTTON` is
+ * deliberately *not* guarded here — unlike `isDoubleClickGuarded`, which protects a button's
+ * single-click action from a colliding double-click, a button has no Up/Down behaviour of its own
+ * to protect, so a focused button (e.g. right after clicking it) should still let arrow keys move
+ * the row selection.
+ *
+ * <p>Case-insensitive because callers may hand this the target's `tagName` (always upper-case in
+ * the DOM) or a value assembled by hand in a test; falsy input (`''`, `undefined` passed through a
+ * chain of optional access) resolves to `false` rather than throwing.
+ */
+export function isKeyboardNavGuarded(targetTagName: string): boolean {
+  if (!targetTagName) return false
+  const tag = targetTagName.toUpperCase()
+  return tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA'
+}

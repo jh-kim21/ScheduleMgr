@@ -5,6 +5,7 @@ import {
   type CheckpointInput,
   type Progress,
   type SnapshotDetail,
+  type WorkPackageBasisInput,
 } from '../../api/progressApi'
 import { markWbsChanged, progressCacheKeyFor } from '../../stores/scheduleCache'
 
@@ -111,6 +112,13 @@ export function useProgress() {
       '기준선을 승인하지 못했습니다.',
     )
 
+  const updateBasis = (projectId: number, wbsItemId: number, input: WorkPackageBasisInput) =>
+    mutate(
+      projectId,
+      () => progressApi.updateBasis(projectId, wbsItemId, input),
+      '가중치를 저장하지 못했습니다.',
+    )
+
   async function saveSnapshot(projectId: number, note: string | null) {
     error.value = null
     try {
@@ -133,6 +141,7 @@ export function useProgress() {
     setApproval,
     deleteCheckpoint,
     approveBaseline,
+    updateBasis,
     saveSnapshot,
   }
 }

@@ -13,10 +13,13 @@ import {
   executionModeLabel,
 } from '../../shared/executionMode'
 import { nodeToFormInput } from './wbsFormMapping'
+import { suggestWeight } from './weightSuggestion'
 
 const props = defineProps<{
   editing: WbsNode | null
   parent: WbsNode | null
+  /** 가중치 제안의 근거가 되는 형제 항목들. 항상 호출부가 계산해 넘긴다(빈 배열도 명시적으로). */
+  siblings: WbsNode[]
   /** 저장이 거부된 이유. 대화상자 안에 보여야 사용자가 볼 수 있다. */
   error?: string | null
 }>()
@@ -65,6 +68,35 @@ const retainedMode = computed(() =>
 
 /** 하위가 있는 항목을 Work Package로 되돌릴 수는 없다 — 서버도 거부한다. */
 const canBeWorkPackage = computed(() => (props.editing?.children.length ?? 0) === 0)
+
+/**
+ * `form`의 날짜를 보므로 사용자가 일정을 입력하는 동안 제안값이 따라 움직인다 — placeholder로만
+ * 두는 값어치가 여기서 나온다. 근거(가중치를 입력한 형제)가 없으면 `suggestWeight`가 null을 돌려주고,
+ * 그때는 기존 placeholder("형제 간 비중")을 그대로 쓴다.
+ */
+const weightSuggestion = computed(() =>
+  suggestWeight(
+    { startDate: form.startDate, endDate: form.endDate },
+    props.siblings.map((sibling) => ({
+      weight: sibling.weight,
+      startDate: sibling.startDate,
+      endDate: sibling.endDate,
+    })),
+  ),
+)
+
+const weightPlaceholder = computed(() =>
+  weightSuggestion.value ? `제안 ${weightSuggestion.value.value}` : '형제 간 비중',
+)
+
+/**
+ * placeholder가 보이는 조건과 힌트가 보이는 조건을 맞추기 위한 판정. `v-model.number`는 칸을 지운
+ * 상태를 `null`이 아니라 빈 문자열 `''`로 남긴다(제출 시 서버가 빈 문자열을 Integer null로 받는 것과는
+ * 별개로, 폼 내부의 반응형 값 자체가 그렇다) — 그래서 `form.weight === null`만 보면 "숫자를 넣었다가
+ * 지운" 상태에서 placeholder(`제안 3`)는 다시 뜨는데 그 아래 설명 힌트만 사라져, 같은 "비어 있다"는
+ * 조건을 두 곳이 다르게 읽게 된다. 중복처럼 보여도 지우면 안 된다.
+ */
+const weightEmpty = computed(() => form.weight === null || (form.weight as unknown) === '')
 
 const title = computed(() => {
   if (props.editing) return `항목 수정 — ${props.editing.code} ${props.editing.name}`
@@ -150,7 +182,7 @@ function onSubmit() {
       <div class="row">
         <label>
           가중치
-          <input v-model.number="form.weight" type="number" min="0" placeholder="형제 간 비중" />
+          <input v-model.number="form.weight" type="number" min="0" :placeholder="weightPlaceholder" />
         </label>
         <label>
           Hybrid 비중 α (%)
@@ -192,6 +224,17 @@ function onSubmit() {
       <p class="hint muted">
         가중치를 비워 두면 이 가지는 예전처럼 하위 평균으로 집계됩니다. 0은 "진척에 기여하지 않음"이라
         미입력과 다릅니다.
+      </p>
+
+      <p v-if="weightSuggestion && weightEmpty" class="hint muted">
+        <template v-if="weightSuggestion.basis === 'DURATION'">
+          형제 항목의 가중치와 기간으로 보면 {{ weightSuggestion.value }} 정도입니다. 제안일 뿐이라
+          입력하지 않으면 저장되지 않습니다.
+        </template>
+        <template v-else>
+          형제 항목의 평균 가중치는 {{ weightSuggestion.value }}입니다. 제안일 뿐이라 입력하지 않으면
+          저장되지 않습니다.
+        </template>
       </p>
 
       <p class="hint muted">

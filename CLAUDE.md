@@ -350,6 +350,12 @@ Work Package의 실행 방식에 따라 네 가지 식으로 계산하고, 상�
   않습니다(`acceptancePending`).
 - **모든 화면이 이 서비스 하나를 읽습니다.** WBS 트리·간트·대시보드가 각자 계산하면 같은 프로젝트에
   세 가지 숫자가 생깁니다. 새 화면을 만들 때도 `ProgressService`를 부르세요.
+- **가중치·α 수정은 일반 WBS 수정 API를 재사용하지 않고 `PUT .../progress/work-packages/{id}/basis`를
+  따로 둡니다.** 진척 탭 표가 그리는 `WorkPackageProgress`에는 `startDate`·`endDate`·`progress`·
+  `description`이 없습니다. 그 화면에서 `PUT /wbs/{itemId}`를 부르면 폼이 모르는 그 필드들이 null로
+  덮여 사라집니다 — WBS 편집 폼의 결함(커밋 `da96ebe`)과 같은 종류의 사고입니다. 두 필드만 건드리는
+  좁은 경로를 두면 이 화면이 다른 필드의 존재를 몰라도 안전합니다. **합치지 마세요** — 합치는 순간
+  진척 탭이 다시 그 결함을 재현합니다.
 
 ### 간트의 세 가지 일정과 Sprint 레인 (Step 6-A)
 
@@ -774,6 +780,7 @@ Story·Sprint에 걸려도 원본은 하나로 관리해야 하기 때문입니�
 | `GET` `POST` | `/api/projects/{projectId}/progress/checkpoints` | 승인 체크포인트 목록/추가 (Waterfall·Hybrid의 분모) |
 | `PUT` `DELETE` | `/api/projects/{projectId}/progress/checkpoints/{checkpointId}` | 수정 / 삭제 |
 | `PUT` | `/api/projects/{projectId}/progress/checkpoints/{checkpointId}/approval` | 승인·승인 취소 |
+| `PUT` | `/api/projects/{projectId}/progress/work-packages/{wbsItemId}/basis` | 가중치·α만 전체 치환(진척 탭 전용, `null`로 지울 수 있음) |
 | `POST` | `/api/projects/{projectId}/progress/baselines` | 기준선 승인 (명시적 행위, 자동 경로 없음) |
 | `GET` `POST` | `/api/projects/{projectId}/progress/snapshots` | 보고 스냅샷 조회 / 저장 |
 | `GET` | `/api/projects/{projectId}/dashboard` | 대시보드 요약 (다른 조회들을 한 기준일로 모은 것, 읽기 전용) |

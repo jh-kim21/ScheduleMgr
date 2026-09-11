@@ -1,5 +1,10 @@
 import { nextTick, ref, watch, type Ref } from 'vue'
-import { isDoubleClickGuarded, nextSelectionId, reconcileSelection } from './rowSelection'
+import {
+  isDoubleClickGuarded,
+  isKeyboardNavGuarded,
+  nextSelectionId,
+  reconcileSelection,
+} from './rowSelection'
 
 export interface RowSelection {
   selectedId: Ref<number | null>
@@ -81,6 +86,9 @@ export function useRowSelection(ids: () => number[], container: Ref<HTMLElement 
   /** One listener on the container, not per row — same reasoning as WbsTree and the Gantt tooltip. */
   function onKeydown(event: KeyboardEvent) {
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+    // A focused form control inside the row (an inline-edit input/select) owns Up/Down for its own
+    // value — stepping a number input or opening a select must not also move the row selection.
+    if (isKeyboardNavGuarded((event.target as HTMLElement | null)?.tagName ?? '')) return
     event.preventDefault()
     selectedId.value = nextSelectionId(ids(), selectedId.value, event.key === 'ArrowDown' ? 1 : -1)
   }

@@ -64,6 +64,30 @@ onMounted(async () => {
 function flatten(nodes: WbsNode[]): WbsNode[] {
   return nodes.flatMap((node) => [node, ...flatten(node.children)])
 }
+
+/** The node whose `children` array contains `target`, or `null` if `target` is a root. */
+function findParent(nodes: WbsNode[], target: WbsNode): WbsNode | null {
+  for (const node of nodes) {
+    if (node.children.some((child) => child.id === target.id)) return node
+    const found = findParent(node.children, target)
+    if (found) return found
+  }
+  return null
+}
+
+/**
+ * The rows `WbsForm`'s weight suggestion is derived from — 편집 중이면 형제(자기 자신 제외), 하위
+ * 추가면 그 부모의 자식들, 최상위 추가면 트리 루트 전체.
+ */
+const siblings = computed<WbsNode[]>(() => {
+  if (editing.value) {
+    const parent = findParent(tree.value, editing.value)
+    const pool = parent ? parent.children : tree.value
+    return pool.filter((node) => node.id !== editing.value?.id)
+  }
+  if (parentForNew.value) return parentForNew.value.children
+  return tree.value
+})
 const attention = computed(() =>
   flatten(tree.value).filter((node) => !node.summary && needsAttention(node)),
 )
@@ -171,6 +195,7 @@ async function handleMove(itemId: number, input: WbsMoveInput) {
         v-if="formOpen"
         :editing="editing"
         :parent="parentForNew"
+        :siblings="siblings"
         :error="error"
         @submit="handleSubmit"
         @cancel="closeForm"

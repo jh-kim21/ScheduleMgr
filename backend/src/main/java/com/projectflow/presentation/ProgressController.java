@@ -6,6 +6,7 @@ import com.projectflow.application.dto.ProgressRequests.BaselineApproveRequest;
 import com.projectflow.application.dto.ProgressRequests.CheckpointApprovalRequest;
 import com.projectflow.application.dto.ProgressRequests.CheckpointSaveRequest;
 import com.projectflow.application.dto.ProgressRequests.SnapshotSaveRequest;
+import com.projectflow.application.dto.ProgressRequests.WorkPackageBasisRequest;
 import com.projectflow.application.dto.ProgressResponse;
 import com.projectflow.application.dto.SnapshotResponse;
 import jakarta.validation.Valid;
@@ -70,6 +71,17 @@ public class ProgressController {
     public ProgressResponse deleteCheckpoint(@PathVariable Long projectId,
                                               @PathVariable Long checkpointId) {
         return basisService.deleteCheckpoint(projectId, checkpointId);
+    }
+
+    /**
+     * 가중치·α 전용 수정. 진척 탭 표가 모르는 필드(일정·진행률·설명 등)를 null로 지우지 않도록 일반
+     * WBS 수정 API와 별도로 둔 좁은 경로다 (진척 집계 설계상 알아둘 점 — Step 5 참고).
+     */
+    @PutMapping("/work-packages/{wbsItemId}/basis")
+    public ProgressResponse updateWorkPackageBasis(@PathVariable Long projectId,
+                                                    @PathVariable Long wbsItemId,
+                                                    @Valid @RequestBody WorkPackageBasisRequest request) {
+        return basisService.updateWorkPackageBasis(projectId, wbsItemId, request);
     }
 
     /** 기준선 승인. 명시적 행위이며 자동으로 일어나는 경로는 없다. */

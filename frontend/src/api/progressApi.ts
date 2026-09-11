@@ -42,6 +42,8 @@ export interface ProjectProgress {
   plannedPercent: number | null
   comparablePercent: number | null
   variancePoints: number | null
+  /** Items outside the baseline's scope — `variancePoints` only compares what both scopes share. */
+  varianceExcludedCount: number
   acceptancePending: number
 }
 
@@ -97,6 +99,17 @@ export interface CheckpointInput {
 }
 
 /**
+ * A full replacement of a Work Package's weight and Hybrid ratio, not a patch. `null` means "not
+ * entered" and is distinct from `0` — a branch with no weights anywhere aggregates by
+ * `LEGACY_ROLLUP` (leaf-count weighted average) instead of a weighted sum, so clearing a field
+ * back to "not entered" must send `null`, not be omitted.
+ */
+export interface WorkPackageBasisInput {
+  weight: number | null
+  agileRatio: number | null
+}
+
+/**
  * Every mutation returns the whole progress payload: approving one checkpoint moves its Work
  * Package, every summary above it and the project figure.
  */
@@ -113,6 +126,8 @@ export const progressApi = {
     }),
   deleteCheckpoint: (projectId: number, checkpointId: number) =>
     http.delete<Progress>(`/projects/${projectId}/progress/checkpoints/${checkpointId}`),
+  updateBasis: (projectId: number, wbsItemId: number, input: WorkPackageBasisInput) =>
+    http.put<Progress>(`/projects/${projectId}/progress/work-packages/${wbsItemId}/basis`, input),
   approveBaseline: (projectId: number, approvedBy: string, note: string | null) =>
     http.post<Progress>(`/projects/${projectId}/progress/baselines`, { approvedBy, note }),
   snapshots: (projectId: number) =>
