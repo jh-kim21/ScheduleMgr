@@ -166,7 +166,14 @@ async function confirmCancelStart() {
             v-for="sprint in data.sprints"
             :key="sprint.id"
             :class="{ selected: sprint.id === selectedSprintId, active: sprint.status === 'ACTIVE' }"
+            @dblclick="openForm(sprint)"
           >
+            <!--
+              이 목록은 tbody 표가 아니라 div 목록이라 useRowSelection의 tr 지향 가드가 맞지
+              않는다 — 행 전체가 이미 이 button 하나뿐이라(다른 중첩 버튼이 없다) 더블클릭을 막을
+              대상도 없다. 선택은 이미 selectedSprintId로 있었으므로(Board와 공유) 여기서는
+              더블클릭 → 수정 대화상자만 얹는다.
+            -->
             <button type="button" class="pick" @click="selectedSprintId = sprint.id">
               <span class="name">{{ sprint.name }}</span>
               <span class="status" :data-status="sprint.status">
@@ -396,9 +403,15 @@ select {
   cursor: pointer;
 }
 
+/*
+ * 다른 표의 `.row-selectable tr.selected`와 같은 모양(강조 배경 + 왼쪽 3px inset 강조선)으로
+ * 맞춘다 — 이 목록은 tbody 표가 아니라 button 목록이라 그 전역 유틸리티 선택자(tr/td 지향)를
+ * 그대로 쓸 수 없어 같은 토큰으로 손으로 맞췄다.
+ */
 .sprint-list li.selected .pick {
-  border-color: var(--accent);
-  background: var(--accent-weak);
+  background: var(--accent-container);
+  color: var(--accent-container-fg);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .sprint-list .name {

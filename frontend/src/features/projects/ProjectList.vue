@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import type { Project } from '../../api/projectApi'
+import { useRowSelection } from '../../shared/useRowSelection'
 import ExportMenu from '../export/ExportMenu.vue'
 import { STATUS_LABELS } from './statusLabels'
 
-defineProps<{
+const props = defineProps<{
   projects: Project[]
 }>()
 
@@ -11,6 +13,10 @@ const emit = defineEmits<{
   edit: [project: Project]
   remove: [project: Project]
 }>()
+
+/** 클릭 선택·방향키 이동·더블클릭 편집은 WBS 표와 같은 컴포저블을 쓴다 (모든 표가 공유). */
+const body = ref<HTMLElement | null>(null)
+const selection = useRowSelection(() => props.projects.map((project) => project.id), body)
 </script>
 
 <template>
@@ -25,11 +31,19 @@ const emit = defineEmits<{
           <th></th>
         </tr>
       </thead>
-      <tbody>
+      <tbody ref="body" class="row-selectable" tabindex="0" @keydown="selection.onKeydown">
         <tr v-if="projects.length === 0">
           <td colspan="5" class="empty">등록된 프로젝트가 없습니다.</td>
         </tr>
-        <tr v-for="project in projects" :key="project.id">
+        <tr
+          v-for="project in projects"
+          :key="project.id"
+          :data-row-id="project.id"
+          :class="{ selected: selection.isSelected(project.id) }"
+          :aria-selected="selection.isSelected(project.id)"
+          @click="selection.select(project.id)"
+          @dblclick="selection.onRowDblClick($event, () => emit('edit', project))"
+        >
           <td>
             <div class="name">{{ project.name }}</div>
             <div v-if="project.description" class="desc">{{ project.description }}</div>

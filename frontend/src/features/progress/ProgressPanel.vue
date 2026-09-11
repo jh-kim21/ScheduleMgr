@@ -11,6 +11,7 @@ import {
   progressText,
   varianceText,
 } from '../../shared/progress'
+import { useRowSelection } from '../../shared/useRowSelection'
 import { selectedProjectId } from '../../stores/projectSelection'
 
 const {
@@ -31,6 +32,16 @@ const {
 
 /** Which Work Package's checkpoints are open for editing. */
 const expanded = ref<number | null>(null)
+
+/**
+ * 클릭 선택·방향키 이동은 다른 표와 같은 컴포저블을 쓴다. 이 표에는 행 편집 대화상자가 없으므로
+ * 더블클릭은 (수정이 아니라) 체크포인트 펼치기 토글에 연결한다 — `toggle`은 아래에서 정의된다.
+ */
+const body = ref<HTMLElement | null>(null)
+const selection = useRowSelection(
+  () => (data.value?.workPackages ?? []).map((wp) => wp.wbsItemId),
+  body,
+)
 const newTitle = ref('')
 const newWeight = ref<number | null>(null)
 const newCriteria = ref('')
@@ -228,9 +239,15 @@ function snapshotSummary(metrics: string): string {
             <th></th>
           </tr>
         </thead>
-        <tbody>
+        <tbody ref="body" class="row-selectable" tabindex="0" @keydown="selection.onKeydown">
           <template v-for="wp in data?.workPackages ?? []" :key="wp.wbsItemId">
-            <tr :class="{ open: expanded === wp.wbsItemId }">
+            <tr
+              :data-row-id="wp.wbsItemId"
+              :class="{ open: expanded === wp.wbsItemId, selected: selection.isSelected(wp.wbsItemId) }"
+              :aria-selected="selection.isSelected(wp.wbsItemId)"
+              @click="selection.select(wp.wbsItemId)"
+              @dblclick="selection.onRowDblClick($event, () => toggle(wp))"
+            >
               <td class="code">{{ wp.code ?? '-' }}</td>
               <td>
                 {{ wp.name }}

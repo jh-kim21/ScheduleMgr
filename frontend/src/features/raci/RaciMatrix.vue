@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { InheritedRole, RaciIssue, RaciMatrix, RaciTask } from '../../api/raciApi'
+import { useRowSelection } from '../../shared/useRowSelection'
 import type { CellEntry } from './useRaci'
 import {
   issueSummary,
@@ -24,6 +25,18 @@ const emit = defineEmits<{
 }>()
 
 const hasColumns = computed(() => props.data.members.length > 0)
+
+/**
+ * 선택만 넣는다(수정 대화상자 없음) — 셀 자체가 R·A·C·I 토글이라 "행 편집"이라는 개념이 없다.
+ * 그래도 구성원이 늘면 가로로 넓어지는 표라, 행을 눈으로 따라가는 데 선택 하이라이트가 특히
+ * 유용하다(리더 결정). 글자 버튼을 눌러도 클릭은 tr까지 버블링되어 그 행이 선택된다 — 막을
+ * 이유가 없다.
+ */
+const body = ref<HTMLElement | null>(null)
+const selection = useRowSelection(
+  () => props.data.tasks.map((task) => task.id),
+  body,
+)
 
 function cell(task: RaciTask, memberId: number) {
   return props.cellIndex.get(`${task.id}:${memberId}`)
@@ -107,8 +120,15 @@ function overriddenRoles(task: RaciTask): RaciRole[] {
           </th>
         </tr>
       </thead>
-      <tbody>
-        <tr v-for="task in data.tasks" :key="task.id" :class="{ summary: task.summary }">
+      <tbody ref="body" class="row-selectable" tabindex="0" @keydown="selection.onKeydown">
+        <tr
+          v-for="task in data.tasks"
+          :key="task.id"
+          :data-row-id="task.id"
+          :class="{ summary: task.summary, selected: selection.isSelected(task.id) }"
+          :aria-selected="selection.isSelected(task.id)"
+          @click="selection.select(task.id)"
+        >
           <th class="task-col" scope="row">
             <span class="code">{{ task.code }}</span>
             <span

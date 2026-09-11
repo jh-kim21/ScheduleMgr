@@ -250,6 +250,38 @@ p {
 }
 
 /*
+ * 행 선택 하이라이트 opt-in. WbsTree.vue가 먼저 갖고 있던 모양(강조 배경 + 첫 칸 3px inset
+ * 강조선 + 키보드 포커스 링)을 다른 표들과 공유하는 자리다. 전역 `tr.selected`로 두지 않고
+ * `.row-selectable`을 붙여야만 적용되게 한 이유는, 이 유틸리티가 없는 표에 `selected` 클래스가
+ * 다른 뜻으로 이미 쓰이고 있을 수 있어서다(실제로 SprintView의 목록은 자기 팔레트를 그대로 쓴다).
+ *
+ * `.row-selectable`은 `useRowSelection`의 keydown 리스너·`tabindex="0"`이 있는 바로 그 요소에
+ * 붙인다(`<tbody>`, 또는 `<tbody>`가 여럿인 표에서는 감싸는 요소) — 뒤 결합자 없이 자손 선택자로
+ * 두어 그 요소가 무엇이든 안의 `tr.selected`를 찾는다. 셀이 `td`인 표도 `th`인 표(RaciMatrix의
+ * 업무 열)도 있어 두 태그를 함께 선택한다.
+ */
+.row-selectable tr.selected > td,
+.row-selectable tr.selected > th {
+  background: var(--accent-container);
+  color: var(--accent-container-fg);
+}
+
+.row-selectable tr.selected > :first-child {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+/* WbsTree와 같은 규칙: 선택된 행 자체의 강조로 위치는 이미 드러나므로, 포커스 링은 "이 표가
+   키보드 포커스를 갖고 있다"만 확인해 주면 된다. */
+.row-selectable:focus {
+  outline: none;
+}
+
+.row-selectable:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/*
  * 자유 입력 칸(설명·비고)에만 쓴다. 한 줄로 두는 것은 같지만 폭에 상한을 두어, 긴 메모 하나가
  * 표를 화면 몇 배로 늘리지 않게 한다. 잘린 값은 title 로 확인한다.
  */

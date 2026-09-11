@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { BacklogItem } from '../../api/backlogApi'
 import {
@@ -7,6 +8,7 @@ import {
   BACKLOG_TYPE_LABELS,
 } from '../../shared/backlog'
 import { executionModeLabel } from '../../shared/executionMode'
+import { useRowSelection } from '../../shared/useRowSelection'
 import type { BacklogRow } from './backlogFilter'
 
 const props = defineProps<{
@@ -19,6 +21,10 @@ const emit = defineEmits<{
   archive: [item: BacklogItem, archived: boolean]
   remove: [item: BacklogItem]
 }>()
+
+/** 클릭 선택·방향키 이동·더블클릭 편집은 WBS 표와 같은 컴포저블을 쓴다 (모든 표가 공유). */
+const body = ref<HTMLElement | null>(null)
+const selection = useRowSelection(() => props.rows.map((row) => row.item.id), body)
 
 /**
  * Why a row is flagged. Ordered worst first: a link that cannot be used at all matters more than
@@ -83,11 +89,19 @@ function archiveTitle(item: BacklogItem): string {
           <th></th>
         </tr>
       </thead>
-      <tbody>
+      <tbody ref="body" class="row-selectable" tabindex="0" @keydown="selection.onKeydown">
         <tr
           v-for="row in rows"
           :key="row.item.id"
-          :class="{ context: row.context, archived: row.item.archived }"
+          :data-row-id="row.item.id"
+          :class="{
+            context: row.context,
+            archived: row.item.archived,
+            selected: selection.isSelected(row.item.id),
+          }"
+          :aria-selected="selection.isSelected(row.item.id)"
+          @click="selection.select(row.item.id)"
+          @dblclick="selection.onRowDblClick($event, () => emit('edit', row.item))"
         >
           <td class="type">
             <span class="type-badge" :data-type="row.item.itemType">

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { RaidItem } from '../../api/raidApi'
 import {
   RAID_LEVEL_LABELS,
@@ -10,6 +10,7 @@ import {
   dueLabel,
   type RaidType,
 } from '../../shared/raid'
+import { useRowSelection } from '../../shared/useRowSelection'
 
 const props = defineProps<{
   items: RaidItem[]
@@ -44,6 +45,17 @@ function onRemove(item: RaidItem) {
   if (!confirm(`"${item.title}" 항목을 삭제할까요?`)) return
   emit('remove', item)
 }
+
+/*
+ * 종류별로 표(=tbody)가 여러 개라서 WBS처럼 tbody 하나에 리스너를 걸 수 없다 — 감싸는 요소
+ * (`.sections`) 하나에 걸고, 선택 대상 id는 화면에 보이는 순서(섹션 순서 → 섹션 안 순서) 그대로
+ * 펼쳐서 방향키가 표 경계를 넘어 이어지게 한다.
+ */
+const body = ref<HTMLElement | null>(null)
+const selection = useRowSelection(
+  () => sections.value.flatMap((section) => section.items.map((item) => item.id)),
+  body,
+)
 </script>
 
 <template>
@@ -51,7 +63,13 @@ function onRemove(item: RaidItem) {
     {{ emptyMessage }}
   </p>
 
-  <div v-else class="sections">
+  <div
+    v-else
+    ref="body"
+    class="sections row-selectable"
+    tabindex="0"
+    @keydown="selection.onKeydown"
+  >
     <section v-for="section in sections" :key="section.type">
       <h3>
         <span class="type-badge" :data-type="section.type">
@@ -77,7 +95,15 @@ function onRemove(item: RaidItem) {
             <tr
               v-for="item in section.items"
               :key="item.id"
-              :class="{ editing: editingId === item.id, closed: item.status === 'CLOSED' }"
+              :data-row-id="item.id"
+              :class="{
+                editing: editingId === item.id,
+                closed: item.status === 'CLOSED',
+                selected: selection.isSelected(item.id),
+              }"
+              :aria-selected="selection.isSelected(item.id)"
+              @click="selection.select(item.id)"
+              @dblclick="selection.onRowDblClick($event, () => emit('edit', item))"
             >
               <td class="title-col">
                 <span class="title">{{ item.title }}</span>
