@@ -377,7 +377,7 @@ class BacklogServiceTest {
 
     private BacklogItemResponse only(BacklogResponse backlog) {
         assertThat(backlog.items()).hasSize(1);
-        return backlog.items().getFirst();
+        return backlog.items().get(0);
     }
 
     private Long addWbsItem(String name, WbsNodeType nodeType, ExecutionMode mode) {

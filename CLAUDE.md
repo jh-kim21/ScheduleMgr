@@ -41,7 +41,7 @@
 **팀은 하나를 전제합니다** (사용자 결정) — 그래서 팀 테이블이 없고, 실행 중인 Sprint도 하나뿐이며,
 속도 추세도 계열이 하나입니다.
 
-- 백엔드: Spring Boot 3.5.16 (Java 21) + Spring Data JPA + Flyway, `desktop`(H2 파일 DB) / `server`(PostgreSQL) 프로필 분리 완료.
+- 백엔드: Spring Boot 3.5.16 (Java 17) + Spring Data JPA + Flyway, `desktop`(H2 파일 DB) / `server`(PostgreSQL) 프로필 분리 완료.
 - 프론트엔드: Vue 3 + TypeScript + Vite, `vue-router`로 화면 라우팅.
 - 패키징: jpackage 스크립트, 서버용 Dockerfile 작성 완료 (아직 실행/검증은 안 함).
 
@@ -85,8 +85,8 @@ docker build -f packaging/server/Dockerfile -t project-flow-backend .   # 서버
   거부하고, 설치 파일에는 `SNAPSHOT` 같은 접미사를 넣을 수 없습니다.
 - **`--win-upgrade-uuid`는 절대 바꾸지 마세요.** 값이 바뀌면 새 버전이 기존 설치를 덮어쓰지 않고 나란히
   설치됩니다.
-- **Windows의 exe/msi 생성은 WiX Toolset 3.x**(candle.exe)에 의존합니다. WiX 4/5는 JDK 21의 jpackage가
-  쓰지 못합니다. 스크립트가 미리 확인해 안내합니다.
+- **Windows의 exe/msi 생성은 WiX Toolset 3.x**(candle.exe)에 의존합니다. WiX 4/5는 jpackage 자체가
+  쓰지 못합니다(JDK 버전과 무관). 스크립트가 미리 확인해 안내합니다.
 - **데스크톱 빌드는 프론트엔드를 품은 서버**라서 실행해도 창이 없습니다. 창이 없다는 것이 곧
   "실패해도 아무 일도 안 일어난 것처럼 보인다"는 뜻이라, 세 가지를 함께 둡니다. 모두
   `project-flow.desktop.enabled` 하나로 켜지고 기본값은 꺼져 있습니다 — 개발 중 `bootRun`에서

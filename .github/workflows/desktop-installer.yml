@@ -43,13 +43,13 @@ jobs:
       - uses: actions/checkout@v4
 
       # 앱을 컴파일한 툴체인과 같은 메이저 버전을 쓴다. jpackage는 자신이 속한 JDK의
-      # 런타임을 앱에 함께 넣으므로, 여기서 21을 벗어나면 검증하지 않은 런타임 위에서
+      # 런타임을 앱에 함께 넣으므로, 여기서 17을 벗어나면 검증하지 않은 런타임 위에서
       # 도는 설치 파일이 만들어진다.
-      - name: Set up JDK 21
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: '17'
 
       - name: Set up Node
         uses: actions/setup-node@v4

@@ -326,7 +326,7 @@ public class ProgressService {
 
     Baseline latestBaseline(Long projectId) {
         List<Baseline> baselines = baselineRepository.findByProjectId(projectId);
-        return baselines.isEmpty() ? null : baselines.getLast();
+        return baselines.isEmpty() ? null : baselines.get(baselines.size() - 1);
     }
 
     private static void collectCodes(List<WbsNode> nodes, Map<Long, String> codes) {

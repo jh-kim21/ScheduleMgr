@@ -546,7 +546,7 @@ class WbsServiceTest {
 
     private WbsNodeResponse onlyRoot(WbsTreeResponse tree) {
         assertThat(tree.nodes()).hasSize(1);
-        return tree.nodes().getFirst();
+        return tree.nodes().get(0);
     }
 
     private WbsItem byName(String name) {

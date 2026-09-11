@@ -36,7 +36,7 @@ if [[ -z "${APP_TYPE:-}" ]]; then
 fi
 
 # jpackage는 자신이 속한 JDK의 런타임을 앱에 함께 넣는다. 그래서 앱을 컴파일한 툴체인과
-# 같은 버전(build.gradle의 Java 21)을 쓰는 것이 안전하다 — PATH의 jpackage가 다른
+# 같은 버전(build.gradle의 Java 17)을 쓰는 것이 안전하다 — PATH의 jpackage가 다른
 # 메이저 버전이면 검증하지 않은 런타임 위에서 도는 앱이 만들어진다.
 if [[ -z "${JPACKAGE:-}" ]]; then
   if [[ -n "${JAVA_HOME:-}" && -x "$JAVA_HOME/bin/jpackage" ]]; then
@@ -47,7 +47,7 @@ if [[ -z "${JPACKAGE:-}" ]]; then
   fi
 fi
 if [[ -z "$JPACKAGE" ]]; then
-  echo "jpackage를 찾을 수 없습니다. JDK 21 이상을 설치하고 JAVA_HOME 또는 JPACKAGE를 지정하세요." >&2
+  echo "jpackage를 찾을 수 없습니다. JDK 17 이상을 설치하고 JAVA_HOME 또는 JPACKAGE를 지정하세요." >&2
   exit 1
 fi
 echo "jpackage: $JPACKAGE"
@@ -57,7 +57,7 @@ case "$(uname -s)" in
   MINGW* | MSYS* | CYGWIN*)
     # jpackage의 exe/msi 생성은 WiX Toolset 3.x(candle.exe/light.exe)에 의존한다.
     # 없으면 "Can not find WiX tools" 류의 메시지만 나오므로 미리 확인한다. WiX 4/5는
-    # JDK 21의 jpackage가 쓰지 못한다.
+    # jpackage 자체가 쓰지 못한다(JDK 버전과 무관).
     if ! command -v candle > /dev/null 2>&1 && ! command -v candle.exe > /dev/null 2>&1; then
       echo "WiX Toolset 3.x이 PATH에 없습니다. exe/msi 생성에 필요합니다." >&2
       echo "  choco install wixtoolset  또는 https://github.com/wixtoolset/wix3/releases" >&2

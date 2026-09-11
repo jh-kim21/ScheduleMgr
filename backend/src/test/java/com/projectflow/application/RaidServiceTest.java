@@ -96,7 +96,7 @@ class RaidServiceTest {
                     link(RaidLinkTarget.WBS_ITEM, workPackage),
                     link(RaidLinkTarget.SPRINT, sprint))));
 
-            List<RaidLogResponse.RaidLinkResponse> links = log.items().getFirst().links();
+            List<RaidLogResponse.RaidLinkResponse> links = log.items().get(0).links();
             assertThat(links.get(0).targetCode()).isEqualTo("1");
             assertThat(links.get(0).targetName()).isEqualTo("개발");
             assertThat(links.get(1).targetCode()).isNull();
@@ -143,8 +143,8 @@ class RaidServiceTest {
         void keepsUnchangedLinks() {
             service.addItem(PROJECT_ID, request("외부 API 지연", List.of(
                     link(RaidLinkTarget.WBS_ITEM, workPackage))));
-            Long linkId = raidLinks.getFirst().getId();
-            Long itemId = raidItems.getFirst().getId();
+            Long linkId = raidLinks.get(0).getId();
+            Long itemId = raidItems.get(0).getId();
 
             service.updateItem(PROJECT_ID, itemId, request("외부 API 지연", List.of(
                     link(RaidLinkTarget.WBS_ITEM, workPackage),
@@ -163,7 +163,7 @@ class RaidServiceTest {
             service.addItem(PROJECT_ID, request("외부 API 지연", List.of(
                     link(RaidLinkTarget.WBS_ITEM, workPackage),
                     link(RaidLinkTarget.SPRINT, sprint))));
-            Long itemId = raidItems.getFirst().getId();
+            Long itemId = raidItems.get(0).getId();
 
             service.updateItem(PROJECT_ID, itemId, request("외부 API 지연", List.of(
                     link(RaidLinkTarget.SPRINT, sprint))));
@@ -211,7 +211,7 @@ class RaidServiceTest {
         service.addItem(PROJECT_ID, request("외부 API 지연", List.of(
                 link(RaidLinkTarget.WBS_ITEM, workPackage))));
 
-        service.deleteItem(PROJECT_ID, raidItems.getFirst().getId());
+        service.deleteItem(PROJECT_ID, raidItems.get(0).getId());
 
         assertThat(raidItems).isEmpty();
         assertThat(raidLinks).isEmpty();

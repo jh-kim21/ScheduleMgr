@@ -1,5 +1,6 @@
 package com.projectflow.presentation;
 
+import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import com.projectflow.domain.BacklogItemNotFoundException;
 import com.projectflow.domain.CircularDependencyException;
@@ -27,6 +28,7 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -96,8 +98,8 @@ public class GlobalExceptionHandler {
         if (target == null || !target.isEnum()) {
             return Optional.empty();
         }
-        String field = cause.getPath().isEmpty() ? "값"
-                : cause.getPath().getLast().getFieldName();
+        List<JsonMappingException.Reference> path = cause.getPath();
+        String field = path.isEmpty() ? "값" : path.get(path.size() - 1).getFieldName();
         String allowed = Arrays.stream(target.getEnumConstants())
                 .map(String::valueOf)
                 .collect(Collectors.joining(", "));

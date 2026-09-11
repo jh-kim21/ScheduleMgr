@@ -7,7 +7,7 @@
 # 실행 파일을 컴파일하고, Windows용 런타임은 내려받아 함께 넣으면 됩니다.
 # Windows 장비에서 만들 때는 packaging/desktop/jpackage/build-desktop.sh 도 쓸 수 있습니다.
 #
-# 준비물: makensis (brew install makensis), node, JDK 21
+# 준비물: makensis (brew install makensis), node, JDK 17
 # 사용법: packaging/desktop/nsis/build-windows.sh
 set -euo pipefail
 
@@ -25,11 +25,11 @@ APP_NAME="ProjectFlow"
 # SNAPSHOT 같은 접미사를 넣을 수 없다.
 APP_VERSION="${APP_VERSION:-1.0.0}"
 
-# 앱을 컴파일한 툴체인(build.gradle의 Java 21)과 같은 메이저 버전을 번들한다.
-JRE_VERSION="21.0.12.1_1"
-JRE_ZIP="OpenJDK21U-jre_x64_windows_hotspot_${JRE_VERSION}.zip"
-JRE_URL="https://api.adoptium.net/v3/binary/latest/21/ga/windows/x64/jre/hotspot/normal/eclipse"
-JRE_SHA256="d35f31e712f0fcf6ac5a093edc90204fbff22f720ba3950bd09d331d5e621636"
+# 앱을 컴파일한 툴체인(build.gradle의 Java 17)과 같은 메이저 버전을 번들한다.
+JRE_VERSION="17.0.20.1_1"
+JRE_ZIP="OpenJDK17U-jre_x64_windows_hotspot_${JRE_VERSION}.zip"
+JRE_URL="https://api.adoptium.net/v3/binary/latest/17/ga/windows/x64/jre/hotspot/normal/eclipse"
+JRE_SHA256="bc21a93923103cdaac93ee337b0ae4365e739fde36df823dd456bc67c8a9d352"
 
 # 산출물 종류. installer는 makensis가 실제로 동작해야 하고, portable은 아무 도구도
 # 필요하지 않다. 지정하지 않으면 makensis를 실제로 돌려보고 정한다 — 설치만 되어 있고

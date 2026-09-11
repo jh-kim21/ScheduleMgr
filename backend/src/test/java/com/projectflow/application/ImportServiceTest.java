@@ -120,7 +120,7 @@ class ImportServiceTest {
             ));
 
             assertThat(projects).hasSize(1);
-            Long projectId = projects.getFirst().getId();
+            Long projectId = projects.get(0).getId();
 
             // 파일의 id(1,2,3,7,...)는 어디에도 남아 있지 않아야 한다.
             assertThat(wbsItems).allSatisfy(item ->
@@ -143,16 +143,16 @@ class ImportServiceTest {
 
             assertThat(raciAssignments).singleElement().satisfies(assignment -> {
                 assertThat(assignment.getWbsItemId()).isEqualTo(screen.getId());
-                assertThat(assignment.getMemberId()).isEqualTo(members.getFirst().getId());
+                assertThat(assignment.getMemberId()).isEqualTo(members.get(0).getId());
             });
 
             assertThat(raidItems).singleElement().satisfies(item ->
-                    assertThat(item.getOwnerMemberId()).isEqualTo(members.getFirst().getId()));
+                    assertThat(item.getOwnerMemberId()).isEqualTo(members.get(0).getId()));
             // 예전 파일의 단일 wbsItemId는 WBS_ITEM 링크 하나가 되고, 그 id도 새로 매겨진다.
             assertThat(raidLinks).singleElement().satisfies(link -> {
                 assertThat(link.getTargetType()).isEqualTo(RaidLinkTarget.WBS_ITEM);
                 assertThat(link.getTargetId()).isEqualTo(screen.getId());
-                assertThat(link.getRaidItemId()).isEqualTo(raidItems.getFirst().getId());
+                assertThat(link.getRaidItemId()).isEqualTo(raidItems.get(0).getId());
             });
         }
 
@@ -416,8 +416,8 @@ class ImportServiceTest {
                             backlog(81L, 1L, 80L, BacklogItemType.STORY, "WBS 계층 등록", 7L),
                             backlog(82L, 1L, 81L, BacklogItemType.TASK, "API 작성", null))));
 
-            Long wbsId = wbsItems.getFirst().getId();
-            Long memberId = members.getFirst().getId();
+            Long wbsId = wbsItems.get(0).getId();
+            Long memberId = members.get(0).getId();
 
             assertThat(backlogItems).extracting(BacklogItem::getId).doesNotContain(80L, 81L, 82L);
             assertThat(backlogItems).allSatisfy(item ->

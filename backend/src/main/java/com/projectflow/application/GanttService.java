@@ -323,7 +323,7 @@ public class GanttService {
 
     private Baseline latestBaseline(Long projectId) {
         List<Baseline> baselines = baselineRepository.findByProjectId(projectId);
-        return baselines.isEmpty() ? null : baselines.getLast();
+        return baselines.isEmpty() ? null : baselines.get(baselines.size() - 1);
     }
 
     private LocalDate earliest(LocalDate current, LocalDate candidate) {

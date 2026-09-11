@@ -32,8 +32,8 @@ class RaciValidatorTest {
             var issues = RaciValidator.validate(WbsTreeAssembler.assemble(items), assignments, members);
 
             assertThat(issues).hasSize(1);
-            assertThat(issues.getFirst().type()).isEqualTo(IssueType.MULTIPLE_ACCOUNTABLE);
-            assertThat(issues.getFirst().memberNames()).containsExactly("김", "이");
+            assertThat(issues.get(0).type()).isEqualTo(IssueType.MULTIPLE_ACCOUNTABLE);
+            assertThat(issues.get(0).memberNames()).containsExactly("김", "이");
         }
 
         @Test
