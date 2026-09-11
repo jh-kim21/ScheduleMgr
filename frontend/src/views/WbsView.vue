@@ -130,6 +130,13 @@ function closeForm() {
   formOpen.value = false
   editing.value = null
   parentForNew.value = null
+  // 폼 안의 체크포인트 추가·승인·삭제는 자기 API로 즉시 저장되고 markWbsChanged() 를 부른다
+  // (useProgress.mutate). 하지만 이 화면은 watch(selectedProjectId, …) 하나로만 로드하므로,
+  // 폼을 닫는 것만으로는 트리를 다시 읽지 않아 그 항목의 진척(%)이 낡은 채로 남는다.
+  // ensureLoaded 는 캐시 키가 그대로면 아무 일도 하지 않으므로(무료), 체크포인트를 건드리지
+  // 않고 닫았을 때는 비용이 없다 — Dashboard 탭 전환과 같은 패턴(CLAUDE.md).
+  const id = selectedProjectId.value
+  if (id !== null) ensureLoaded(id)
 }
 
 function openImportForm() {
@@ -197,6 +204,7 @@ async function handleMove(itemId: number, input: WbsMoveInput) {
         :parent="parentForNew"
         :siblings="siblings"
         :error="error"
+        :project-id="selectedProjectId"
         @submit="handleSubmit"
         @cancel="closeForm"
       />

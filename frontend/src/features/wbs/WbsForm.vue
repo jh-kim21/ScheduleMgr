@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue'
 import ModalDialog from '../../components/ModalDialog.vue'
+import CheckpointList from '../progress/CheckpointList.vue'
 import type { WbsItemInput, WbsNode } from '../../api/wbsApi'
 import {
   ACCEPTANCE_STATUS_LABELS,
@@ -22,6 +23,8 @@ const props = defineProps<{
   siblings: WbsNode[]
   /** 저장이 거부된 이유. 대화상자 안에 보여야 사용자가 볼 수 있다. */
   error?: string | null
+  /** 체크포인트 영역(`CheckpointList`)이 API를 부를 때 쓴다. 열려 있을 때는 항상 선택된 프로젝트가 있다. */
+  projectId: number | null
 }>()
 
 const emit = defineEmits<{
@@ -68,6 +71,19 @@ const retainedMode = computed(() =>
 
 /** 하위가 있는 항목을 Work Package로 되돌릴 수는 없다 — 서버도 거부한다. */
 const canBeWorkPackage = computed(() => (props.editing?.children.length ?? 0) === 0)
+
+/**
+ * 체크포인트는 Waterfall·Hybrid 진척의 분모다(CLAUDE.md 진척 집계 표) — 그 방식일 때만 보여준다.
+ * `nodeType === 'WORK_PACKAGE'`도 함께 본다: Summary는 전환 전 실행 방식을 보관만 할 뿐 적용하지
+ * 않는데(`retainedMode`), 그 보관값이 마침 WATERFALL/HYBRID이면 executionMode만 보고는 Summary에도
+ * 체크포인트 영역이 떠 버린다. 서버도 Work Package에만 체크포인트를 허용한다
+ * (`ProgressBasisService.addCheckpoint`가 `requireWorkPackage`로 막는다).
+ */
+const showCheckpoints = computed(
+  () =>
+    form.nodeType === 'WORK_PACKAGE' &&
+    (form.executionMode === 'WATERFALL' || form.executionMode === 'HYBRID'),
+)
 
 /**
  * `form`의 날짜를 보므로 사용자가 일정을 입력하는 동안 제안값이 따라 움직인다 — placeholder로만
@@ -247,6 +263,23 @@ function onSubmit() {
         Hybrid는 비중(α)이 있어야 진척을 셀 수 있습니다. 비워 두면 산정 전으로 표시됩니다.
       </p>
 
+      <!-- 실행 방식을 WATERFALL/HYBRID로 바꾼 바로 그 자리에서 분모(체크포인트)를 채울 수 있게 한다
+           — Dashboard 진척 탭까지 오갈 필요가 없다. -->
+      <div v-if="showCheckpoints" class="checkpoint-section">
+        <p class="hint">
+          체크포인트는 추가·승인하는 즉시 저장됩니다. 위의 항목 정보와 달리 [저장]을 누르지 않아도
+          반영되고, [취소]로 되돌릴 수 없습니다.
+        </p>
+        <p v-if="!props.editing" class="hint muted">
+          항목을 먼저 저장하면 체크포인트를 추가할 수 있습니다.
+        </p>
+        <CheckpointList
+          v-else-if="props.projectId !== null"
+          :project-id="props.projectId"
+          :wbs-item-id="props.editing.id"
+        />
+      </div>
+
       <p v-if="rolledUp" class="hint">
         하위 항목이 있는 Summary 항목입니다. 일정과 진행률은 하위 항목에서 자동 집계되므로 직접 입력할 수 없습니다.
       </p>
@@ -312,6 +345,12 @@ select:disabled {
 .hint.muted {
   color: var(--text-muted);
   background: var(--surface-sunken);
+}
+
+.checkpoint-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .hint {

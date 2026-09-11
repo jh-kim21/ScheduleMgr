@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { RouterLink } from 'vue-router'
 import type { WorkPackageProgress } from '../../api/progressApi'
 import { useProgress } from './useProgress'
 import { executionModeLabel } from '../../shared/executionMode'
@@ -21,9 +22,6 @@ const {
   loading,
   error,
   ensureLoaded,
-  addCheckpoint,
-  setApproval,
-  deleteCheckpoint,
   approveBaseline,
   updateBasis,
   saveSnapshot,
@@ -53,12 +51,6 @@ const selection = useRowSelection(
   () => (data.value?.workPackages ?? []).map((wp) => wp.wbsItemId),
   body,
 )
-const newTitle = ref('')
-const newWeight = ref<number | null>(null)
-const newCriteria = ref('')
-
-const approving = ref<{ checkpointId: number } | null>(null)
-const approver = ref('')
 
 const baselineOpen = ref(false)
 const baselineBy = ref('')
@@ -97,9 +89,6 @@ const notEstimable = computed(
 
 function toggle(wp: WorkPackageProgress) {
   expanded.value = expanded.value === wp.wbsItemId ? null : wp.wbsItemId
-  newTitle.value = ''
-  newWeight.value = null
-  newCriteria.value = ''
 }
 
 /** Opens inline editing for `wp`, discarding any other row's unsaved edit. */
@@ -133,30 +122,6 @@ async function saveBasis() {
   // Rejected: keep the row open with what the user typed rather than losing it — `error` above the
   // table already explains why.
   if (ok) editingBasis.value = null
-}
-
-async function submitCheckpoint(wp: WorkPackageProgress) {
-  const projectId = selectedProjectId.value
-  if (projectId === null || !newTitle.value.trim()) return
-  const ok = await addCheckpoint(projectId, {
-    wbsItemId: wp.wbsItemId,
-    title: newTitle.value.trim(),
-    weight: newWeight.value,
-    completionCriteria: newCriteria.value.trim() || null,
-  })
-  if (ok) {
-    newTitle.value = ''
-    newWeight.value = null
-    newCriteria.value = ''
-  }
-}
-
-async function confirmApproval() {
-  const projectId = selectedProjectId.value
-  const target = approving.value
-  approving.value = null
-  if (projectId === null || !target) return
-  await setApproval(projectId, target.checkpointId, true, approver.value.trim() || null)
 }
 
 async function confirmBaseline() {
@@ -398,23 +363,7 @@ function snapshotSummary(metrics: string): string {
                     <span v-if="cp.approved" class="cp-approved">
                       승인 · {{ cp.approvedBy }} · {{ cp.approvedAt?.slice(0, 10) }}
                     </span>
-                    <button
-                      v-if="cp.approved"
-                      type="button"
-                      class="link"
-                      @click="setApproval(selectedProjectId!, cp.id, false, null)"
-                    >승인 취소</button>
-                    <button
-                      v-else
-                      type="button"
-                      class="link"
-                      @click="approving = { checkpointId: cp.id }; approver = ''"
-                    >승인</button>
-                    <button
-                      type="button"
-                      class="link danger"
-                      @click="deleteCheckpoint(selectedProjectId!, cp.id)"
-                    >삭제</button>
+                    <span v-else class="cp-pending">승인 대기</span>
                   </li>
                 </ul>
                 <p v-else class="note muted">
@@ -422,14 +371,12 @@ function snapshotSummary(metrics: string): string {
                   산정 전입니다.
                 </p>
 
-                <div class="cp-form">
-                  <input v-model="newTitle" type="text" placeholder="체크포인트 제목" />
-                  <input v-model.number="newWeight" type="number" min="0" placeholder="가중치" />
-                  <input v-model="newCriteria" type="text" placeholder="완료 조건 (선택)" />
-                  <button type="button" :disabled="!newTitle.trim()" @click="submitCheckpoint(wp)">
-                    추가
-                  </button>
-                </div>
+                <!-- 편집(추가·삭제·승인)은 WBS 폼으로 옮겼다 — 실행 방식을 Waterfall/Hybrid로
+                     바꾸는 바로 그 자리에서 분모를 채울 수 있어야 한다. 여기는 그 숫자
+                     (예: 3/5)가 무엇으로 이루어졌는지 보여주는 읽기 전용 자리다. -->
+                <RouterLink :to="{ path: '/wbs', query: { focus: String(wp.wbsItemId) } }" class="link">
+                  WBS에서 편집 →
+                </RouterLink>
               </td>
             </tr>
           </template>
@@ -459,21 +406,6 @@ function snapshotSummary(metrics: string): string {
     </ul>
     <p v-else class="notice subtle">저장된 스냅샷이 없습니다.</p>
   </template>
-
-<div v-if="approving" class="dialog" role="dialog" aria-modal="true">
-  <div class="dialog-body">
-    <h4>체크포인트 승인</h4>
-    <label>
-      승인자
-      <input v-model="approver" type="text" placeholder="예: 김재학" />
-    </label>
-    <p class="explain">로그인이 없어 이름을 직접 적습니다. 승인은 누가 했는지가 핵심입니다.</p>
-    <div class="dialog-actions">
-      <button type="button" :disabled="!approver.trim()" @click="confirmApproval">승인</button>
-      <button type="button" class="ghost" @click="approving = null">취소</button>
-    </div>
-  </div>
-</div>
 
 <div v-if="baselineOpen" class="dialog" role="dialog" aria-modal="true">
   <div class="dialog-body">
@@ -753,7 +685,8 @@ tr.detail > td {
 
 .cp-weight,
 .cp-criteria,
-.cp-approved {
+.cp-approved,
+.cp-pending {
   font-size: 0.75rem;
   color: var(--text-faint);
 }
@@ -762,7 +695,6 @@ tr.detail > td {
   color: var(--accent);
 }
 
-.cp-form,
 .snapshot-form {
   display: flex;
   gap: 0.4rem;
@@ -770,7 +702,6 @@ tr.detail > td {
   flex-wrap: wrap;
 }
 
-.cp-form input:first-child,
 .snapshot-form input {
   flex: 1;
   min-width: 8rem;
@@ -841,16 +772,14 @@ button:disabled {
   cursor: not-allowed;
 }
 
-button.link {
+/* `.link`은 버튼(가중치 편집 취소 등)과 `RouterLink`("WBS에서 편집" 앵커) 둘 다에 붙는다. */
+.link {
   border: none;
   background: none;
   padding: 0;
   color: var(--accent);
   font-size: 0.76rem;
-}
-
-button.link.danger {
-  color: var(--danger);
+  text-decoration: none;
 }
 
 .dialog {
