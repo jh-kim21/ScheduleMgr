@@ -301,24 +301,37 @@ public class DashboardService {
                 .filter(item -> item.status() != RaidStatus.CLOSED)
                 .toList();
 
+        // 총건수는 자르기 전 리스트에서 센다 — 화면이 카드당 5건만 보여줘도(지시서 "카드당 5건"),
+        // 헤드라인 숫자까지 5에서 멈추면 안 된다. 필터를 여기서 한 번만 적용하고 size()와
+        // limit(LIST_LIMIT) 양쪽에 같은 결과를 먹여, 목록과 숫자가 다른 조건으로 어긋나지 않게 한다.
+        List<RaidItemResponse> openIssues = open.stream()
+                .filter(item -> item.type() == RaidType.ISSUE)
+                .toList();
+        List<RaidItemResponse> highExposure = open.stream()
+                .filter(item -> item.exposureLevel() == RaidLevel.HIGH)
+                .toList();
+        List<RaidItemResponse> overdue = open.stream()
+                .filter(RaidItemResponse::overdue)
+                .sorted(Comparator.comparingLong(RaidItemResponse::overdueDays).reversed())
+                .toList();
+
         return new ControlCard(
                 raci.issues().size(),
                 missingAccountable,
                 missingResponsible,
                 multipleAccountable,
-                open.stream()
-                        .filter(item -> item.type() == RaidType.ISSUE)
+                openIssues.size(),
+                highExposure.size(),
+                overdue.size(),
+                openIssues.stream()
                         .limit(LIST_LIMIT)
                         .map(item -> raidRef(item, null))
                         .toList(),
-                open.stream()
-                        .filter(item -> item.exposureLevel() == RaidLevel.HIGH)
+                highExposure.stream()
                         .limit(LIST_LIMIT)
                         .map(item -> raidRef(item, "노출도 " + item.exposure()))
                         .toList(),
-                open.stream()
-                        .filter(RaidItemResponse::overdue)
-                        .sorted(Comparator.comparingLong(RaidItemResponse::overdueDays).reversed())
+                overdue.stream()
                         .limit(LIST_LIMIT)
                         .map(item -> raidRef(item, item.overdueDays() + "일 초과"))
                         .toList());

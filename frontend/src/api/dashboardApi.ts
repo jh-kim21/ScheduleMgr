@@ -141,6 +141,10 @@ export interface ControlCard {
   missingAccountableCount: number
   missingResponsibleCount: number
   multipleAccountableCount: number
+  /** 아래 목록이 잘리기 전의 진짜 건수. 목록은 카드당 5건까지만 싣는다(지시서). */
+  openIssueCount: number
+  highExposureCount: number
+  overdueCount: number
   openIssues: RaidRef[]
   highExposure: RaidRef[]
   overdue: RaidRef[]

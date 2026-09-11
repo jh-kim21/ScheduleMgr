@@ -51,12 +51,35 @@ export function progressText(percent: number | null): string {
   return percent === null ? '산정 전' : `${Math.round(percent)}%`
 }
 
+/**
+ * Rounds to one decimal place — the precision `varianceText` displays. `varianceTone` reuses this
+ * so a value like `0.04` reads as "±0%p" (계획과 같음) and colors as level, never one and the other.
+ * Exported so screens building their own variance sentence (DashboardView's "앞섬/뒤짐" text) round
+ * the same way instead of writing a second rounding rule that can drift from this one.
+ */
+export function roundPoints(points: number): number {
+  return Math.round(points * 10) / 10
+}
+
 /** Percentage points, signed, for a variance figure. `null` stays 미산정. */
 export function varianceText(points: number | null): string {
   if (points === null) return '미산정'
-  const rounded = Math.round(points * 10) / 10
+  const rounded = roundPoints(points)
   if (rounded === 0) return '±0%p'
   return `${rounded > 0 ? '+' : ''}${rounded}%p`
+}
+
+export type VarianceTone = 'ahead' | 'behind' | 'level' | null
+
+/**
+ * Which way a variance leans, for coloring. Uses the same rounding as `varianceText` — see
+ * `roundPoints` — so the color never contradicts the text (e.g. `0.04` is `level`, not `ahead`).
+ */
+export function varianceTone(points: number | null): VarianceTone {
+  if (points === null) return null
+  const rounded = roundPoints(points)
+  if (rounded === 0) return 'level'
+  return rounded > 0 ? 'ahead' : 'behind'
 }
 
 /** Width for a progress bar. 산정 전 draws nothing rather than an empty bar that reads as 0%. */

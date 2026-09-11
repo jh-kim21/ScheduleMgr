@@ -10,6 +10,7 @@ import {
   progressBarWidth,
   progressText,
   varianceText,
+  varianceTone,
 } from '../../shared/progress'
 import { useRowSelection } from '../../shared/useRowSelection'
 import { selectedProjectId } from '../../stores/projectSelection'
@@ -78,6 +79,16 @@ watch(
 
 const project = computed(() => data.value?.project ?? null)
 const scope = computed(() => data.value?.scope ?? null)
+
+/**
+ * 편차 색은 Dashboard와 같은 규칙(`varianceTone`) — +는 초록, -는 빨강, 계획과 같음·미산정은
+ * 지금 색(`.none`) 그대로 둔다. 대시보드의 요약 KPI·상세 카드와 여기 진척 탭이 같은 화면의
+ * 두 면이므로 편차가 세 가지 색 규칙으로 보이면 안 된다.
+ */
+const varianceToneClass = computed(() => {
+  const tone = varianceTone(project.value?.variancePoints ?? null)
+  return tone === 'ahead' ? 'variance-ahead' : tone === 'behind' ? 'variance-behind' : null
+})
 
 /** Work Packages whose figure cannot be produced yet — what the headline number is silent about. */
 const notEstimable = computed(
@@ -202,7 +213,7 @@ function snapshotSummary(metrics: string): string {
       </div>
       <div class="metric">
         <span class="label">편차</span>
-        <strong :class="{ none: project.variancePoints === null }">
+        <strong :class="[varianceToneClass, { none: project.variancePoints === null }]">
           {{ varianceText(project.variancePoints) }}
         </strong>
         <span class="sub">같은 범위·가중치 비교</span>
@@ -561,6 +572,19 @@ input {
 .metric strong.none {
   font-size: 1rem;
   color: var(--text-faint);
+}
+
+/*
+ * 편차 색 — Dashboard(DashboardView.vue)와 같은 클래스 이름·같은 토큰. `.metric strong`는 색을
+ * 지정하지 않으므로(상속) 이 한 클래스만으로 이긴다 — `.none`과는 동시에 붙지 않는다
+ * (`varianceTone(null)`이 null이라 미산정에는 톤 클래스가 안 붙는다).
+ */
+.variance-ahead {
+  color: var(--success-text);
+}
+
+.variance-behind {
+  color: var(--danger);
 }
 
 .metric .sub {

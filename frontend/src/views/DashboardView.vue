@@ -7,7 +7,7 @@ import ProgressPanel from '../features/progress/ProgressPanel.vue'
 import { useProjects } from '../features/projects/useProjects'
 import { ensureSelection, selectedProjectId } from '../stores/projectSelection'
 import { EXECUTION_MODE_LABELS } from '../shared/executionMode'
-import { PROGRESS_BASIS_LABELS, progressText } from '../shared/progress'
+import { PROGRESS_BASIS_LABELS, progressText, roundPoints, varianceTone } from '../shared/progress'
 import { RAID_TYPE_LABELS } from '../shared/raid'
 
 const { projects, error: projectsError, ensureLoaded: ensureProjects } = useProjects()
@@ -87,9 +87,18 @@ const variance = computed(() => {
 const varianceLabel = computed(() => {
   const points = variance.value
   if (points === null) return null
-  const rounded = Math.round(points * 10) / 10
+  const rounded = roundPoints(points)
   if (rounded === 0) return '계획과 같음'
   return rounded > 0 ? `계획보다 ${rounded}%p 앞섬` : `계획보다 ${-rounded}%p 뒤짐`
+})
+
+/**
+ * 색을 고르는 것은 화면의 몫이지만 방향 판정은 shared/progress.ts 한 곳에서만 한다
+ * (`varianceTone`). +는 초록, -는 빨강, 계획과 같음·미산정은 지금 색 그대로 둔다.
+ */
+const varianceToneClass = computed(() => {
+  const tone = varianceTone(variance.value)
+  return tone === 'ahead' ? 'variance-ahead' : tone === 'behind' ? 'variance-behind' : null
 })
 
 /** 같은 화면의 진척 탭. 카드에서 근거를 고치러 갈 때 쓴다. */
@@ -109,6 +118,14 @@ function taskRoute(task: TaskRef) {
 function raidLabel(entry: RaidRef) {
   const owner = entry.ownerName ?? '소유자 미지정'
   return entry.detail ? `${entry.title} · ${entry.detail} · ${owner}` : `${entry.title} · ${owner}`
+}
+
+/**
+ * 카드당 5건만 싣는 목록에 총건수가 더 있으면 그 사실을 적는다 — 그러지 않으면 6건째부터는
+ * 조용히 사라진 것처럼 보인다. 전체는 상세 링크(RAID 화면)에서 본다.
+ */
+function overflowSuffix(total: number, shown: number): string {
+  return total > shown ? ` (${shown}건 표시 · 총 ${total}건)` : ''
 }
 
 /** 종료된 Sprint만 추세다. 진행 중인 것은 아직 움직이므로 옆에 따로 둔다. */
@@ -190,98 +207,125 @@ const scopeChanged = computed(() => {
           <RouterLink to="/wbs">WBS 화면으로 이동</RouterLink>
         </p>
 
-        <div class="cards">
-          <!-- 진척 -->
-          <article class="card wide">
+        <!--
+          KPI 타일 줄 — 화면을 열자마자 봐야 할 숫자 네 개만 큼직하게. "이 프로젝트 지금
+          괜찮은가"에 바로 답하는 값(진척·지연·실행·위험)만 여기 온다. 그 값의 근거·목록·부가
+          정보는 전부 아래 .cards 의 상세 카드에 그대로 남아 있다 — 숫자를 크게 보여주는 것과
+          숫자의 출처를 보여주는 것은 다른 카드의 몫이라 나눴다. 새 카드를 추가할 때 "한눈에
+          볼 지표"면 여기, "근거·목록"이면 .cards 로 보낸다.
+        -->
+        <div class="kpis">
+          <!-- 진척: 큰 숫자는 실제 percent, 작은 줄은 근거(basis)와 계획 대비 편차. -->
+          <article class="card tile" :class="{ 'tile-warn': data.progress.incomplete }">
             <header>
               <h2>진척</h2>
-              <RouterLink :to="PROGRESS_TAB" class="more">상세</RouterLink>
-            </header>
-
-            <p class="headline">
-              {{ progressText(data.progress.actualPercent) }}
-              <span v-if="data.progress.basis" class="basis">
-                {{ PROGRESS_BASIS_LABELS[data.progress.basis] }}
+              <span v-if="data.progress.incomplete" class="status-badge" aria-label="확인 필요">
+                ! 확인 필요
               </span>
+            </header>
+            <p class="tile-value" :class="{ unset: data.progress.actualPercent === null }">
+              {{ progressText(data.progress.actualPercent) }}
             </p>
-
-            <dl class="rows">
-              <dt>계획 진척</dt>
-              <dd v-if="data.progress.plannedPercent !== null">
-                {{ progressText(data.progress.plannedPercent) }}
-                <span class="muted">(기준선 v{{ data.baseline?.version }} 범위)</span>
-              </dd>
-              <dd v-else class="muted">미산정 — 승인된 기준선이 없습니다.</dd>
-
-              <template v-if="varianceLabel">
-                <dt>편차</dt>
-                <dd :class="{ behind: (variance ?? 0) < 0 }">
-                  {{ varianceLabel }}
-                  <span class="muted">
-                    (같은 범위 실제 {{ progressText(data.progress.comparablePercent) }})
-                  </span>
-                </dd>
-              </template>
-
-              <dt>Work Package</dt>
-              <dd>
-                {{ data.workPackages.total }}개
-                <span v-if="data.workPackages.notEstimableCount > 0" class="muted">
-                  · 산정 전 {{ data.workPackages.notEstimableCount }}개
-                </span>
-              </dd>
-            </dl>
-
-            <p v-if="data.progress.incomplete" class="warn-note">
-              일부 하위가 산정 전이거나 가중치가 없어 이 숫자에 빠져 있습니다. 0%로 대신하지
-              않았습니다.
+            <p class="tile-sub">
+              <span v-if="data.progress.basis">{{ PROGRESS_BASIS_LABELS[data.progress.basis] }}</span>
+              <span v-if="varianceLabel" :class="varianceToneClass">{{ varianceLabel }}</span>
             </p>
-
-            <ul class="modes">
-              <li v-for="row in data.workPackages.byExecutionMode" :key="row.mode ?? 'NONE'">
-                {{ row.mode ? EXECUTION_MODE_LABELS[row.mode] : '미지정' }}
-                <strong>{{ row.count }}</strong>
-              </li>
-            </ul>
           </article>
 
-          <!-- 일정 -->
-          <article class="card">
+          <!-- 일정: 지연 건수가 핵심. 지연 위험 건수와 계획 기간을 작게 덧붙인다. -->
+          <article class="card tile" :class="{ 'tile-warn': data.schedule.delayedCount > 0 }">
             <header>
               <h2>일정</h2>
-              <RouterLink to="/gantt" class="more">간트</RouterLink>
+              <span
+                v-if="data.schedule.delayedCount > 0"
+                class="status-badge"
+                aria-label="확인 필요"
+              >! 확인 필요</span>
+            </header>
+            <p class="tile-value">{{ data.schedule.delayedCount }}</p>
+            <p class="tile-sub">
+              <span>지연 위험 {{ data.schedule.atRiskCount }}건</span>
+              <span v-if="data.project.planStart">
+                {{ data.project.planStart }} ~ {{ data.project.planEnd }}
+              </span>
+              <span v-else>계획 기간 미입력</span>
+            </p>
+          </article>
+
+          <!-- 실행: 진행 중 Sprint 의 완료/계획 건수. 없으면 숫자가 아니라 상태 문구다. -->
+          <article class="card tile">
+            <header><h2>실행</h2></header>
+            <template v-if="data.execution.activeSprint">
+              <p class="tile-value">
+                {{ data.execution.activeSprint.doneItems }}/{{
+                  data.execution.activeSprint.plannedItems
+                }}
+              </p>
+              <p class="tile-sub">
+                <span :title="data.execution.activeSprint.name">
+                  {{ data.execution.activeSprint.name }}
+                </span>
+              </p>
+            </template>
+            <p v-else class="tile-value unset">실행 중 없음</p>
+          </article>
+
+          <!--
+            위험·이슈: 큰 숫자는 highExposureCount·overdueCount — 목록(highExposure/overdue)이
+            5건에서 잘려도 총건수는 잘리지 않는다(서버가 자르기 전 스트림에서 센다). 목록 길이를
+            대신 쓰면 6건째부터 헤드라인이 거짓말을 한다.
+          -->
+          <article
+            class="card tile"
+            :class="{
+              'tile-warn': data.control.highExposureCount > 0 || data.control.overdueCount > 0,
+            }"
+          >
+            <header>
+              <h2>위험·이슈</h2>
+              <span
+                v-if="data.control.highExposureCount > 0 || data.control.overdueCount > 0"
+                class="status-badge"
+                aria-label="확인 필요"
+              >! 확인 필요</span>
+            </header>
+            <p class="tile-value">{{ data.control.highExposureCount }}</p>
+            <p class="tile-sub">
+              <span>기한 초과 {{ data.control.overdueCount }}건</span>
+            </p>
+          </article>
+        </div>
+
+        <div class="cards">
+          <!-- 속도 -->
+          <article class="card span-3">
+            <header>
+              <h2>완료 Story Point 추세</h2>
+              <RouterLink to="/sprint" class="more">Sprint</RouterLink>
             </header>
 
-            <dl class="rows">
-              <dt>계획 기간</dt>
-              <dd v-if="data.project.planStart">
-                {{ data.project.planStart }} ~ {{ data.project.planEnd }}
-              </dd>
-              <dd v-else class="muted">일정이 입력된 항목이 없습니다.</dd>
+            <template v-if="closedVelocity.length > 0">
+              <ul class="trend">
+                <li v-for="sprint in closedVelocity" :key="sprint.sprintId">
+                  <span class="trend-bar-slot">
+                    <span
+                      class="trend-bar"
+                      :style="{ height: `${(sprint.donePoints / peakPoints) * 100}%` }"
+                    ></span>
+                  </span>
+                  <span class="trend-points">{{ sprint.donePoints }}</span>
+                  <span class="trend-name" :title="sprint.name">{{ sprint.name }}</span>
+                </li>
+              </ul>
+              <p class="muted">
+                종료된 Sprint의 실적입니다. 이월된 항목은 완료한 Sprint 쪽에만 셉니다.
+              </p>
+            </template>
+            <p v-else class="muted">종료된 Sprint가 아직 없습니다.</p>
 
-              <dt>예상 종료</dt>
-              <dd v-if="data.project.forecastEnd">{{ data.project.forecastEnd }}</dd>
-              <dd v-else class="muted">-</dd>
-            </dl>
-
-            <p class="counts">
-              <span :class="{ bad: data.schedule.delayedCount > 0 }">
-                지연 <strong>{{ data.schedule.delayedCount }}</strong>
-              </span>
-              <span :class="{ warn: data.schedule.atRiskCount > 0 }">
-                지연 위험 <strong>{{ data.schedule.atRiskCount }}</strong>
-              </span>
-              <span>임계 <strong>{{ data.schedule.criticalPathCount }}</strong></span>
-            </p>
-
-            <ul v-if="data.schedule.delayed.length > 0" class="refs">
-              <li v-for="task in data.schedule.delayed" :key="task.wbsItemId">
-                <RouterLink :to="taskRoute(task)">{{ task.code }} {{ task.name }}</RouterLink>
-                <span class="muted">{{ task.detail }}</span>
-              </li>
-            </ul>
-            <p v-else-if="data.workPackages.total > 0" class="ok-note">
-              기준일 현재 지연된 업무가 없습니다.
+            <p v-if="runningVelocity" class="running">
+              진행 중 {{ runningVelocity.name }} — 현재 {{ runningVelocity.donePoints }}포인트.
+              아직 움직이는 숫자라 추세에 넣지 않았습니다.
             </p>
           </article>
 
@@ -327,10 +371,147 @@ const scopeChanged = computed(() => {
             </p>
           </article>
 
-          <!-- 실행 -->
-          <article class="card wide">
+          <!--
+            진척 상세 — 위 타일이 headline(percent·basis·편차)만 보여주고 남긴 나머지: 계획
+            진척과 같은 범위 실제, Work Package 수와 산정 전 개수, 실행 방식 분포, incomplete
+            경고문.
+          -->
+          <article class="card span-2">
             <header>
-              <h2>실행</h2>
+              <h2>진척 상세</h2>
+              <RouterLink :to="PROGRESS_TAB" class="more">상세</RouterLink>
+            </header>
+
+            <dl class="rows">
+              <dt>계획 진척</dt>
+              <dd v-if="data.progress.plannedPercent !== null">
+                {{ progressText(data.progress.plannedPercent) }}
+                <span class="muted">(기준선 v{{ data.baseline?.version }} 범위)</span>
+              </dd>
+              <dd v-else class="muted">미산정 — 승인된 기준선이 없습니다.</dd>
+
+              <template v-if="varianceLabel">
+                <dt>편차</dt>
+                <dd :class="varianceToneClass">
+                  {{ varianceLabel }}
+                  <span class="muted">
+                    (같은 범위 실제 {{ progressText(data.progress.comparablePercent) }})
+                  </span>
+                </dd>
+              </template>
+
+              <dt>Work Package</dt>
+              <dd>
+                {{ data.workPackages.total }}개
+                <span v-if="data.workPackages.notEstimableCount > 0" class="muted">
+                  · 산정 전 {{ data.workPackages.notEstimableCount }}개
+                </span>
+              </dd>
+            </dl>
+
+            <p v-if="data.progress.incomplete" class="warn-note">
+              일부 하위가 산정 전이거나 가중치가 없어 이 숫자에 빠져 있습니다. 0%로 대신하지
+              않았습니다.
+            </p>
+
+            <ul class="modes">
+              <li v-for="row in data.workPackages.byExecutionMode" :key="row.mode ?? 'NONE'">
+                {{ row.mode ? EXECUTION_MODE_LABELS[row.mode] : '미지정' }}
+                <strong>{{ row.count }}</strong>
+              </li>
+            </ul>
+          </article>
+
+          <!-- 책임과 통제 -->
+          <article class="card">
+            <header>
+              <h2>책임</h2>
+              <RouterLink to="/raci" class="more">RACI</RouterLink>
+            </header>
+
+            <p v-if="data.control.raciIssueCount === 0" class="ok-note">
+              책임 공백이 없습니다.
+            </p>
+            <dl v-else class="rows">
+              <dt>책임자 없음</dt>
+              <dd>{{ data.control.missingAccountableCount }}건</dd>
+              <dt>담당자 없음</dt>
+              <dd>{{ data.control.missingResponsibleCount }}건</dd>
+              <dt>책임자 중복</dt>
+              <dd>{{ data.control.multipleAccountableCount }}건</dd>
+            </dl>
+            <p class="muted">상속을 반영한 판정입니다.</p>
+          </article>
+
+          <!-- 인수 -->
+          <article v-if="data.schedule.acceptancePending.length > 0" class="card">
+            <header><h2>인수 대기</h2></header>
+            <p class="muted">실행은 끝났지만 승인이 남았습니다. 완료로 세지 않습니다.</p>
+            <ul class="refs">
+              <li v-for="task in data.schedule.acceptancePending" :key="task.wbsItemId">
+                <RouterLink :to="taskRoute(task)">{{ task.code }} {{ task.name }}</RouterLink>
+              </li>
+            </ul>
+          </article>
+
+          <!-- 데이터 누락 -->
+          <article v-if="data.gaps.length > 0" class="card span-2">
+            <header>
+              <h2>데이터 누락</h2>
+              <span class="status-badge" aria-label="확인 필요">! 확인 필요</span>
+            </header>
+            <p class="muted">
+              아래 항목 때문에 위 숫자가 답하지 못하는 부분이 있습니다. 임의로 채우지 않았습니다.
+            </p>
+            <ul class="gaps">
+              <li v-for="gap in data.gaps" :key="gap.kind">
+                <RouterLink :to="gapRoute(gap)">{{ gap.label }}</RouterLink>
+                <strong>{{ gap.count }}건</strong>
+              </li>
+            </ul>
+          </article>
+
+          <!-- 일정 상세 — 타일의 지연 건수가 남긴 나머지: 예상 종료, 임계 경로 건수, 지연 목록. -->
+          <article class="card span-2">
+            <header>
+              <h2>일정 상세</h2>
+              <RouterLink to="/gantt" class="more">간트</RouterLink>
+            </header>
+
+            <dl class="rows">
+              <dt>예상 종료</dt>
+              <dd v-if="data.project.forecastEnd">{{ data.project.forecastEnd }}</dd>
+              <dd v-else class="muted">-</dd>
+            </dl>
+
+            <p class="counts">
+              <span :class="{ bad: data.schedule.delayedCount > 0 }">
+                지연 <strong>{{ data.schedule.delayedCount }}</strong>
+              </span>
+              <span :class="{ warn: data.schedule.atRiskCount > 0 }">
+                지연 위험 <strong>{{ data.schedule.atRiskCount }}</strong>
+              </span>
+              <span>임계 <strong>{{ data.schedule.criticalPathCount }}</strong></span>
+            </p>
+
+            <ul v-if="data.schedule.delayed.length > 0" class="refs">
+              <li v-for="task in data.schedule.delayed" :key="task.wbsItemId">
+                <RouterLink :to="taskRoute(task)">{{ task.code }} {{ task.name }}</RouterLink>
+                <span class="muted">{{ task.detail }}</span>
+              </li>
+            </ul>
+            <p v-else-if="data.workPackages.total > 0" class="ok-note">
+              기준일 현재 지연된 업무가 없습니다.
+            </p>
+          </article>
+
+          <!--
+            실행 상세 — 타일의 완료/계획 건수가 남긴 나머지: 기간·목표, 포인트, 차단 건수와
+            목록, 미연결 Backlog 경고.
+          -->
+          <article class="card span-2">
+            <header>
+              <h2>실행 상세</h2>
               <RouterLink to="/sprint" class="more">Sprint</RouterLink>
             </header>
 
@@ -395,74 +576,24 @@ const scopeChanged = computed(() => {
             </p>
           </article>
 
-          <!-- 속도 -->
-          <article class="card wide">
+          <!-- 위험·이슈 상세 — 타일의 노출도 높음 건수가 남긴 나머지: 기한 초과·노출도·열린 이슈 목록. -->
+          <article class="card span-2">
             <header>
-              <h2>완료 Story Point 추세</h2>
-              <RouterLink to="/sprint" class="more">Sprint</RouterLink>
-            </header>
-
-            <template v-if="closedVelocity.length > 0">
-              <ul class="trend">
-                <li v-for="sprint in closedVelocity" :key="sprint.sprintId">
-                  <span class="trend-bar-slot">
-                    <span
-                      class="trend-bar"
-                      :style="{ height: `${(sprint.donePoints / peakPoints) * 100}%` }"
-                    ></span>
-                  </span>
-                  <span class="trend-points">{{ sprint.donePoints }}</span>
-                  <span class="trend-name" :title="sprint.name">{{ sprint.name }}</span>
-                </li>
-              </ul>
-              <p class="muted">
-                종료된 Sprint의 실적입니다. 이월된 항목은 완료한 Sprint 쪽에만 셉니다.
-              </p>
-            </template>
-            <p v-else class="muted">종료된 Sprint가 아직 없습니다.</p>
-
-            <p v-if="runningVelocity" class="running">
-              진행 중 {{ runningVelocity.name }} — 현재 {{ runningVelocity.donePoints }}포인트.
-              아직 움직이는 숫자라 추세에 넣지 않았습니다.
-            </p>
-          </article>
-
-          <!-- 책임과 통제 -->
-          <article class="card">
-            <header>
-              <h2>책임</h2>
-              <RouterLink to="/raci" class="more">RACI</RouterLink>
-            </header>
-
-            <p v-if="data.control.raciIssueCount === 0" class="ok-note">
-              책임 공백이 없습니다.
-            </p>
-            <dl v-else class="rows">
-              <dt>책임자 없음</dt>
-              <dd>{{ data.control.missingAccountableCount }}건</dd>
-              <dt>담당자 없음</dt>
-              <dd>{{ data.control.missingResponsibleCount }}건</dd>
-              <dt>책임자 중복</dt>
-              <dd>{{ data.control.multipleAccountableCount }}건</dd>
-            </dl>
-            <p class="muted">상속을 반영한 판정입니다.</p>
-          </article>
-
-          <article class="card">
-            <header>
-              <h2>위험·이슈</h2>
+              <h2>위험·이슈 상세</h2>
               <RouterLink to="/raid" class="more">RAID</RouterLink>
             </header>
 
             <template
               v-if="
-                data.control.openIssues.length > 0 ||
-                data.control.highExposure.length > 0 ||
-                data.control.overdue.length > 0
+                data.control.openIssueCount > 0 ||
+                data.control.highExposureCount > 0 ||
+                data.control.overdueCount > 0
               "
             >
-              <template v-if="data.control.overdue.length > 0">
-                <h3>기한 초과</h3>
+              <template v-if="data.control.overdueCount > 0">
+                <h3>
+                  기한 초과{{ overflowSuffix(data.control.overdueCount, data.control.overdue.length) }}
+                </h3>
                 <ul class="refs">
                   <li v-for="entry in data.control.overdue" :key="entry.raidItemId">
                     <RouterLink to="/raid">{{ raidLabel(entry) }}</RouterLink>
@@ -470,8 +601,12 @@ const scopeChanged = computed(() => {
                 </ul>
               </template>
 
-              <template v-if="data.control.highExposure.length > 0">
-                <h3>노출도 높음</h3>
+              <template v-if="data.control.highExposureCount > 0">
+                <h3>
+                  노출도 높음{{
+                    overflowSuffix(data.control.highExposureCount, data.control.highExposure.length)
+                  }}
+                </h3>
                 <ul class="refs">
                   <li v-for="entry in data.control.highExposure" :key="entry.raidItemId">
                     <RouterLink to="/raid">{{ raidLabel(entry) }}</RouterLink>
@@ -479,8 +614,10 @@ const scopeChanged = computed(() => {
                 </ul>
               </template>
 
-              <template v-if="data.control.openIssues.length > 0">
-                <h3>열린 이슈</h3>
+              <template v-if="data.control.openIssueCount > 0">
+                <h3>
+                  열린 이슈{{ overflowSuffix(data.control.openIssueCount, data.control.openIssues.length) }}
+                </h3>
                 <ul class="refs">
                   <li v-for="entry in data.control.openIssues" :key="entry.raidItemId">
                     <RouterLink to="/raid">{{ raidLabel(entry) }}</RouterLink>
@@ -489,31 +626,6 @@ const scopeChanged = computed(() => {
               </template>
             </template>
             <p v-else class="ok-note">열린 위험·이슈가 없습니다.</p>
-          </article>
-
-          <!-- 인수 -->
-          <article v-if="data.schedule.acceptancePending.length > 0" class="card">
-            <header><h2>인수 대기</h2></header>
-            <p class="muted">실행은 끝났지만 승인이 남았습니다. 완료로 세지 않습니다.</p>
-            <ul class="refs">
-              <li v-for="task in data.schedule.acceptancePending" :key="task.wbsItemId">
-                <RouterLink :to="taskRoute(task)">{{ task.code }} {{ task.name }}</RouterLink>
-              </li>
-            </ul>
-          </article>
-
-          <!-- 데이터 누락 -->
-          <article v-if="data.gaps.length > 0" class="card wide">
-            <header><h2>데이터 누락</h2></header>
-            <p class="muted">
-              아래 항목 때문에 위 숫자가 답하지 못하는 부분이 있습니다. 임의로 채우지 않았습니다.
-            </p>
-            <ul class="gaps">
-              <li v-for="gap in data.gaps" :key="gap.kind">
-                <RouterLink :to="gapRoute(gap)">{{ gap.label }}</RouterLink>
-                <strong>{{ gap.count }}건</strong>
-              </li>
-            </ul>
           </article>
         </div>
       </template>
@@ -602,10 +714,30 @@ h1 {
   font-weight: 600;
 }
 
-/* 카드는 두 열이 기본이고, 넓은 카드는 두 칸을 차지한다. 좁아지면 한 열로 접힌다. */
+/*
+ * KPI 타일 줄. 넓은 화면에서 네 칸 고정 — auto-fit 을 쓰면 타일 개수가 늘 때마다 폭이
+ * 들쭉날쭉해진다. align-items: stretch 로 타일 높이를 맞춘다(지시서 요구사항) — 아래 .cards
+ * 는 카드마다 내용 길이가 크게 달라 stretch 를 쓰면 짧은 카드에 빈 공간만 늘어나므로 거기는
+ * 그대로 start 를 쓴다.
+ */
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.9rem;
+  align-items: stretch;
+  margin-bottom: 0.9rem;
+}
+
+/*
+ * 상세 카드 그리드. 넓은 화면은 네 칸이고, 카드마다 span-2/span-3 로 폭을 정한다(값을 지정하지
+ * 않으면 한 칸). grid-auto-flow: dense 는 "인수 대기"·"데이터 누락"처럼 조건부로 사라지는
+ * 카드가 있을 때 뒤 카드가 빈 칸을 채우고 올라오게 한다 — 없으면 그 자리가 빈 채로 다음 줄로
+ * 밀린다.
+ */
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+  grid-template-columns: repeat(4, 1fr);
+  grid-auto-flow: dense;
   gap: 0.9rem;
   align-items: start;
 }
@@ -617,14 +749,101 @@ h1 {
   padding: 0.85rem 1rem 1rem;
 }
 
-.card.wide {
+.card.span-2 {
   grid-column: span 2;
 }
 
-@media (max-width: 60rem) {
-  .card.wide {
+.card.span-3 {
+  grid-column: span 3;
+}
+
+@media (max-width: 72rem) {
+  .kpis {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .card.span-3 {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 48rem) {
+  .kpis {
+    grid-template-columns: 1fr;
+  }
+
+  .cards {
+    grid-template-columns: 1fr;
+  }
+
+  .card.span-2,
+  .card.span-3 {
     grid-column: span 1;
   }
+}
+
+/* KPI 타일. .card 의 테두리·배경은 그대로 물려받고, 안쪽 여백과 큰 숫자만 얹는다. */
+.card.tile {
+  display: flex;
+  flex-direction: column;
+  padding: 1rem 1.1rem 1.1rem;
+}
+
+.card.tile header {
+  margin-bottom: 0.4rem;
+}
+
+/* 색은 배지 글자를 보조할 뿐이다 — 테두리만으로 확인 필요를 구분하게 하지 않는다. */
+.card.tile.tile-warn {
+  border-left: 3px solid var(--warn);
+}
+
+/* 큰 숫자. tabular-nums 로 자릿수가 바뀌어도 폭이 흔들리지 않는다. */
+.tile-value {
+  font-size: 2.2rem;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--text-h);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* "산정 전"·"실행 중 없음"처럼 숫자가 아닌 상태는 크게 쓰지 않는다 — 0 이 아니라는 뜻이다. */
+.tile-value.unset {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text-faint);
+  white-space: normal;
+}
+
+.tile-sub {
+  margin-top: auto;
+  padding-top: 0.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  font-size: 0.78rem;
+  color: var(--text-faint);
+}
+
+/*
+ * 확인이 필요한 타일의 머리에 붙는 배지. 색만으로 구분하지 않도록 "! 확인 필요" 글자를 그대로
+ * 쓰고, 배경도 얹어 흑백에서도 테두리로 구분되게 한다. 카드 배경색 자체는 바꾸지 않는다 — 표
+ * 전체가 경고색으로 물들면 정작 배지가 묻힌다.
+ */
+.status-badge {
+  margin-left: auto;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: var(--warn-badge-bg);
+  color: var(--warn-badge-fg);
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .card header {
@@ -684,8 +903,25 @@ h1 {
   color: var(--text-muted);
 }
 
-.rows dd.behind {
-  color: var(--warn-strong);
+/*
+ * `.rows dd` above sets a neutral color, so the tone classes need matching specificity to win
+ * rather than losing to source order. Same tone classes as the KPI tile sub-line and ProgressPanel
+ * — one rule for what "+" and "-" mean, reused everywhere a variance figure is printed.
+ */
+.rows dd.variance-ahead {
+  color: var(--success-text);
+}
+
+.rows dd.variance-behind {
+  color: var(--danger);
+}
+
+.variance-ahead {
+  color: var(--success-text);
+}
+
+.variance-behind {
+  color: var(--danger);
 }
 
 .muted {

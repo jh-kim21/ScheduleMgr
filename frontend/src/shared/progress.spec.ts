@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { progressBarWidth, progressText, varianceText } from './progress'
+import { progressBarWidth, progressText, varianceText, varianceTone } from './progress'
 
 describe('progressText', () => {
   it('산정 전은 0%가 아니다', () => {
@@ -22,6 +22,31 @@ describe('varianceText', () => {
     expect(varianceText(-3)).toBe('-3%p')
     expect(varianceText(2.34)).toBe('+2.3%p')
     expect(varianceText(0)).toBe('±0%p')
+  })
+})
+
+describe('varianceTone', () => {
+  it('기준선이 없으면 색을 입히지 않는다', () => {
+    expect(varianceTone(null)).toBe(null)
+  })
+
+  it('양수는 ahead, 음수는 behind, 0은 level', () => {
+    expect(varianceTone(2.34)).toBe('ahead')
+    expect(varianceTone(-3)).toBe('behind')
+    expect(varianceTone(0)).toBe('level')
+  })
+
+  it('반올림해서 0이 되면 level이고, varianceText도 같은 반올림으로 ±0%p를 보여준다', () => {
+    expect(varianceTone(0.04)).toBe('level')
+    expect(varianceText(0.04)).toBe('±0%p')
+
+    expect(varianceTone(-0.04)).toBe('level')
+    expect(varianceText(-0.04)).toBe('±0%p')
+  })
+
+  it('반올림해서 0이 아니게 되는 경계값은 그 방향을 따른다', () => {
+    expect(varianceTone(0.05)).toBe('ahead')
+    expect(varianceText(0.05)).toBe('+0.1%p')
   })
 })
 

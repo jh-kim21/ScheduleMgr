@@ -160,12 +160,20 @@ public record DashboardResponse(
      *
      * @param raciIssueCount rule breaches from the RACI matrix, already inherited-aware — do not
      *                       recount them here
+     * @param openIssueCount   total behind {@code openIssues}, counted before the list is cut to
+     *                         {@code LIST_LIMIT} — a headline number must never read "5" when the
+     *                         real count is 12 just because the card only shows five rows
+     * @param highExposureCount total behind {@code highExposure}, same reason
+     * @param overdueCount      total behind {@code overdue}, same reason
      */
     public record ControlCard(
             int raciIssueCount,
             int missingAccountableCount,
             int missingResponsibleCount,
             int multipleAccountableCount,
+            int openIssueCount,
+            int highExposureCount,
+            int overdueCount,
             List<RaidRef> openIssues,
             List<RaidRef> highExposure,
             List<RaidRef> overdue
