@@ -4,6 +4,8 @@ import { RouterLink } from 'vue-router'
 import type { Sprint } from '../api/sprintApi'
 import ModalDialog from '../components/ModalDialog.vue'
 import SprintForm from '../features/sprint/SprintForm.vue'
+import SprintAssignTable from '../features/sprint/SprintAssignTable.vue'
+import type { AssignCandidate } from '../features/sprint/assignFilter'
 import { useSprints } from '../features/sprint/useSprints'
 import { useProjects } from '../features/projects/useProjects'
 import { BACKLOG_TYPE_LABELS } from '../shared/backlog'
@@ -43,7 +45,9 @@ const carryOverTo = ref<number | null>(null)
  */
 const cancellingStart = ref<Sprint | null>(null)
 
-const assignPick = ref<number | null>(null)
+/** 여러 건 배정 중에는 표를 잠그고, 부분 실패했을 때만 사람이 읽을 문장을 남긴다. */
+const assigning = ref(false)
+const assignMessage = ref<string | null>(null)
 
 function openForm(sprint: Sprint | null) {
   editing.value = sprint
@@ -59,10 +63,16 @@ watch(
   selectedProjectId,
   (id) => {
     closeForm()
+    assignMessage.value = null
     if (id !== null) ensureLoaded(id)
   },
   { immediate: true },
 )
+
+// 다른 Sprint를 보러 가면 이전 Sprint의 배정 결과 문장이 남아 있을 이유가 없다.
+watch(selectedSprintId, () => {
+  assignMessage.value = null
+})
 
 onMounted(async () => {
   await ensureProjects()
@@ -85,12 +95,44 @@ async function handleSubmit(input: { name: string; goal: string | null; startDat
   if (ok) closeForm()
 }
 
-async function handleAssign() {
+/** SprintAssignTable이 그리는 후보 목록. 배정 가능 여부·순서는 useSprints의 assignable이 정한다. */
+const candidates = computed<AssignCandidate[]>(() =>
+  assignable.value.map((item) => ({
+    id: item.id,
+    title: item.title,
+    typeLabel: BACKLOG_TYPE_LABELS[item.itemType],
+    storyPoint: item.storyPoint,
+  })),
+)
+
+/**
+ * 서버는 한 건씩만 배정하므로 순차로 호출한다. 배정은 서로 독립이라 중간 실패가 이전 성공을
+ * 무효로 만들지 않으므로, 실패하면 그 자리에서 멈추고 이미 들어간 것은 그대로 둔다.
+ *
+ * <p>표의 체크박스 선택은 비우지 않는다 — 성공한 항목은 `assignable`이 줄어들며
+ * `SprintAssignTable`이 스스로 정리하고, 실패한(및 뒤에서 시도하지 못한) 항목은 후보에 그대로
+ * 남아 선택도 남아 있어야 "거부되면 입력값이 남는다"는 화면 규칙과 일치한다.
+ */
+async function handleAssignMany(ids: number[]) {
   const projectId = selectedProjectId.value
   const sprintId = selectedSprintId.value
-  if (projectId === null || sprintId === null || assignPick.value === null) return
-  const ok = await assign(projectId, sprintId, assignPick.value)
-  if (ok) assignPick.value = null
+  if (projectId === null || sprintId === null || ids.length === 0) return
+  assignMessage.value = null
+  assigning.value = true
+  let done = 0
+  for (const id of ids) {
+    const ok = await assign(projectId, sprintId, id)
+    if (!ok) break
+    done += 1
+  }
+  assigning.value = false
+  // 전부 성공하면 조용히 끝난다 — 표에서 후보가 줄어드는 것이 이미 확인 신호다.
+  if (done < ids.length) {
+    const stoppedAt = candidates.value.find((c) => c.id === ids[done])?.title ?? '항목'
+    assignMessage.value =
+      `${ids.length}건 중 ${done}건을 배정했습니다. '${stoppedAt}'에서 멈췄습니다` +
+      (error.value ? ` — ${error.value}` : '')
+  }
 }
 
 
@@ -247,19 +289,9 @@ async function confirmCancelStart() {
           </div>
 
           <div v-if="selected.status !== 'CLOSED'" class="assign">
-            <label>
-              <span class="filter-label">항목 배정</span>
-              <select v-model="assignPick">
-                <option :value="null">
-                  {{ assignable.length === 0 ? '배정할 수 있는 항목이 없습니다' : '항목을 선택하세요' }}
-                </option>
-                <option v-for="item in assignable" :key="item.id" :value="item.id">
-                  {{ BACKLOG_TYPE_LABELS[item.itemType] }} · {{ item.title }}
-                  <template v-if="item.storyPoint !== null"> ({{ item.storyPoint }} SP)</template>
-                </option>
-              </select>
-            </label>
-            <button type="button" :disabled="assignPick === null" @click="handleAssign">배정</button>
+            <span class="filter-label">항목 배정</span>
+            <SprintAssignTable :candidates="candidates" :busy="assigning" @assign="handleAssignMany" />
+            <p v-if="assignMessage" class="assign-result">{{ assignMessage }}</p>
             <span class="assign-note">
               완료 가능한 Story·Bug만, 그리고 다른 Sprint에 들어 있지 않은 것만 고를 수 있습니다.
             </span>
@@ -483,21 +515,20 @@ select {
 
 .assign {
   display: flex;
-  align-items: flex-end;
-  gap: 0.6rem;
-  flex-wrap: wrap;
-  margin-bottom: 0.9rem;
-}
-
-.assign label {
-  display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.4rem;
+  margin-bottom: 0.9rem;
 }
 
 .filter-label {
   font-size: 0.72rem;
   color: var(--text-dim);
+}
+
+.assign-result {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
 }
 
 .assign-note {
