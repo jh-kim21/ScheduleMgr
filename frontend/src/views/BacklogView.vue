@@ -8,6 +8,7 @@ import { useBacklog } from '../features/backlog/useBacklog'
 import {
   ARCHIVE_FILTER_LABELS,
   ARCHIVE_FILTER_ORDER,
+  defaultLinkFromFilter,
   isFiltered,
   LINK_FILTER_LABELS,
   LINK_FILTER_ORDER,
@@ -95,6 +96,9 @@ watch(
 )
 
 const filterActive = computed(() => isFiltered(filters))
+
+/** 새 항목의 귀속 기본값 — 걸어 둔 Work Package 필터를 따르되, 그 항목이 이미 사라졌으면 미연결. */
+const defaultWbsItemId = computed(() => defaultLinkFromFilter(filters.wbsItemId, workPackages.value))
 
 const focusedPackage = computed(() =>
   filters.wbsItemId === null
@@ -252,6 +256,7 @@ async function handleRemove(item: BacklogItem) {
         :members="members"
         :work-packages="workPackages"
         :parent-options="parentOptions"
+        :default-wbs-item-id="defaultWbsItemId"
         :error="error"
         @submit="handleSubmit"
         @cancel="closeForm"

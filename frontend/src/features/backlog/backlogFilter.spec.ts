@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { BacklogItem } from '../../api/backlogApi'
-import { DEFAULT_FILTERS, isFiltered, visibleRows, type BacklogFilters } from './backlogFilter'
+import {
+  DEFAULT_FILTERS,
+  defaultLinkFromFilter,
+  isFiltered,
+  visibleRows,
+  type BacklogFilters,
+} from './backlogFilter'
 
 let nextId = 1
 
@@ -114,5 +120,32 @@ describe('isFiltered', () => {
     expect(isFiltered(filters({ wbsItemId: 10 }))).toBe(true)
     expect(isFiltered(filters({ archive: 'ALL' }))).toBe(true)
     expect(isFiltered(filters({ link: 'UNLINKED' }))).toBe(true)
+  })
+})
+
+describe('defaultLinkFromFilter', () => {
+  it('필터가 안 걸렸으면 기본 귀속도 없다', () => {
+    expect(defaultLinkFromFilter(null, [{ id: 10 }])).toBeNull()
+  })
+
+  it('필터가 가리키는 Work Package가 목록에 있으면 그 값을 쓴다', () => {
+    expect(defaultLinkFromFilter(10, [{ id: 10 }, { id: 20 }])).toBe(10)
+  })
+
+  it(
+    '목록에 없는 id면 null이다 — 필터 값은 WBS 화면의 ?wbs= 쿼리로도 들어오는데, ' +
+      '그 사이 항목이 지워지거나 Summary로 바뀌어 옵션에서 빠졌을 수 있다. ' +
+      '없는 id를 그대로 폼에 넣으면 드롭다운이 빈 것처럼 보이면서 저장이 거부된다',
+    () => {
+      expect(defaultLinkFromFilter(99, [{ id: 10 }, { id: 20 }])).toBeNull()
+    },
+  )
+
+  it('후보가 비어 있으면 null', () => {
+    expect(defaultLinkFromFilter(10, [])).toBeNull()
+  })
+
+  it('id 0처럼 falsy한 값도 목록에 있으면 제대로 돌려준다', () => {
+    expect(defaultLinkFromFilter(0, [{ id: 0 }, { id: 1 }])).toBe(0)
   })
 })

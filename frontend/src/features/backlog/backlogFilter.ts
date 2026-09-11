@@ -6,6 +6,11 @@ import type { BacklogItemType, BacklogStatus } from '../../shared/backlog'
  * backlog is one screenful, and this is a question about "the view right now" rather than about the
  * data. Sending it to the server would add a round trip per dropdown and a cache key per
  * combination. Pure functions, so vitest can pin the rules.
+ *
+ * <p>Also carries the one place a filter feeds back into an editor: the default Work Package a new
+ * item's form should open with (`defaultLinkFromFilter`). It is "filter" logic, not "form" logic —
+ * the answer depends only on the current filter and the option list, so it belongs next to the
+ * filter it reads rather than being duplicated inside the form.
  */
 
 export type LinkFilter = 'ALL' | 'LINKED' | 'UNLINKED'
@@ -84,6 +89,22 @@ export function visibleRows(items: BacklogItem[], filters: BacklogFilters): Back
 export interface BacklogRow {
   item: BacklogItem
   context: boolean
+}
+
+/**
+ * 필터가 가리키는 Work Package를 새 Backlog 항목의 기본 귀속으로 쓸지 판정한다.
+ *
+ * <p>존재 확인이 필요한 이유: 필터 값은 WBS 화면에서 온 쿼리(`?wbs=`)로도 설정되는데, 그 사이
+ * 항목이 지워지거나 Summary로 바뀌어 옵션 목록에서 빠졌을 수 있다. 없는 id를 폼에 그대로 넣으면
+ * 드롭다운이 아무것도 고르지 않은 것처럼 보이다가 저장 시점에야 서버가 거부한다.
+ */
+export function defaultLinkFromFilter(
+  filterWbsItemId: number | null,
+  workPackages: { id: number }[],
+): number | null {
+  if (filterWbsItemId === null) return null
+  const exists = workPackages.some((candidate) => candidate.id === filterWbsItemId)
+  return exists ? filterWbsItemId : null
 }
 
 function matches(item: BacklogItem, filters: BacklogFilters): boolean {

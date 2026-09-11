@@ -20,6 +20,11 @@ const props = defineProps<{
   members: ProjectMember[]
   workPackages: WorkPackageOption[]
   parentOptions: BacklogItem[]
+  /**
+   * 목록 화면에서 걸어 둔 Work Package 필터. 새 항목의 귀속 기본값으로만 쓰이며(아래
+   * `inheritsLink`가 이기면 무시된다), 수정 중인 항목에는 적용하지 않는다.
+   */
+  defaultWbsItemId: number | null
   /** 저장이 거부된 이유. 대화상자 안에 보여야 사용자가 볼 수 있다. */
   error?: string | null
 }>()
@@ -68,6 +73,18 @@ const parent = computed(() =>
 /** 하위의 귀속은 상위를 따른다. 고를 수 있는 값이 아니므로 컨트롤을 잠근다. */
 const inheritsLink = computed(() => parent.value !== null)
 
+/**
+ * 필터에서 물려받은 기본값이 아직 그대로 남아 있는 동안만 안내한다. 상위를 골라 상속이 이기면
+ * (`inheritsLink`) 이 안내는 물러난다 — 두 안내가 같은 자리에서 동시에 뜨면 안 된다.
+ */
+const defaultLinkApplied = computed(
+  () =>
+    !props.editing &&
+    !inheritsLink.value &&
+    props.defaultWbsItemId !== null &&
+    form.wbsItemId === props.defaultWbsItemId,
+)
+
 const selectedPackage = computed(() =>
   props.workPackages.find((candidate) => candidate.id === form.wbsItemId) ?? null,
 )
@@ -110,7 +127,9 @@ watch(
       // 이미 완료인 항목을 다시 저장하는 것은 새 확인을 요구하지 않는다 (서버도 그렇게 본다).
       form.acceptanceConfirmed = item.status === 'DONE'
     } else {
-      Object.assign(form, empty)
+      // 새 항목: 목록에서 걸어 둔 Work Package 필터를 출발점으로 삼는다. 필터가 없거나(전체
+      // 보기) 가리키는 항목이 이미 사라졌으면 defaultWbsItemId는 null이라 미연결로 시작한다.
+      Object.assign(form, empty, { wbsItemId: props.defaultWbsItemId })
     }
   },
   { immediate: true },
@@ -231,6 +250,10 @@ function onSubmit() {
 
       <p v-if="inheritsLink" class="hint">
         하위 항목의 귀속은 상위 항목을 따릅니다. 귀속을 바꾸려면 상위 항목을 옮기세요.
+      </p>
+
+      <p v-else-if="defaultLinkApplied" class="hint muted">
+        목록에서 걸어 둔 필터를 따라 귀속 Work Package를 미리 골라 두었습니다. 다른 곳에 붙이려면 바꾸세요.
       </p>
 
       <p v-if="form.itemType === 'TASK' && form.parentId === null" class="hint">
