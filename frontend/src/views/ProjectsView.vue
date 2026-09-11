@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import type { MemberInput } from '../api/memberApi'
 import type { Project, ProjectInput } from '../api/projectApi'
+import MemberEditor from '../features/members/MemberEditor.vue'
+import { useMembers } from '../features/members/useMembers'
 import ProjectForm from '../features/projects/ProjectForm.vue'
 import ProjectList from '../features/projects/ProjectList.vue'
 import { useProjects } from '../features/projects/useProjects'
@@ -13,6 +16,42 @@ const editing = ref<Project | null>(null)
 const formOpen = ref(false)
 /** 저장 거부 사유. 목록 로딩 오류(`error`)와 섞이면 안 되므로 따로 둔다. */
 const saveError = ref<string | null>(null)
+
+/**
+ * 구성원 관리 대화상자. 전역 `selectedProjectId`에 기대지 않는다 — 이 화면은 목록 화면이라
+ * "지금 선택된 프로젝트"라는 개념이 없고, 행에서 누른 프로젝트가 곧 대상이다.
+ */
+const {
+  members,
+  loading: membersLoading,
+  error: membersError,
+  ensureLoaded: ensureMembers,
+  create: createMember,
+  update: updateMember,
+  remove: removeMember,
+} = useMembers()
+const membersProject = ref<Project | null>(null)
+
+function openMembers(project: Project) {
+  membersProject.value = project
+  ensureMembers(project.id)
+}
+
+function closeMembers() {
+  membersProject.value = null
+}
+
+function handleAddMember(input: MemberInput) {
+  if (membersProject.value) createMember(membersProject.value.id, input)
+}
+
+function handleUpdateMember(memberId: number, input: MemberInput) {
+  if (membersProject.value) updateMember(membersProject.value.id, memberId, input)
+}
+
+function handleRemoveMember(memberId: number) {
+  if (membersProject.value) removeMember(membersProject.value.id, memberId)
+}
 
 /** 가져오기 결과는 목록 로딩 오류와 섞이면 안 되므로 따로 둔다. */
 const importError = ref<string | null>(null)
@@ -150,6 +189,19 @@ async function handleRemove(project: Project) {
       :projects="projects"
       @edit="openForm"
       @remove="handleRemove"
+      @members="openMembers"
+    />
+
+    <MemberEditor
+      v-if="membersProject"
+      :project-name="membersProject.name"
+      :members="members"
+      :loading="membersLoading"
+      :error="membersError"
+      @add="handleAddMember"
+      @update="handleUpdateMember"
+      @remove="handleRemoveMember"
+      @close="closeMembers"
     />
   </section>
 </template>

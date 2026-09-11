@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, watch } from 'vue'
 import { RouterLink } from 'vue-router'
-import type { MemberInput } from '../api/memberApi'
-import MemberEditor from '../features/raci/MemberEditor.vue'
 import RaciMatrix from '../features/raci/RaciMatrix.vue'
 import { useRaci } from '../features/raci/useRaci'
 import { useProjects } from '../features/projects/useProjects'
@@ -19,19 +17,7 @@ import {
 } from '../shared/raci'
 
 const { projects, error: projectsError, ensureLoaded: ensureProjects } = useProjects()
-const {
-  data,
-  loading,
-  error,
-  cellIndex,
-  issuesByTask,
-  ensureLoaded,
-  assign,
-  unassign,
-  addMember,
-  updateMember,
-  removeMember,
-} = useRaci()
+const { data, loading, error, cellIndex, issuesByTask, ensureLoaded, assign, unassign } = useRaci()
 
 
 // The selection watcher is the single load path: `immediate` covers arriving with a project
@@ -78,18 +64,6 @@ function handleAssign(wbsItemId: number, memberId: number, role: RaciRole) {
 
 function handleUnassign(assignmentId: number) {
   if (selectedProjectId.value !== null) unassign(selectedProjectId.value, assignmentId)
-}
-
-function handleAddMember(input: MemberInput) {
-  if (selectedProjectId.value !== null) addMember(selectedProjectId.value, input)
-}
-
-function handleUpdateMember(memberId: number, input: MemberInput) {
-  if (selectedProjectId.value !== null) updateMember(selectedProjectId.value, memberId, input)
-}
-
-function handleRemoveMember(memberId: number) {
-  if (selectedProjectId.value !== null) removeMember(selectedProjectId.value, memberId)
 }
 </script>
 
@@ -158,22 +132,18 @@ function handleRemoveMember(memberId: number) {
       </p>
 
       <p v-if="loading">불러오는 중...</p>
-      <template v-else>
-        <RaciMatrix
-          :data="data"
-          :cell-index="cellIndex"
-          :issues-by-task="issuesByTask"
-          @assign="handleAssign"
-          @unassign="handleUnassign"
-        />
-        <MemberEditor
-          :members="data.members"
-          :error="error"
-          @add="handleAddMember"
-          @update="handleUpdateMember"
-          @remove="handleRemoveMember"
-        />
-      </template>
+      <p v-else-if="data.members.length === 0" class="notice">
+        구성원이 없어 매트릭스를 만들 수 없습니다. 프로젝트 화면에서 먼저 등록하세요.
+        <RouterLink to="/projects">프로젝트 화면으로 이동</RouterLink>
+      </p>
+      <RaciMatrix
+        v-else
+        :data="data"
+        :cell-index="cellIndex"
+        :issues-by-task="issuesByTask"
+        @assign="handleAssign"
+        @unassign="handleUnassign"
+      />
     </template>
   </section>
 </template>

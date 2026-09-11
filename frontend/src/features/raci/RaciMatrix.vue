@@ -106,7 +106,7 @@ function overriddenRoles(task: RaciTask): RaciRole[] {
   </p>
 
   <p v-else-if="!hasColumns" class="empty">
-    구성원이 없습니다. 아래에서 구성원을 등록하면 매트릭스 열이 만들어집니다.
+    구성원이 없습니다. 프로젝트 화면에서 구성원을 먼저 등록해 주세요.
   </p>
 
   <div v-else class="matrix-wrap">

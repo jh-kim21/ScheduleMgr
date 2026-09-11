@@ -8,7 +8,6 @@ export interface CellEntry {
   inherited: InheritedRole[]
 }
 import { ApiError } from '../../api/http'
-import { memberApi, type MemberInput } from '../../api/memberApi'
 import { raciApi, type RaciAssignmentInput, type RaciMatrix } from '../../api/raciApi'
 import { raciCacheKeyFor } from '../../stores/scheduleCache'
 import type { RaciRole } from '../../shared/raci'
@@ -47,7 +46,11 @@ export function useRaci() {
     }
   }
 
-  /** Refetches only when the cached matrix is for another project or the WBS has changed. */
+  /**
+   * Refetches only when the cached matrix is for another project, or the WBS, Backlog or member
+   * list has changed — the last one matters because members are added/edited/removed from the
+   * Projects screen now, not here, so this view has no other way to learn its columns moved.
+   */
   function ensureLoaded(projectId: number): Promise<void> {
     const key = raciCacheKeyFor(projectId)
     if (cacheKey === key) return Promise.resolve()
@@ -77,42 +80,6 @@ export function useRaci() {
     mutate(projectId, () => raciApi.unassign(projectId, assignmentId), '역할을 해제하지 못했습니다.')
 
   /**
-   * The member endpoints return only the member, so the matrix is reloaded afterwards — its
-   * columns come from that list, and a removed member takes its assignments with it.
-   */
-  async function withMemberChange(
-    projectId: number,
-    action: () => Promise<unknown>,
-    fallback: string,
-  ) {
-    error.value = null
-    try {
-      await action()
-    } catch (e) {
-      error.value = describe(e, fallback)
-      return
-    }
-    apply(await raciApi.matrix(projectId), projectId)
-  }
-
-  const addMember = (projectId: number, input: MemberInput) =>
-    withMemberChange(projectId, () => memberApi.create(projectId, input), '구성원을 추가하지 못했습니다.')
-
-  const updateMember = (projectId: number, memberId: number, input: MemberInput) =>
-    withMemberChange(
-      projectId,
-      () => memberApi.update(projectId, memberId, input),
-      '구성원을 수정하지 못했습니다.',
-    )
-
-  const removeMember = (projectId: number, memberId: number) =>
-    withMemberChange(
-      projectId,
-      () => memberApi.remove(projectId, memberId),
-      '구성원을 삭제하지 못했습니다.',
-    )
-
-/**
    * Cell lookup keyed by `wbsItemId:memberId`, built once per matrix rather than per cell render.
    *
    * <p>Inherited letters travel with the cell so the matrix can show a phase's Accountable on the
@@ -152,8 +119,5 @@ export function useRaci() {
     ensureLoaded,
     assign,
     unassign,
-    addMember,
-    updateMember,
-    removeMember,
   }
 }

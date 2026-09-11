@@ -28,6 +28,30 @@ const backlogRev = ref(0)
 /** Sprint and Board changes. Board moves change Backlog statuses, so both screens key on this. */
 const sprintRev = ref(0)
 
+/**
+ * Project member changes (add/edit/remove).
+ *
+ * Member management moved to the Projects screen (Step 7), which applies the response it gets back
+ * for its own purposes but has no reason to know that other screens also render member names — so
+ * those screens need their own signal to refetch.
+ *
+ * The rule is simply: **a payload that renders a member name keys on this revision.** Checked by
+ * reading each screen's payload type, not by guessing:
+ * - {@link raciCacheKeyFor} — the matrix's columns *are* the member list.
+ * - {@link dashboardCacheKeyFor} — composes the RACI payload (rule-violation counts) and the
+ *   Backlog/Sprint payloads below.
+ * - {@link raidCacheKeyFor} — each row shows the owner's `ownerName`.
+ * - {@link backlogCacheKeyFor} — each row shows the assignee's `assigneeName`.
+ * - {@link sprintCacheKeyFor} — each card shows `assigneeName`, and a card with a linked RAID entry
+ *   also shows that entry's `ownerName`.
+ *
+ * Left out on purpose, because their payload types carry no member field at all — `wbsApi.ts`'s
+ * `WbsNode`, `ganttApi.ts`'s `GanttTask`/`GanttData` and `progressApi.ts`'s `WorkPackageProgress`
+ * have nothing resembling an assignee, owner or member name — so a member edit cannot make them
+ * stale: {@link wbsCacheKeyFor}, {@link cacheKeyFor} (Gantt), {@link progressCacheKeyFor}.
+ */
+const memberRev = ref(0)
+
 export function wbsRevision(): number {
   return revision.value
 }
@@ -40,6 +64,11 @@ export function markWbsChanged() {
 /** Call after any change to Backlog entries: the WBS screen's linked counts come from them. */
 export function markBacklogChanged() {
   backlogRev.value += 1
+}
+
+/** Call after any change to project members, so cached views that show member data refetch. */
+export function markMembersChanged() {
+  memberRev.value += 1
 }
 
 /**
@@ -71,20 +100,25 @@ export function markSprintChanged() {
 }
 
 /**
- * The Sprint payload keys on the Backlog revision as well: every card shows an entry's title,
- * status and estimate, and the Sprint aggregates are computed from them.
+ * The Sprint payload keys on the Backlog and member revisions as well: every card shows an entry's
+ * title, status and estimate, and the Sprint aggregates are computed from them. It also shows an
+ * `assigneeName` and, via a linked RAID entry, an `ownerName` — both project member names — so a
+ * member rename or removal makes it stale too, the same reasoning as {@link raciCacheKeyFor}.
  */
 export function sprintCacheKeyFor(projectId: number): string {
-  return `${projectId}:${revision.value}:${backlogRev.value}:${sprintRev.value}`
+  return `${projectId}:${revision.value}:${backlogRev.value}:${sprintRev.value}:${memberRev.value}`
 }
 
 /**
- * The Backlog keys on the WBS revision but not on the date: each row shows its Work Package's code
- * and execution mode, which change when the WBS is renamed, moved or re-moded, and nothing in it is
- * judged against "today". Same shape as {@link raciCacheKeyFor}, for the same reason.
+ * The Backlog keys on the WBS, Backlog, Sprint and member revisions but not on the date: each row
+ * shows its Work Package's code and execution mode, which change when the WBS is renamed, moved or
+ * re-moded, and nothing in it is judged against "today" — the same reason {@link raciCacheKeyFor}
+ * leaves the date out. It carries the member revision the way {@link raciCacheKeyFor} does too: each
+ * row's `assigneeName` is a project member's name, so a member rename or removal makes this payload
+ * stale in the same way a RACI column would go stale.
  */
 export function backlogCacheKeyFor(projectId: number): string {
-  return `${projectId}:${revision.value}:${backlogRev.value}:${sprintRev.value}`
+  return `${projectId}:${revision.value}:${backlogRev.value}:${sprintRev.value}:${memberRev.value}`
 }
 
 /**
@@ -97,35 +131,44 @@ export function progressCacheKeyFor(projectId: number): string {
 }
 
 /**
- * The RACI matrix keys on the WBS and Backlog revisions but not on the date: its rows come from the
- * WBS tree, each row now carries its Backlog 담당자 (Step 6), and nothing in it is judged against
- * "today". Member and assignment changes are made through the RACI screen itself, which applies the
- * response it gets back, so they need no invalidation — the same reasoning that keeps dependency
- * edits out of {@link markWbsChanged}.
+ * The RACI matrix keys on the WBS, Backlog and member revisions but not on the date: its rows come
+ * from the WBS tree, each row now carries its Backlog 담당자 (Step 6), and nothing in it is judged
+ * against "today". Assignment changes (`assign`/`unassign`) are made through the RACI screen itself,
+ * which applies the response it gets back, so they need no invalidation — the same reasoning that
+ * keeps dependency edits out of {@link markWbsChanged}. Members are the matrix's *columns*, though,
+ * and since Step 7 they are added/edited/removed from the Projects screen instead — a screen that
+ * has no idea the RACI matrix exists, so it cannot apply anything back here. Without this revision, a
+ * newly added member would never appear as a column until some other edit happened to bump one of
+ * the other two.
  */
 export function raciCacheKeyFor(projectId: number): string {
-  return `${projectId}:${revision.value}:${backlogRev.value}`
+  return `${projectId}:${revision.value}:${backlogRev.value}:${memberRev.value}`
 }
 
 /**
  * The dashboard keys on everything, because it reads everything.
  *
  * It composes the progress, Gantt, Sprint, Backlog, RACI and RAID payloads, so any edit on any of
- * those screens can move a card. The local date is in there for the same reason it is in the Gantt
- * key: delay and overdue are judged against a date, and a tab left open overnight would show
+ * those screens can move a card. The member revision is in there because the dashboard's RACI card
+ * counts rule violations, and those counts change when a member is added or removed on the Projects
+ * screen (see {@link raciCacheKeyFor}). The local date is in there for the same reason it is in the
+ * Gantt key: delay and overdue are judged against a date, and a tab left open overnight would show
  * yesterday's verdicts.
  */
 export function dashboardCacheKeyFor(projectId: number): string {
-  return `${projectId}:${revision.value}:${backlogRev.value}:${sprintRev.value}:${localToday()}`
+  return `${projectId}:${revision.value}:${backlogRev.value}:${sprintRev.value}:${memberRev.value}:${localToday()}`
 }
 
 /**
- * The RAID log keys on all three revisions and the local date.
+ * The RAID log keys on all three revisions, the member revision, and the local date.
  *
  * An entry can link to a WBS 업무, a Sprint or a Backlog 항목, and the register shows each target's
- * name — so a rename or a move on any of the three makes it stale. The date is there because
- * overdue-ness is judged against one; the date shown is always the server's `referenceDate`.
+ * name — so a rename or a move on any of the three makes it stale. It also shows each item's
+ * `ownerName`, which comes from the project member list, so renaming or removing a member makes it
+ * stale too — the same reasoning as {@link raciCacheKeyFor}, just for a plain label instead of a
+ * matrix column. The date is there because overdue-ness is judged against one; the date shown is
+ * always the server's `referenceDate`.
  */
 export function raidCacheKeyFor(projectId: number): string {
-  return `${projectId}:${revision.value}:${backlogRev.value}:${sprintRev.value}:${localToday()}`
+  return `${projectId}:${revision.value}:${backlogRev.value}:${sprintRev.value}:${memberRev.value}:${localToday()}`
 }

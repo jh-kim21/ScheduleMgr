@@ -4,7 +4,10 @@ import type { MemberInput, ProjectMember } from '../../api/memberApi'
 import ModalDialog from '../../components/ModalDialog.vue'
 
 const props = defineProps<{
+  /** 대화상자 제목에 넣을 프로젝트 이름 — "구성원 관리 — 웹사이트 개편"처럼 문맥을 붙인다. */
+  projectName: string
   members: ProjectMember[]
+  loading: boolean
   /** 저장이 거부된 이유(이름 중복 등). 대화상자 안에 보여야 사용자가 볼 수 있다. */
   error?: string | null
 }>()
@@ -13,12 +16,16 @@ const emit = defineEmits<{
   add: [input: MemberInput]
   update: [memberId: number, input: MemberInput]
   remove: [memberId: number]
+  close: []
 }>()
+
+/** CLAUDE.md 화면 레이아웃 규칙: 폼이 자기 제목을 계산해 ModalDialog에 넘긴다. */
+const title = computed(() => `구성원 관리 — ${props.projectName}`)
 
 const blank = (): MemberInput => ({ name: '', email: null, position: null })
 
 const draft = ref<MemberInput>(blank())
-/** 추가 폼은 대화상자로 띄운다 — 이 화면의 주된 행위는 매트릭스를 읽는 것이다. */
+/** 추가 폼은 대화상자로 띄운다 — 이 화면의 주된 행위는 목록을 읽는 것이다. */
 const addOpen = ref(false)
 
 /** The row being edited in place, and the values it is being edited to. */
@@ -102,104 +109,102 @@ function onRemove(member: ProjectMember) {
 </script>
 
 <template>
-  <section class="members">
-    <header class="section-head">
-      <h2>프로젝트 구성원</h2>
-      <button type="button" class="add" @click="openAdd">＋ 구성원 추가</button>
-    </header>
-
-    <ModalDialog
-      v-if="addOpen"
-      title="구성원 추가"
-      :error="props.error"
-      @close="addOpen = false"
-    >
-      <form class="add-form" @submit.prevent="onSubmit">
-        <label>
-          이름
-          <input v-model="draft.name" type="text" placeholder="이름" />
-        </label>
-
-        <label>
-          직책
-          <input v-model="draft.position" type="text" placeholder="예: PM, 백엔드 (선택)" />
-        </label>
-
-        <label class="email">
-          이메일
-          <input v-model="draft.email" type="email" placeholder="선택" />
-        </label>
-
+  <ModalDialog :title="title" :error="props.error" @close="emit('close')">
+    <section class="members">
+      <header class="section-head">
         <p class="rule">
           구성원은 RACI 매트릭스의 <strong>열</strong>이 됩니다. 같은 프로젝트 안에서 이름은 겹칠 수
           없습니다 — 겹치면 매트릭스에서 누가 누구인지 구분할 수 없기 때문입니다.
         </p>
+        <button type="button" class="add" @click="openAdd">＋ 구성원 추가</button>
+      </header>
 
-        <div class="dialog-actions">
-          <button type="submit" class="primary" :disabled="!submittable">추가</button>
-          <button type="button" @click="addOpen = false">취소</button>
-        </div>
-      </form>
-    </ModalDialog>
-
-    <ul v-if="members.length > 0" class="list">
-      <li
-        v-for="member in members"
-        :key="member.id"
-        :class="{ editing: editingId === member.id }"
+      <ModalDialog
+        v-if="addOpen"
+        title="구성원 추가"
+        :error="props.error"
+        @close="addOpen = false"
       >
-        <template v-if="editingId === member.id">
-          <input v-model="editDraft.name" type="text" aria-label="이름" />
-          <input v-model="editDraft.position" type="text" aria-label="직책" placeholder="직책" />
-          <input v-model="editDraft.email" type="email" aria-label="이메일" placeholder="이메일" />
+        <form class="add-form" @submit.prevent="onSubmit">
+          <label>
+            이름
+            <input v-model="draft.name" type="text" placeholder="이름" />
+          </label>
 
-          <span class="actions">
-            <button type="button" class="primary" :disabled="!editSubmittable" @click="onSave">
-              저장
-            </button>
-            <button type="button" @click="cancelEdit">취소</button>
-          </span>
-        </template>
+          <label>
+            직책
+            <input v-model="draft.position" type="text" placeholder="예: PM, 백엔드 (선택)" />
+          </label>
 
-        <template v-else>
-          <span class="name">{{ member.name }}</span>
-          <span v-if="member.position" class="position">{{ member.position }}</span>
-          <span v-if="member.email" class="email-text">{{ member.email }}</span>
+          <label class="email">
+            이메일
+            <input v-model="draft.email" type="email" placeholder="선택" />
+          </label>
 
-          <span class="actions">
-            <button type="button" @click="startEdit(member)">수정</button>
-            <button type="button" class="danger" @click="onRemove(member)">삭제</button>
-          </span>
-        </template>
-      </li>
-    </ul>
-    <p v-else class="none">등록된 구성원이 없습니다.</p>
-  </section>
+          <div class="dialog-actions">
+            <button type="submit" class="primary" :disabled="!submittable">추가</button>
+            <button type="button" @click="addOpen = false">취소</button>
+          </div>
+        </form>
+      </ModalDialog>
+
+      <p v-if="loading">불러오는 중...</p>
+      <template v-else>
+        <ul v-if="members.length > 0" class="list">
+          <li
+            v-for="member in members"
+            :key="member.id"
+            :class="{ editing: editingId === member.id }"
+          >
+            <template v-if="editingId === member.id">
+              <input v-model="editDraft.name" type="text" aria-label="이름" />
+              <input v-model="editDraft.position" type="text" aria-label="직책" placeholder="직책" />
+              <input v-model="editDraft.email" type="email" aria-label="이메일" placeholder="이메일" />
+
+              <span class="actions">
+                <button type="button" class="primary" :disabled="!editSubmittable" @click="onSave">
+                  저장
+                </button>
+                <button type="button" @click="cancelEdit">취소</button>
+              </span>
+            </template>
+
+            <template v-else>
+              <span class="name">{{ member.name }}</span>
+              <span v-if="member.position" class="position">{{ member.position }}</span>
+              <span v-if="member.email" class="email-text">{{ member.email }}</span>
+
+              <span class="actions">
+                <button type="button" @click="startEdit(member)">수정</button>
+                <button type="button" class="danger" @click="onRemove(member)">삭제</button>
+              </span>
+            </template>
+          </li>
+        </ul>
+        <p v-else class="none">등록된 구성원이 없습니다.</p>
+      </template>
+    </section>
+  </ModalDialog>
 </template>
 
 <style scoped>
-.members {
-  margin-top: 1.75rem;
-}
-
-h2 {
-  font-size: 1rem;
-  margin: 0 0 0.75rem;
-}
-
 .section-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.75rem;
   margin-bottom: 0.75rem;
 }
 
-.section-head h2 {
+.rule {
+  flex: 1;
+  font-size: 0.78rem;
+  color: var(--text-faint);
+  line-height: 1.5;
   margin: 0;
 }
 
 .add {
-  margin-left: auto;
+  flex: none;
   padding: 0.35rem 0.7rem;
   border: 1px solid var(--border-input);
   border-radius: 999px;
@@ -269,16 +274,10 @@ button.primary:disabled {
   cursor: not-allowed;
 }
 
-.rule {
-  font-size: 0.78rem;
-  color: var(--text-faint);
-  line-height: 1.5;
-}
-
 .list {
   list-style: none;
   padding: 0;
-  margin: 0.85rem 0 0;
+  margin: 0;
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
@@ -339,7 +338,6 @@ button.primary:disabled {
 }
 
 .none {
-  margin-top: 0.85rem;
   font-size: 0.85rem;
   color: var(--text-faint);
 }

@@ -12,6 +12,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   edit: [project: Project]
   remove: [project: Project]
+  members: [project: Project]
 }>()
 
 /** 클릭 선택·방향키 이동·더블클릭 편집은 WBS 표와 같은 컴포저블을 쓴다 (모든 표가 공유). */
@@ -53,6 +54,7 @@ const selection = useRowSelection(() => props.projects.map((project) => project.
           <td>{{ project.endDate ?? '-' }}</td>
           <td class="actions">
             <ExportMenu :project="project" />
+            <button class="ghost" @click="emit('members', project)">구성원</button>
             <button class="ghost" @click="emit('edit', project)">수정</button>
             <button class="danger" @click="emit('remove', project)">삭제</button>
           </td>
