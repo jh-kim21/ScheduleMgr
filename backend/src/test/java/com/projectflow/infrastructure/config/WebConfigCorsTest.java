@@ -65,18 +65,37 @@ class WebConfigCorsTest {
             "http://localhost:5151",
             "http://127.0.0.1:5174",
             "http://192.168.60.70:5151",
-            "http://192.168.100.186:5173",
-            "http://192.168.0.5:80",
-            "http://10.1.2.3:8080"
+            "http://192.168.60.70:8081"
     })
-    @DisplayName("루프백·사설 대역(192.168.*.*, 10.*.*.*) 오리진은 포트에 관계없이 허용된다")
-    void allowsLoopbackAndPrivateNetworkOrigins(String origin) throws Exception {
-        // Vite는 5173이 점유되면 다른 포트로 뜨고, 다른 기기의 LAN 주소는 DHCP로 바뀐다. 포트나
-        // 정확한 주소를 하나로 고정하면 그 순간부터 그 화면의 쓰기 동작이 403이 되므로, 여기서
-        // 통과해야 그런 상황에서도 저장이 계속 동작한다는 것이 보장된다.
+    @DisplayName("루프백과 호스팅 서버 주소(192.168.60.70)는 포트에 관계없이 허용된다 — 사설 대역 전체는 아니다")
+    void allowsLoopbackAndHostingServerOrigins(String origin) throws Exception {
+        // 호스트는 고정하되 포트는 열어 둔다: Vite는 5173이 점유되면 다른 포트로 뜨고, 실제
+        // 호스팅 서버도 배포 환경에 따라 8080이 아닌 포트(예: 8081)로 뜰 수 있다. 포트를 하나로
+        // 고정하면 그 순간부터 그 화면의 쓰기 동작이 403이 되므로, 여기서 통과해야 그런 상황에서도
+        // 저장이 계속 동작한다는 것이 보장된다. 반면 호스트(주소) 자체는 아래 거부 테스트들이
+        // 고정한다 — 사용자 결정으로 "사설 대역 전체"가 아니라 "localhost와 실제 호스팅할 서버
+        // IP(192.168.60.70)만" 허용하기로 좁혔다.
         mockMvc.perform(preflight(origin))
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, origin));
+    }
+
+    @Test
+    @DisplayName(
+            "같은 사설망의 다른 기기는 거부된다 — 사설 대역 전체가 아니라 호스팅 서버 주소(192.168.60.70) "
+                    + "하나만 허용하기로 했다. 같은 192.168.*.* 대역이라도 다른 IP는 막힌다")
+    void rejectsOtherDeviceOnSamePrivateNetworkOrigin() throws Exception {
+        // 예전에는 192.168.*.* 대역 전체를 허용해 이 오리진도 통과했다. 지금 이 테스트가 통과한다는
+        // 것은 그 대역 전체 허용이 되돌아오지 않았다는 뜻이다 — 되돌리지 마라.
+        assertRejected("http://192.168.100.186:5173");
+    }
+
+    @Test
+    @DisplayName(
+            "다른 사설 대역(10.*.*.*)은 거부된다 — 10.*.*.*도 192.168.*.*도 더 이상 대역 단위로 열지 않는다. "
+                    + "허용은 호스팅 서버로 지정한 주소 하나뿐이다")
+    void rejectsOtherPrivateNetworkOrigin() throws Exception {
+        assertRejected("http://10.1.2.3:8080");
     }
 
     @Test
