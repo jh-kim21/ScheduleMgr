@@ -156,12 +156,22 @@ frontend/
 - 개발 중에는 Vite의 `server.proxy`(`vite.config.ts`)가 `/api` 요청을 백엔드(8080)로 전달합니다. 프록시로 붙는 다른 포트를 쓰려면 `VITE_API_TARGET`으로 대상을 바꿉니다.
 - **CORS 허용 오리진은 프로필 설정값**(`project-flow.cors.allowed-origin-patterns`, 쉼표 구분)이고
   [`WebConfig`](backend/src/main/java/com/projectflow/infrastructure/config/WebConfig.java)가 읽습니다.
-  `desktop`은 루프백 전 포트(`http://localhost:[*]`, `http://127.0.0.1:[*]`)를 허용하고, `server`는
+  `desktop`은 루프백 전 포트(`http://localhost:[*]`, `http://127.0.0.1:[*]`)에 더해 사설 대역
+  전 포트(`http://192.168.*.*:[*]`, `http://10.*.*.*:[*]`)까지 허용하고, `server`는
   `CORS_ALLOWED_ORIGINS`가 없으면 아무 교차 오리진도 허용하지 않습니다.
   - **포트를 하나로 고정하지 마세요.** 브라우저는 same-origin이라도 GET 이외의 메서드에는 `Origin`을
     붙이고, Vite 프록시(`changeOrigin: true`)는 Host만 바꾸고 Origin은 그대로 넘깁니다. 그래서 Vite가
     5173 대신 다른 포트로 뜨면 **화면은 뜨는데 저장만 403으로 실패**합니다(GET은 Origin이 없어 통과).
     예전에 `allowedOrigins("http://localhost:5173")`로 고정했다가 이 문제를 겪었으니 되돌리지 마세요.
+  - **IP 하나를 고정하는 것도 같은 실수입니다.** 다른 기기에서 LAN 주소로 접속하면 Origin이 그
+    기기의 IP가 되는데, DHCP로 주소가 바뀌거나 다른 인터페이스로 접속하는 순간 그 IP는 낡습니다.
+    그래서 `desktop`은 특정 IP가 아니라 사설 대역 패턴 전체를 허용합니다.
+  - **`*`로 아무 오리진이나 허용하지 마세요.** 그러면 사용자가 악성 웹사이트를 여는 것만으로 그
+    사이트의 스크립트가 `http://localhost:8081/api/...`에 쓰기 요청을 보낼 수 있습니다 — 브라우저가
+    막아 주던 것을 우리가 열어 주는 셈입니다. 루프백·사설 대역으로 좁혀 둔 이유가 그것이고, 공인
+    IP·외부 도메인은 계속 403이어야 합니다. `172.16.0.0/12`(주로 Docker 브리지)·`https://`·호스트명
+    접속처럼 패턴으로 깔끔히 못 덮는 경우는 일부러 빼 두었고, 필요하면 `CORS_ALLOWED_ORIGINS`로
+    덮습니다.
   - 목록이 비면 매핑 자체를 등록하지 않습니다 — 값이 없는 것과 빈 문자열 하나가 들어온 것을
     구분하려고 `List` 대신 문자열로 받아 직접 자릅니다.
 
