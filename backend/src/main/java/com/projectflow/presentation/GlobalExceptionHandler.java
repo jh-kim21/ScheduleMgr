@@ -2,8 +2,12 @@ package com.projectflow.presentation;
 
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.exc.InvalidFormatException;
+import com.projectflow.application.dto.CommitResponses.CommitCapacityResponse;
+import com.projectflow.application.dto.CommitResponses.CommitSummaryResponse;
 import com.projectflow.domain.BacklogItemNotFoundException;
 import com.projectflow.domain.CircularDependencyException;
+import com.projectflow.domain.CommitCapacityExceededException;
+import com.projectflow.domain.CommitNotFoundException;
 import com.projectflow.domain.InvalidBacklogItemException;
 import com.projectflow.domain.InvalidDependencyException;
 import com.projectflow.domain.InvalidImportException;
@@ -43,9 +47,25 @@ public class GlobalExceptionHandler {
             RaidItemNotFoundException.class,
             BacklogItemNotFoundException.class,
             SprintNotFoundException.class,
+            CommitNotFoundException.class,
     })
     public ResponseEntity<Map<String, Object>> handleNotFound(RuntimeException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorBody(HttpStatus.NOT_FOUND, ex.getMessage()));
+    }
+
+    /**
+     * A commit would push the project's stored history past its configured byte limit
+     * (project-flow.commit.max-bytes-per-project). Unlike the plain 400s below, the screen needs
+     * more than a message here — it offers a delete dialog — so the body carries the same
+     * {@code capacity}/{@code commits} shape {@code GET .../commits} returns, layered onto the
+     * ordinary error body rather than a new response format.
+     */
+    @ExceptionHandler(CommitCapacityExceededException.class)
+    public ResponseEntity<Map<String, Object>> handleCommitCapacityExceeded(CommitCapacityExceededException ex) {
+        Map<String, Object> body = errorBody(HttpStatus.CONFLICT, ex.getMessage());
+        body.put("capacity", CommitCapacityResponse.of(ex.getUsedBytes(), ex.getMaxBytes()));
+        body.put("commits", ex.getExistingCommits().stream().map(CommitSummaryResponse::from).toList());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
     }
 
     /** Structural rejections: an invalid move, or a dependency that is circular or otherwise unusable. */

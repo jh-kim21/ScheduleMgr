@@ -87,15 +87,27 @@ public class DashboardService {
     }
 
     public DashboardResponse getDashboard(Long projectId) {
+        return getDashboard(projectId, LocalDate.now());
+    }
+
+    /**
+     * Same dashboard, judged against a caller-supplied reference date instead of today.
+     *
+     * <p>For the commit history feature (§3.5): a commit fixes one "오늘" for every screen it
+     * captures, including this one — which is why this overload exists even though this service
+     * has no {@code LocalDate.now()} of its own. Without it, the dashboard section of a commit
+     * would silently read today's Progress/Gantt/RAID instead of the commit's own {@code asOf}.
+     */
+    public DashboardResponse getDashboard(Long projectId, LocalDate referenceDate) {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ProjectNotFoundException(projectId));
 
-        ProgressResponse progress = progressService.getProgress(projectId);
-        GanttResponse gantt = ganttService.getGantt(projectId);
+        ProgressResponse progress = progressService.getProgress(projectId, referenceDate);
+        GanttResponse gantt = ganttService.getGantt(projectId, referenceDate);
         SprintResponse sprints = sprintService.getSprints(projectId);
         BacklogResponse backlog = backlogService.getBacklog(projectId);
         RaciMatrixResponse raci = raciService.getMatrix(projectId);
-        RaidLogResponse raid = raidService.getLog(projectId);
+        RaidLogResponse raid = raidService.getLog(projectId, referenceDate);
 
         return new DashboardResponse(
                 progress.referenceDate(),

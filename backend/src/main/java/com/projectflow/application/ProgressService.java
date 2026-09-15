@@ -76,7 +76,18 @@ public class ProgressService {
 
     public ProgressResponse getProgress(Long projectId) {
         requireProject(projectId);
-        return build(projectId);
+        return build(projectId, LocalDate.now());
+    }
+
+    /**
+     * Same aggregation, judged against a caller-supplied reference date instead of today.
+     *
+     * <p>For the commit history feature (§3.5): a commit fixes one "오늘" for every screen it
+     * captures, so it cannot let this service pick its own via {@link LocalDate#now()}.
+     */
+    public ProgressResponse getProgress(Long projectId, LocalDate referenceDate) {
+        requireProject(projectId);
+        return build(projectId, referenceDate);
     }
 
     /**
@@ -93,8 +104,7 @@ public class ProgressService {
 
     // ------------------------------------------------------------------ 조립
 
-    private ProgressResponse build(Long projectId) {
-        LocalDate referenceDate = LocalDate.now();
+    private ProgressResponse build(Long projectId, LocalDate referenceDate) {
         List<WbsItem> items = wbsItemRepository.findByProjectId(projectId);
         List<WbsNode> roots = WbsTreeAssembler.assemble(items);
 

@@ -82,7 +82,18 @@ public class GanttService {
     /** Chart rows, dependencies and constraint violations in one payload (요구사항 6.4). */
     public GanttResponse getGantt(Long projectId) {
         requireProject(projectId);
-        return buildGantt(projectId);
+        return buildGantt(projectId, LocalDate.now());
+    }
+
+    /**
+     * Same chart, judged against a caller-supplied reference date instead of today.
+     *
+     * <p>For the commit history feature (§3.5): a commit fixes one "오늘" for every screen it
+     * captures, so it cannot let this service pick its own via {@link LocalDate#now()}.
+     */
+    public GanttResponse getGantt(Long projectId, LocalDate referenceDate) {
+        requireProject(projectId);
+        return buildGantt(projectId, referenceDate);
     }
 
     @Transactional
@@ -98,7 +109,7 @@ public class GanttService {
                 request.successorId(),
                 lagDays
         ));
-        return buildGantt(projectId);
+        return buildGantt(projectId, LocalDate.now());
     }
 
     /** Retargets an existing link (요구사항 6.2), re-running the same checks as creating one. */
@@ -112,7 +123,7 @@ public class GanttService {
 
         dependency.update(request.predecessorId(), request.successorId(), lagDays);
         dependencyRepository.save(dependency);
-        return buildGantt(projectId);
+        return buildGantt(projectId, LocalDate.now());
     }
 
     @Transactional
@@ -121,7 +132,7 @@ public class GanttService {
         WbsDependency dependency =
                 requireDependencyOfProject(dependencyRepository.findByProjectId(projectId), dependencyId);
         dependencyRepository.delete(dependency);
-        return buildGantt(projectId);
+        return buildGantt(projectId, LocalDate.now());
     }
 
     /** Pushes violating tasks later until every dependency is satisfied (요구사항 6.6). */
@@ -136,10 +147,10 @@ public class GanttService {
         if (!shifted.isEmpty()) {
             wbsItemRepository.saveAll(items);
         }
-        return new ScheduleRecalculationResponse(shifted.size(), buildGantt(projectId));
+        return new ScheduleRecalculationResponse(shifted.size(), buildGantt(projectId, LocalDate.now()));
     }
 
-    private GanttResponse buildGantt(Long projectId) {
+    private GanttResponse buildGantt(Long projectId, LocalDate referenceDate) {
         List<WbsItem> items = wbsItemRepository.findByProjectId(projectId);
         List<WbsDependency> dependencies = dependencyRepository.findByProjectId(projectId);
 
@@ -152,8 +163,9 @@ public class GanttService {
         flatten(tree, flattened);
 
         // Delay is judged server-side against a single reference date, so every row in one response
-        // is measured against the same "today" and a long-open browser tab cannot drift.
-        LocalDate referenceDate = LocalDate.now();
+        // is measured against the same "today" and a long-open browser tab cannot drift. Passed in
+        // by the caller (defaults to LocalDate.now() via the public overload above) rather than read
+        // here, so the commit history feature can fix one "오늘" across every screen it captures.
 
         // 기준 일정은 승인된 Baseline에서만 온다. 없으면 hasBaseline=false 로 내려보내고, 화면이
         // 현재 계획을 기준선인 것처럼 그리지 않게 한다 (지시서 6-A).

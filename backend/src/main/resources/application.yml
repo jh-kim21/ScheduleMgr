@@ -23,6 +23,12 @@ spring:
 server:
   port: 8081
 
+project-flow:
+  commit:
+    # 프로젝트별 커밋 히스토리 저장 한도(바이트). 초과 시 커밋이 409로 거부된다
+    # (docs/tasks/commit-history.md §4.4). 기본 1GB, 서버 배포에서 조정 가능하도록 하드코딩하지 않는다.
+    max-bytes-per-project: 1073741824
+
 logging:
   level:
     com.projectflow: INFO

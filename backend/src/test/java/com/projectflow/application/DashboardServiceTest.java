@@ -25,6 +25,8 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -67,8 +69,11 @@ class DashboardServiceTest {
         ReflectionTestUtils.setField(project, "id", PROJECT_ID);
         when(projectRepository.findById(PROJECT_ID)).thenReturn(Optional.of(project));
 
-        when(progressService.getProgress(PROJECT_ID)).thenReturn(emptyProgress());
-        when(ganttService.getGantt(PROJECT_ID)).thenReturn(emptyGantt());
+        // getDashboard(projectId) delegates to the referenceDate overload (커밋 히스토리 §3.5 — the
+        // date is decided once and passed down), so these stub the two-arg form with any() rather
+        // than pinning today's exact date.
+        when(progressService.getProgress(eq(PROJECT_ID), any(LocalDate.class))).thenReturn(emptyProgress());
+        when(ganttService.getGantt(eq(PROJECT_ID), any(LocalDate.class))).thenReturn(emptyGantt());
         when(sprintService.getSprints(PROJECT_ID)).thenReturn(new SprintResponse(null, List.of()));
         when(backlogService.getBacklog(PROJECT_ID)).thenReturn(new BacklogResponse(0, List.of()));
         when(raciService.getMatrix(PROJECT_ID)).thenReturn(
@@ -85,7 +90,7 @@ class DashboardServiceTest {
     @DisplayName("열린 이슈·노출도 높음·기한 초과가 5건을 넘으면 목록은 5건, 총건수는 잘리지 않는다")
     void controlCardCountsSurviveTheListCap() {
         int total = 7;
-        when(raidService.getLog(PROJECT_ID)).thenReturn(
+        when(raidService.getLog(eq(PROJECT_ID), any(LocalDate.class))).thenReturn(
                 new RaidLogResponse(LocalDate.now(), openIssueOverdueHighExposureItems(total)));
 
         DashboardResponse dashboard = service.getDashboard(PROJECT_ID);
@@ -103,7 +108,7 @@ class DashboardServiceTest {
     @DisplayName("5건 이하면 총건수와 목록 길이가 같다")
     void controlCardCountsMatchListWhenUnderTheCap() {
         int total = 3;
-        when(raidService.getLog(PROJECT_ID)).thenReturn(
+        when(raidService.getLog(eq(PROJECT_ID), any(LocalDate.class))).thenReturn(
                 new RaidLogResponse(LocalDate.now(), openIssueOverdueHighExposureItems(total)));
 
         DashboardResponse dashboard = service.getDashboard(PROJECT_ID);

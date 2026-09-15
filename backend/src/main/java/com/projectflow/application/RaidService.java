@@ -76,7 +76,18 @@ public class RaidService {
 
     public RaidLogResponse getLog(Long projectId) {
         requireProject(projectId);
-        return buildLog(projectId);
+        return buildLog(projectId, LocalDate.now());
+    }
+
+    /**
+     * Same log, judged against a caller-supplied reference date instead of today.
+     *
+     * <p>For the commit history feature (§3.5): a commit fixes one "오늘" for every screen it
+     * captures, so it cannot let this service pick its own via {@link LocalDate#now()}.
+     */
+    public RaidLogResponse getLog(Long projectId, LocalDate referenceDate) {
+        requireProject(projectId);
+        return buildLog(projectId, referenceDate);
     }
 
     @Transactional
@@ -98,7 +109,7 @@ public class RaidService {
                 blankToNull(request.response())
         ));
         replaceLinks(projectId, saved.getId(), links, List.of());
-        return buildLog(projectId);
+        return buildLog(projectId, LocalDate.now());
     }
 
     @Transactional
@@ -121,7 +132,7 @@ public class RaidService {
         );
         raidItemRepository.save(item);
         replaceLinks(projectId, itemId, links, linksOf(projectId, itemId));
-        return buildLog(projectId);
+        return buildLog(projectId, LocalDate.now());
     }
 
     @Transactional
@@ -132,7 +143,7 @@ public class RaidService {
         // in-memory repositories the service tests use honest about it.
         raidLinkRepository.deleteAll(linksOf(projectId, itemId));
         raidItemRepository.delete(item);
-        return buildLog(projectId);
+        return buildLog(projectId, LocalDate.now());
     }
 
     /**
@@ -160,7 +171,7 @@ public class RaidService {
         }
     }
 
-    private RaidLogResponse buildLog(Long projectId) {
+    private RaidLogResponse buildLog(Long projectId, LocalDate referenceDate) {
         List<RaidItem> items = raidItemRepository.findByProjectId(projectId);
 
         Map<Long, String> ownerNames = new HashMap<>();
@@ -175,7 +186,9 @@ public class RaidService {
         }
 
         // One reference date for the whole payload, so every row is judged against the same "today".
-        LocalDate referenceDate = LocalDate.now();
+        // Passed in by the caller (defaults to LocalDate.now() via the public overload above) rather
+        // than read here, so the commit history feature can fix one "오늘" across every screen it
+        // captures.
 
         List<RaidItemResponse> responses = items.stream()
                 .sorted(REGISTER_ORDER)

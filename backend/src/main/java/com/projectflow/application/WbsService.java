@@ -75,13 +75,27 @@ public class WbsService {
      */
     public WbsTreeResponse getTree(Long projectId) {
         requireProject(projectId);
-        return treeOf(projectId);
+        return treeOf(projectId, LocalDate.now());
+    }
+
+    /**
+     * Same tree, judged against a caller-supplied reference date instead of today.
+     *
+     * <p>For the commit history feature (§3.5): a commit fixes one "오늘" for every screen it
+     * captures, so it cannot let this service pick its own via {@link LocalDate#now()}.
+     */
+    public WbsTreeResponse getTree(Long projectId, LocalDate referenceDate) {
+        requireProject(projectId);
+        return treeOf(projectId, referenceDate);
     }
 
     /** Assembles the tree without re-checking the project; callers have already done so. */
     private WbsTreeResponse treeOf(Long projectId) {
         // One reference date for the whole response, so every row is judged against the same today.
-        LocalDate referenceDate = LocalDate.now();
+        return treeOf(projectId, LocalDate.now());
+    }
+
+    private WbsTreeResponse treeOf(Long projectId, LocalDate referenceDate) {
         // 설계 §4.3의 "연결 Backlog 수"를 트리에 함께 싣는다. 이 화면 하나를 위해 클라이언트가
         // Backlog까지 따로 읽고 병합하는 것보다, 이미 트리 전체를 반환하는 응답에 얹는 편이 단순하다.
         Map<Long, BacklogSummary> backlog = backlogService.summariesByWbsItem(projectId);
