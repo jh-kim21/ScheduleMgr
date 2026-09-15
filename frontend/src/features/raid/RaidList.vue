@@ -123,7 +123,11 @@ const selection = useRowSelection(
                   class="description cell-clip"
                   :title="item.description"
                 >{{ item.description }}</span>
-                <span v-if="item.response" class="response">↳ {{ item.response }}</span>
+                <span
+                  v-if="item.response"
+                  class="response cell-clip"
+                  :title="item.response"
+                >↳ {{ item.response }}</span>
               </td>
 
               <td>

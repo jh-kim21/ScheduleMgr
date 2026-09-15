@@ -177,6 +177,25 @@ function onSubmit() {
     form.links = []
   }
 }
+
+/**
+ * Ctrl/Cmd+Enter 저장. 한글 IME 조합 중에는 `v-model`이 마지막 음절을 아직 반영하지 않았다 —
+ * Vue의 `vModelText`는 `composing` 동안 input 리스너를 건너뛰고 `compositionend`에서야 모델을
+ * 갱신한다. 그대로 저장하면 화면에 보이는 마지막 글자가 빠진 채 저장된다. `withKeys`는
+ * `event.key`만 보고 `isComposing`을 보지 않으므로 여기서 직접 막는다.
+ *
+ * 브라우저·IME 조합에 따라서는 이 자리에 아예 오지 않거나(키를 IME가 먹음) 조합이 먼저
+ * 커밋되기도 한다. 그때 이 가드는 아무 일도 하지 않고, 유실이 일어나는 경우에만 작동한다 —
+ * 틀렸을 때의 대가가 "사용자가 쓴 글자가 말없이 사라짐"이라 확정 전에 막아 둔다.
+ *
+ * `.prevent`를 템플릿에 두지 않은 이유도 같다. 수식자 가드는 핸들러보다 먼저 실행되므로,
+ * 우리가 아무 일도 하지 않는 조합 중에까지 기본 동작을 막게 된다.
+ */
+function onShortcutSave(event: KeyboardEvent) {
+  if (event.isComposing) return
+  event.preventDefault()
+  onSubmit()
+}
 </script>
 
 <template>
@@ -213,7 +232,14 @@ function onSubmit() {
       <div class="row">
         <label class="grow">
           설명
-          <input v-model="form.description" type="text" placeholder="선택" />
+          <textarea
+            v-model="form.description"
+            rows="4"
+            maxlength="2000"
+            placeholder="선택 — Ctrl+Enter로 저장"
+            @keydown.ctrl.enter="onShortcutSave"
+            @keydown.meta.enter="onShortcutSave"
+          ></textarea>
         </label>
       </div>
 
@@ -291,7 +317,14 @@ function onSubmit() {
       <div class="row">
         <label class="grow">
           {{ responseLabel }}
-          <input v-model="form.response" type="text" placeholder="선택" />
+          <textarea
+            v-model="form.response"
+            rows="3"
+            maxlength="2000"
+            placeholder="선택"
+            @keydown.ctrl.enter="onShortcutSave"
+            @keydown.meta.enter="onShortcutSave"
+          ></textarea>
         </label>
       </div>
 
@@ -445,12 +478,22 @@ label.grow input {
 }
 
 input,
-select {
+select,
+textarea {
   padding: 0.4rem 0.55rem;
   border: 1px solid var(--border-input);
   border-radius: 6px;
   font: inherit;
   font-size: 0.85rem;
+}
+
+/* 가로로 늘리면 대화상자 폭을 넘어간다. 세로만 허용한다. */
+textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 3.2rem;
+  line-height: 1.45;
 }
 
 .type-hint {
