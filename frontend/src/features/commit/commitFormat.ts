@@ -1,8 +1,10 @@
 import type { CommitCapacity } from '../../api/commitApi'
 
 /**
- * Pure formatting kept out of the components so it can be checked without a DOM (this repo has no
- * `@vue/test-utils` and none is to be added — see the capacity gauge's "84% (860MB / 1GB)").
+ * Pure formatting kept out of the components — see the capacity gauge's "84% (860MB / 1GB)".
+ * Rounding and unit choice are a judgment call, not rendering, so a plain function pins the rule
+ * with a fast vitest check instead of a mounted-component assertion; the component test only needs
+ * to confirm the gauge calls this and shows the result (CLAUDE.md "컴포넌트 테스트").
  *
  * Binary units (1024-based), matching how the ~1GB-per-project limit is talked about in the design
  * doc — there is no earlier convention in this codebase to follow instead.

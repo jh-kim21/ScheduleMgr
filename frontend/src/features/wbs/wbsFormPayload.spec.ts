@@ -8,12 +8,12 @@ import { describe, it } from 'vitest'
  *   1~3. 실적/예상 종료일이 편집 없는 저장에서 사라지는 문제:
  *      `WbsItemInput`(frontend/src/api/wbsApi.ts)에 `actualStartDate`/`actualEndDate`/
  *      `forecastEndDate`를 추가하고, `WbsForm.vue`가 편집 대상을 폼에 담는 로직을
- *      `wbsFormMapping.ts`의 `nodeToFormInput`으로 뽑아냈다. 이 저장소에는
- *      `@vue/test-utils`도 DOM 환경(jsdom/happy-dom)도 없어 컴포넌트를 마운트해 제출
- *      payload를 재현할 수 없다는 사정은 여전하지만, `nodeToFormInput`이 정확히
+ *      `wbsFormMapping.ts`의 `nodeToFormInput`으로 뽑아냈다. 컴포넌트를 마운트해 제출
+ *      payload를 직접 재현해 검증할 수도 있지만, `nodeToFormInput`이 정확히
  *      `watch(props.editing, …)`이 하는 대입이라 — 즉 `onSubmit`이 그 값을 손대지 않고
- *      그대로 `emit('submit', {...form})`한다 — 순수 함수 호출만으로 같은 계약을 검증할 수
- *      있다. 실제 단정문은 `wbsFormMapping.spec.ts`에 있다.
+ *      그대로 `emit('submit', {...form})`한다 — 이 계약은 화면이 아니라 값 자체에 대한
+ *      것이므로 순수 함수 호출만으로 더 또렷하게 검증할 수 있다(CLAUDE.md "컴포넌트
+ *      테스트"). 실제 단정문은 `wbsFormMapping.spec.ts`에 있다.
  *
  *   4. Summary(집계된) 항목의 startDate/endDate/progress가 자기 값으로 저장되는 문제:
  *      화면 쪽(폼 비활성화)이 아니라 서버 쪽에서 막기로 했다 — `WbsService.updateItem`이

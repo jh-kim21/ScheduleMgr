@@ -1,8 +1,9 @@
 /**
  * Pure decisions behind the Sprint "항목 배정" table — filtering by search text and summarising a
  * checkbox selection. Split out from `SprintAssignTable.vue` for the same reason `backlogFilter.ts`
- * and `raidFilter.ts` are: this repo has no `@vue/test-utils`/DOM environment, so anything worth
- * pinning with vitest has to live outside the component.
+ * and `raidFilter.ts` are: these are judgment calls (which rows match the search, how a selection
+ * totals up), not rendering, so pinning them as plain functions keeps the rule explicit and the
+ * test fast and unaffected by how the table renders (CLAUDE.md "컴포넌트 테스트").
  */
 
 export interface AssignCandidate {

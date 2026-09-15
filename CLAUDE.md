@@ -515,6 +515,32 @@ WBS의 이점이 사라지고 같은 업무의 세 일정을 눈으로 잇기 �
   각자 판단하게 두면 하나를 빠뜨리기 쉽습니다 — 플래그를 하나로 묶어야 "빠짐없이 잠갔다"를 한 곳에서
   확인할 수 있습니다.
 
+### 컴포넌트 테스트 (프론트엔드)
+
+`@vue/test-utils` + `happy-dom`으로 Vue 컴포넌트를 마운트해 테스트할 수 있습니다. 그전까지 이
+저장소는 컴포넌트를 마운트할 방법이 없어서, 화면 동작을 검증하려면 판정을 순수 함수로 빼는
+수밖에 없었습니다(`rowSelection.ts`, `weightSuggestion.ts`, `assignFilter.ts`,
+`checkpointForm.ts`가 전부 그렇게 생겼습니다).
+
+- **기본 테스트 환경은 여전히 `node`입니다.** `vite.config.ts`에 전역 `environment: 'happy-dom'`을
+  켜지 않았습니다 — 기존 테스트는 전부 순수 함수라 DOM이 필요 없고, 전부 DOM 환경에서 돌리면
+  느려지는 데다 순수 함수가 실수로 `document`를 참조해도 드러나지 않게 됩니다. **컴포넌트 테스트
+  파일만 명시적으로** 파일 맨 위에 `// @vitest-environment happy-dom` docblock 주석을 적어 그
+  파일에서만 DOM 환경을 켭니다(Vitest 4가 파일 내용에서 이 주석을 정규식으로 찾아 파일 단위로
+  환경을 정합니다 — `vitest.config`의 `environmentMatchGlobs`는 Vitest 4에는 없습니다). 이렇게
+  나누면 "이 테스트가 DOM을 쓴다"는 것이 파일 자체에서 드러납니다.
+- **판정을 순수 함수로 빼는 관습은 그대로 유지합니다.** 마운트가 가능해졌다고 `rowSelection.ts`·
+  `weightSuggestion.ts` 류를 컴포넌트 안으로 되돌리지 마세요 — 순수 함수는 여전히 규칙을 더
+  또렷하게 고정하고, 컴포넌트 테스트보다 빠르고 덜 깨집니다. **컴포넌트 테스트는 "렌더링·상호작용"을
+  덮고, 순수 함수 테스트는 "판정"을 덮습니다.**
+- **`Teleport to="body"`로 렌더하는 컴포넌트(모든 `ModalDialog` 기반 대화상자)는 `wrapper.find(...)`로
+  내용을 찾을 수 없습니다.** `wrapper.element`는 Teleport가 남긴 빈 자리표시자일 뿐이고, 실제
+  내용은 `document.body`에 붙습니다. `document.body.querySelector(...)`로 직접 조회하세요
+  ([`ModalDialog.spec.ts`](frontend/src/components/ModalDialog.spec.ts)가 예시입니다). 같은 이유로
+  teleport된 내용은 언마운트 전까지 `document.body`에 그대로 남으므로, 한 파일에 테스트를 여러 개
+  두려면 `afterEach`에서 `wrapper.unmount()`를 불러야 합니다 — 안 그러면 다음 테스트가 이전
+  테스트의 대화상자까지 함께 조회하게 됩니다.
+
 ### 다크 모드 (프론트엔드)
 
 - **색은 전부 [`style.css`](frontend/src/style.css)의 CSS 변수로만 정의합니다.** 컴포넌트 스코프

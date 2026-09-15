@@ -1,0 +1,82 @@
+// @vitest-environment happy-dom
+import { mount, type VueWrapper } from '@vue/test-utils'
+import { afterEach, describe, expect, it } from 'vitest'
+import ModalDialog from './ModalDialog.vue'
+
+/**
+ * 이 저장소 최초의 컴포넌트 마운트 테스트다. `@vue/test-utils` + `happy-dom` 도입의 증명용으로
+ * `ModalDialog`를 골랐다 — 작고, 여러 화면이 쓰며, 지금 아무도 건드리지 않는다.
+ *
+ * `ModalDialog`는 `<Teleport to="body">`로 렌더한다(CLAUDE.md 화면 레이아웃 규칙). Teleport는
+ * 컴포넌트 자신의 렌더 트리가 아니라 실제 DOM 대상에 붙기 때문에, `wrapper.find(...)`는 이
+ * 내용을 찾지 못한다(`wrapper.element`는 Teleport가 남긴 빈 자리표시자일 뿐이다). 그래서 아래
+ * 테스트는 `document.body`를 직접 조회한다.
+ *
+ * 같은 이유로 teleport된 내용은 `wrapper.unmount()`를 부르기 전에는 `document.body`에 그대로
+ * 남는다 — 다음 테스트가 이전 테스트의 대화상자를 함께 조회하게 되므로 매 테스트 뒤 언마운트한다.
+ */
+describe('ModalDialog', () => {
+  let wrapper: VueWrapper | undefined
+
+  afterEach(() => {
+    wrapper?.unmount()
+    wrapper = undefined
+  })
+
+  it('title을 header에 렌더하고, body로 teleport한다', () => {
+    wrapper = mount(ModalDialog, {
+      props: { title: '항목 추가' },
+    })
+
+    const panel = document.body.querySelector('[role="dialog"]')
+    expect(panel).not.toBeNull()
+    expect(panel?.getAttribute('aria-label')).toBe('항목 추가')
+    expect(document.body.querySelector('.head h2')?.textContent).toBe('항목 추가')
+  })
+
+  it('error prop이 없으면 오류 영역을 렌더하지 않는다', () => {
+    wrapper = mount(ModalDialog, {
+      props: { title: '항목 추가' },
+    })
+
+    expect(document.body.querySelector('[role="alert"]')).toBeNull()
+  })
+
+  it('error prop이 있을 때만 오류 메시지를 렌더한다 — 저장 거부는 대화상자 안에서 보여야 한다', () => {
+    wrapper = mount(ModalDialog, {
+      props: { title: '항목 추가', error: '이름은 필수입니다' },
+    })
+
+    const alert = document.body.querySelector('[role="alert"]')
+    expect(alert).not.toBeNull()
+    expect(alert?.textContent).toBe('이름은 필수입니다')
+  })
+
+  it('닫기 버튼을 누르면 close 이벤트를 발행한다', async () => {
+    wrapper = mount(ModalDialog, {
+      props: { title: '항목 추가' },
+    })
+
+    const closeButton = document.body.querySelector<HTMLButtonElement>('.close')
+    closeButton?.click()
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.emitted('close')).toHaveLength(1)
+  })
+
+  it('배경(backdrop)을 누르면 close를 발행하지만, 패널 안 클릭은 무시한다', async () => {
+    wrapper = mount(ModalDialog, {
+      props: { title: '항목 추가' },
+    })
+
+    const panel = document.body.querySelector<HTMLElement>('.panel')
+    panel?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+    await wrapper.vm.$nextTick()
+    expect(wrapper.emitted('close')).toBeUndefined()
+
+    const backdrop = document.body.querySelector<HTMLElement>('.backdrop')
+    backdrop?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+    await wrapper.vm.$nextTick()
+    expect(wrapper.emitted('close')).toHaveLength(1)
+  })
+})

@@ -4,8 +4,9 @@ import type { WbsItemInput, WbsNode } from '../../api/wbsApi'
  * Maps a WBS node being edited to the form's initial values — exactly the assignment
  * `WbsForm.vue`'s `watch(props.editing, …)` performs. Pulled out into its own module so the
  * "editing without changing anything must resend every field" contract (결함 3) is a plain
- * function call in a test, rather than something only observable by mounting the component
- * (this repo has no `@vue/test-utils`/DOM environment installed to do that with).
+ * function call in a test rather than a mounted-component assertion — the contract is about which
+ * fields land in the form, not how the form renders, so a pure function pins it faster and more
+ * precisely than mounting `WbsForm.vue` would (CLAUDE.md "컴포넌트 테스트").
  *
  * <p>`actualStartDate`/`actualEndDate`/`forecastEndDate` fall back to `null` when the node does not
  * carry them — today that is every node, because the WBS tree endpoint (`WbsNodeResponse`) does not

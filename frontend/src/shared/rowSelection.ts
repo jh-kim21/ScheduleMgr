@@ -3,10 +3,13 @@
  * double-click-to-edit guard — the interaction WbsTree.vue (features/wbs/WbsTree.vue) pioneered
  * and every other table now shares via `useRowSelection.ts`.
  *
- * <p>Split out as plain functions rather than living inside the composable because this repo has
- * no `@vue/test-utils` and no DOM environment (see ganttProgress.ts, wbsFormMapping.ts for the same
- * pattern) — a function that only takes ids and tag-name strings can be exercised by vitest without
- * mounting anything or touching `document`.
+ * <p>Split out as plain functions rather than living inside the composable because these are
+ * judgment calls (which row Up/Down lands on, whether a click should be swallowed), not
+ * rendering — pinning them this way keeps the rule explicit and the test fast regardless of how
+ * the table renders (see ganttProgress.ts, wbsFormMapping.ts for the same pattern; CLAUDE.md
+ * "컴포넌트 테스트": 컴포넌트 테스트는 렌더링·상호작용을, 순수 함수 테스트는 판정을 덮는다). A
+ * function that only takes ids and tag-name strings can be exercised by vitest without mounting
+ * anything or touching `document`.
  */
 
 /**

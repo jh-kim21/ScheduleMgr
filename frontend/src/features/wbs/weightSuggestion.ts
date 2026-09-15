@@ -9,10 +9,12 @@
  * `null` still means "미입력" (CLAUDE.md 대시보드 절 "임의로 채우지 않습니다"와 같은 태도), the caller
  * only shows the number as a hint the user can ignore.
  *
- * <p>Kept as a pure function, not a computed inside `WbsForm.vue`: this repo has no
- * `@vue/test-utils`/DOM environment to mount a component with, so anything that needs a unit test
- * has to be extractable (같은 이유로 `ganttProgress.ts`, `wbsFormMapping.ts`, `rowSelection.ts`가
- * 뽑혀 나왔다).
+ * <p>Kept as a pure function, not a computed inside `WbsForm.vue`: the suggestion is a judgment
+ * call (what number to anchor the placeholder on), not rendering, so pinning it as a plain
+ * function keeps the rule explicit and the test fast and unaffected by the form's markup —
+ * mounting the component would exercise the same logic more slowly and less precisely
+ * (CLAUDE.md "컴포넌트 테스트"; 같은 이유로 `ganttProgress.ts`, `wbsFormMapping.ts`,
+ * `rowSelection.ts`가 뽑혀 나왔다).
  */
 
 export interface WeightSuggestionSibling {
