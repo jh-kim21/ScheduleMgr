@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
+import CommitBanner from './components/CommitBanner.vue'
 import {
   cycleThemePreference,
   THEME_ICONS,
@@ -23,6 +24,7 @@ const inAgile = computed(() => AGILE_PATHS.includes(route.path))
 </script>
 
 <template>
+  <CommitBanner />
   <div class="app">
     <header class="app-header">
       <div class="brand">일정관리</div>

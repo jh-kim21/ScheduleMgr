@@ -6,6 +6,7 @@ import type { Project } from '../../api/projectApi'
 import { raciApi } from '../../api/raciApi'
 import { raidApi } from '../../api/raidApi'
 import { wbsApi } from '../../api/wbsApi'
+import { activeCommit, commitPayload } from '../../stores/commitView'
 import { csvFileName, downloadCsv, toCsv } from '../../shared/csv'
 import {
   backlogCsv,
@@ -159,24 +160,33 @@ function detach() {
 onBeforeUnmount(detach)
 
 /**
- * CSVs are built from a fresh fetch of the project's data. Moving this off the screens means the
- * file is the project's whole table, not the filtered view someone was looking at.
+ * CSVs are built from a fresh fetch of the project's data — unless this row *is* the project
+ * whose commit is currently being viewed, in which case re-fetching would silently swap the
+ * commit's numbers for today's (지시서 §5.3: "3월 커밋을 보면서 내보냈는데 오늘 숫자가 나오는"
+ * 일이 생기면 안 된다). Other rows are unaffected: viewing one project's history does not turn
+ * every other project historical too.
+ *
+ * <p>The screen-specific builders (`wbsCsv`, `raidCsv`, ...) do not know or care which source fed
+ * them — a commit payload's `wbs`/`backlog`/`raci`/`raid` are the exact same shape the live
+ * endpoints return, `referenceDate` included, so passing one through is all this needs.
  */
 async function tableFor(format: Exclude<Format, 'json'>): Promise<{ table: CsvTable; note?: string }> {
   const id = props.project.id
+  const payload = activeCommit.value?.projectId === id ? commitPayload.value : null
+
   if (format === 'wbs') {
-    const tree = await wbsApi.tree(id)
+    const tree = payload ? payload.wbs : await wbsApi.tree(id)
     return { table: wbsCsv(tree.nodes, tree.referenceDate) }
   }
   if (format === 'backlog') {
-    const backlog = await backlogApi.list(id)
+    const backlog = payload ? payload.backlog : await backlogApi.list(id)
     return { table: backlogCsv(backlog.items) }
   }
   if (format === 'raci') {
-    const matrix = await raciApi.matrix(id)
+    const matrix = payload ? payload.raci : await raciApi.matrix(id)
     return { table: raciCsv(matrix), note: `RACI: ${raciLegend()}` }
   }
-  const log = await raidApi.log(id)
+  const log = payload ? payload.raid : await raidApi.log(id)
   return { table: raidCsv(log.items, log.referenceDate) }
 }
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { Project } from '../../api/projectApi'
+import { readOnly } from '../../stores/commitView'
 import { useRowSelection } from '../../shared/useRowSelection'
 import ExportMenu from '../export/ExportMenu.vue'
 import { STATUS_LABELS } from './statusLabels'
@@ -13,6 +14,7 @@ const emit = defineEmits<{
   edit: [project: Project]
   remove: [project: Project]
   members: [project: Project]
+  commits: [project: Project]
 }>()
 
 /** 클릭 선택·방향키 이동·더블클릭 편집은 WBS 표와 같은 컴포저블을 쓴다 (모든 표가 공유). */
@@ -43,7 +45,7 @@ const selection = useRowSelection(() => props.projects.map((project) => project.
           :class="{ selected: selection.isSelected(project.id) }"
           :aria-selected="selection.isSelected(project.id)"
           @click="selection.select(project.id)"
-          @dblclick="selection.onRowDblClick($event, () => emit('edit', project))"
+          @dblclick="selection.onRowDblClick($event, () => !readOnly && emit('edit', project))"
         >
           <td>
             <div class="name">{{ project.name }}</div>
@@ -54,9 +56,31 @@ const selection = useRowSelection(() => props.projects.map((project) => project.
           <td>{{ project.endDate ?? '-' }}</td>
           <td class="actions">
             <ExportMenu :project="project" />
-            <button class="ghost" @click="emit('members', project)">구성원</button>
-            <button class="ghost" @click="emit('edit', project)">수정</button>
-            <button class="danger" @click="emit('remove', project)">삭제</button>
+            <button class="ghost" @click="emit('commits', project)">커밋</button>
+            <button
+              class="ghost"
+              :disabled="readOnly"
+              :title="readOnly ? '커밋 시점을 보는 동안에는 구성원을 바꿀 수 없습니다.' : undefined"
+              @click="emit('members', project)"
+            >
+              구성원
+            </button>
+            <button
+              class="ghost"
+              :disabled="readOnly"
+              :title="readOnly ? '커밋 시점을 보는 동안에는 수정할 수 없습니다.' : undefined"
+              @click="emit('edit', project)"
+            >
+              수정
+            </button>
+            <button
+              class="danger"
+              :disabled="readOnly"
+              :title="readOnly ? '커밋 시점을 보는 동안에는 삭제할 수 없습니다.' : undefined"
+              @click="emit('remove', project)"
+            >
+              삭제
+            </button>
           </td>
         </tr>
       </tbody>
@@ -136,5 +160,12 @@ button {
 button.danger {
   color: var(--danger);
   border-color: var(--danger-border);
+}
+
+button:disabled {
+  background: var(--disabled-bg);
+  color: var(--disabled-fg);
+  border-color: var(--disabled-border);
+  cursor: default;
 }
 </style>

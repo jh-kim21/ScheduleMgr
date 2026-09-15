@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { RaciMatrix } from '../api/raciApi'
-import { raciCsv, raciLegend } from './exportRows'
+import type { RaidItem } from '../api/raidApi'
+import type { WbsNode } from '../api/wbsApi'
+import { raciCsv, raciLegend, raidCsv, wbsCsv } from './exportRows'
 
 /**
  * 결함 4: 화면은 상속된 A를 옅은 글자로 보여 주는데, CSV는 `cell.roles`만 읽어 빈 칸으로
@@ -95,5 +97,87 @@ describe('raciLegend', () => {
     const legend = raciLegend()
     expect(legend).toContain('R=RESPONSIBLE')
     expect(legend).toContain('상속')
+  })
+})
+
+/**
+ * 커밋 히스토리(지시서 §5.3): `wbsCsv`/`raidCsv`는 트리·항목과 `referenceDate`를 따로 받으므로,
+ * `ExportMenu`가 라이브 응답 대신 커밋 payload의 같은 필드(`wbs.nodes`+`wbs.referenceDate`,
+ * `raid.items`+`raid.referenceDate`)를 넘기기만 하면 그대로 동작한다 — 커밋의 `asOf`가 이
+ * `referenceDate` 자리로 그대로 흘러 들어간다는 것만 고정해 둔다. 함수 자체는 라이브/커밋을
+ * 구분하지 않는다.
+ */
+function wbsNode(overrides: Partial<WbsNode> = {}): WbsNode {
+  return {
+    id: 1,
+    parentId: null,
+    code: '1',
+    level: 1,
+    name: '설계',
+    description: null,
+    endDate: '2026-03-10',
+    summary: false,
+    nodeType: 'WORK_PACKAGE',
+    executionMode: null,
+    executionModeSummary: null,
+    backlogSummary: null,
+    weight: null,
+    agileRatio: null,
+    acceptanceStatus: null,
+    computedProgress: 50,
+    progressBasis: 'MANUAL',
+    progressIncomplete: false,
+    progressNote: null,
+    acceptancePending: false,
+    children: [],
+    delayStatus: 'ON_TRACK',
+    expectedProgress: 50,
+    progressGap: 0,
+    delayDays: 0,
+    progress: 50,
+    startDate: '2026-03-01',
+    ...overrides,
+  }
+}
+
+describe('wbsCsv', () => {
+  it('기준일 머리글에 넘겨받은 referenceDate를 그대로 박는다 — 커밋의 asOf가 여기로 들어온다', () => {
+    const table = wbsCsv([wbsNode()], '2026-03-01')
+    expect(table.header).toContain('지연 상태 (기준일 2026-03-01)')
+  })
+
+  it('referenceDate가 없으면(빈 트리) 기준일을 적지 않는다', () => {
+    const table = wbsCsv([], null)
+    expect(table.header).toContain('지연 상태')
+    expect(table.header).not.toContain('지연 상태 (기준일 2026-03-01)')
+  })
+})
+
+function raidItem(overrides: Partial<RaidItem> = {}): RaidItem {
+  return {
+    id: 1,
+    type: 'RISK',
+    title: '일정 위험',
+    description: null,
+    status: 'OPEN',
+    probability: null,
+    impact: null,
+    ownerMemberId: null,
+    ownerName: null,
+    links: [],
+    dueDate: null,
+    response: null,
+    exposure: null,
+    exposureLevel: null,
+    overdue: false,
+    overdueDays: 0,
+    ...overrides,
+  }
+}
+
+describe('raidCsv', () => {
+  it('기준일 머리글에 넘겨받은 referenceDate를 그대로 박는다 — 커밋의 asOf가 여기로 들어온다', () => {
+    const table = raidCsv([raidItem()], '2026-03-01')
+    expect(table.header).toContain('기한 초과 (기준일 2026-03-01)')
   })
 })

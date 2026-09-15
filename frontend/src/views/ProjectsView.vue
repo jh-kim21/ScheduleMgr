@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import type { MemberInput } from '../api/memberApi'
 import type { Project, ProjectInput } from '../api/projectApi'
+import CommitPanel from '../features/commit/CommitPanel.vue'
 import MemberEditor from '../features/members/MemberEditor.vue'
 import { useMembers } from '../features/members/useMembers'
 import ProjectForm from '../features/projects/ProjectForm.vue'
@@ -9,6 +10,7 @@ import ProjectList from '../features/projects/ProjectList.vue'
 import { useProjects } from '../features/projects/useProjects'
 import { projectApi } from '../api/projectApi'
 import { ApiError } from '../api/http'
+import { readOnly } from '../stores/commitView'
 
 const { projects, loading, error, ensureLoaded, load, create, update, remove } = useProjects()
 const editing = ref<Project | null>(null)
@@ -33,6 +35,9 @@ const {
 const membersProject = ref<Project | null>(null)
 
 function openMembers(project: Project) {
+  // ProjectList가 이미 "구성원" 버튼을 막지만, 여기서도 한 번 더 막는다 — 구성원 추가·수정·삭제는
+  // RACI 행의 쓰기 진입점이고, 이 대화상자가 그 유일한 경로다(지시서 5.2).
+  if (readOnly.value) return
   membersProject.value = project
   ensureMembers(project.id)
 }
@@ -53,6 +58,25 @@ function handleRemoveMember(memberId: number) {
   if (membersProject.value) removeMember(membersProject.value.id, memberId)
 }
 
+/**
+ * 커밋 히스토리 대화상자. `membersProject`와 같은 이유로 전역 선택이 아니라 방금 누른 행을
+ * 기억한다.
+ */
+const commitsProject = ref<Project | null>(null)
+
+function openCommits(project: Project) {
+  commitsProject.value = project
+}
+
+function closeCommits() {
+  commitsProject.value = null
+}
+
+/** 복원은 새 프로젝트를 만드므로, 목록 맨 아래에 나타나도록 다시 읽는다. */
+function handleRestored() {
+  load()
+}
+
 /** 가져오기 결과는 목록 로딩 오류와 섞이면 안 되므로 따로 둔다. */
 const importError = ref<string | null>(null)
 const importedName = ref<string | null>(null)
@@ -67,6 +91,12 @@ async function handleFile(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file) return
+  // ProjectList/버튼이 이미 가져오기 입력을 막지만, 커밋 시점을 보는 동안에는 여기서도 한 번 더
+  // 막는다 — 프로젝트 화면의 쓰기 진입점 중 하나다(지시서 5.2).
+  if (readOnly.value) {
+    input.value = ''
+    return
+  }
 
   importing.value = true
   importError.value = null
@@ -89,6 +119,10 @@ async function handleFile(event: Event) {
 onMounted(ensureLoaded)
 
 function openForm(project: Project | null) {
+  // ProjectList가 이미 "수정" 버튼을 막지만, 여기서도 한 번 더 막는다 — 프로젝트 수정은 커밋
+  // 시점을 보는 동안 잠겨야 할 쓰기 진입점이다(지시서 5.2). 새 프로젝트 추가는 표에 없으므로
+  // 막지 않는다 — 보고 있는 커밋과 무관한, 별개의 프로젝트를 만드는 일이다.
+  if (readOnly.value && project) return
   editing.value = project
   saveError.value = null
   formOpen.value = true
@@ -116,6 +150,8 @@ async function handleSubmit(input: ProjectInput) {
 }
 
 async function handleRemove(project: Project) {
+  // ProjectList가 이미 삭제 버튼을 막지만, 여기서도 한 번 더 막는다(지시서 5.2).
+  if (readOnly.value) return
   if (!confirm(`"${project.name}" 프로젝트를 삭제할까요?`)) return
   await remove(project.id)
   if (editing.value?.id === project.id) closeForm()
@@ -134,7 +170,13 @@ async function handleRemove(project: Project) {
           Material 의 filled tonal button: 주 동작이지만 페이지를 지배하지 않을 때 쓴다.
           가져오기는 자주 누르는 버튼이 아니라서 채움(filled)보다 이쪽이 맞다.
         -->
-        <button type="button" class="md-tonal" :disabled="importing" @click="fileInput?.click()">
+        <button
+          type="button"
+          class="md-tonal"
+          :disabled="importing || readOnly"
+          :title="readOnly ? '커밋 시점을 보는 동안에는 가져올 수 없습니다.' : undefined"
+          @click="fileInput?.click()"
+        >
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
             <path
               d="M11 15V7.22L8.8 9.4 7.4 8l4.6-4.6L16.6 8l-1.4 1.4L13 7.22V15h-2ZM6 20a2 2 0 0 1-2-2v-3h2v3h12v-3h2v3a2 2 0 0 1-2 2H6Z"
@@ -190,6 +232,7 @@ async function handleRemove(project: Project) {
       @edit="openForm"
       @remove="handleRemove"
       @members="openMembers"
+      @commits="openCommits"
     />
 
     <MemberEditor
@@ -202,6 +245,13 @@ async function handleRemove(project: Project) {
       @update="handleUpdateMember"
       @remove="handleRemoveMember"
       @close="closeMembers"
+    />
+
+    <CommitPanel
+      v-if="commitsProject"
+      :project="commitsProject"
+      @close="closeCommits"
+      @restored="handleRestored"
     />
   </section>
 </template>
