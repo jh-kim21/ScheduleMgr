@@ -131,7 +131,9 @@ backend/
     application/       # ProjectService / WbsService / GanttService / BacklogService / SprintService /
                        #   ProgressService(공통 집계) / ProgressBasisService(가중치·체크포인트·Baseline) /
                        #   DashboardService(다른 서비스의 응답을 모으기만 함) /
-                       #   ProjectMemberService / RaciService / RaidService(유스케이스), dto/
+                       #   ProjectMemberService / RaciService / RaidService /
+                       #   ProjectCommitService(커밋 히스토리, 다른 서비스 응답을 판정값째로 박제)
+                       #   (유스케이스), dto/
     infrastructure/     # JPA 리포지토리 구현체, CORS 설정
     presentation/       # 컨트롤러, 전역 예외 핸들러
   src/main/resources/
@@ -142,11 +144,11 @@ backend/
 
 frontend/
   src/api/            # REST API 클라이언트 (fetch 기반)
-  src/features/        # projects, dashboard, wbs, backlog, sprint, progress, gantt, raci, raid, members
+  src/features/        # projects, dashboard, wbs, backlog, sprint, progress, gantt, raci, raid, members, commit
                        #   progress/CheckpointList.vue: WbsForm(편집)과 ProgressPanel(읽기 전용)이 함께 쓴다
   src/views/           # 라우트별 화면. 메뉴 구조는 설계서 §2.2를 따른다 (아래 "화면 구조")
   src/shared/          # 여러 feature가 공유하는 도메인 개념 (delay 상태 라벨 등)
-  src/stores/          # 화면 간 공유 상태 (선택된 프로젝트, 캐시 무효화 신호)
+  src/stores/          # 화면 간 공유 상태 (선택된 프로젝트, 캐시 무효화 신호, commitView.ts의 읽기 전용 모드)
   src/views/           # 라우트별 화면
   src/router/          # vue-router 설정
 ```
@@ -506,6 +508,12 @@ WBS의 이점이 사라지고 같은 업무의 세 일정을 눈으로 잇기 �
   넓을수록 한 화면에 들어오는 열이 늘어납니다. 예전 960px 은 본문 위주 페이지의 읽기 폭이라 좌우가
   비어 보였습니다. 상한을 아예 없애지 않은 이유는 아주 넓은 화면에서 헤더 메뉴가 양 끝으로 흩어지고
   시선 이동이 오히려 커지기 때문입니다.
+- **커밋 조회 중에는 전 화면에 고정 배너가 뜨고 쓰기 진입점이 플래그 하나로 잠깁니다.**
+  [`CommitBanner`](frontend/src/components/CommitBanner.vue)가 `stores/commitView.ts`의
+  `activeCommit`을 보고 "2026-03-01 시점 (v3) — 읽기 전용"을 띄우며, 아홉 개 화면의 추가·수정·
+  삭제·드래그 진입점은 전부 같은 파생값 `readOnly`(= `activeCommit !== null`) 하나를 봅니다. 화면마다
+  각자 판단하게 두면 하나를 빠뜨리기 쉽습니다 — 플래그를 하나로 묶어야 "빠짐없이 잠갔다"를 한 곳에서
+  확인할 수 있습니다.
 
 ### 다크 모드 (프론트엔드)
 
@@ -757,6 +765,45 @@ Story·Sprint에 걸려도 원본은 하나로 관리해야 하기 때문입니�
   주고, 그것이 화면에 "요청 실패 (400)"으로 나옵니다. 파일을 잘못 고르는 것이 가장 흔한 실수인
   가져오기에서 그건 막다른 길이라 `HttpMessageNotReadableException` 핸들러를 두었습니다.
 
+### 커밋 히스토리 설계상 알아둘 점
+
+프로젝트의 특정 시점 전체 상태를 git 커밋과 같은 감각으로 사람이 명시적으로 찍어 두는 기능입니다
+(설계 근거는 `docs/tasks/commit-history.md`). 내보내기·가져오기와 이웃해 있지만 목적이 정반대입니다.
+
+- **판정값을 저장합니다 — 재계산하지 않습니다.** 내보내기(export)가 판정값을 뺀 것과 정반대 방향이고
+  이유도 다릅니다. export는 파일을 **다시 살아있는 프로젝트로 읽어들이는 것**이라 "오늘" 기준
+  판정값이 새 맥락에서 거짓이 되지만, 커밋은 그 순간을 **박제해서 보는 것**이라 판정값(지연 상태·
+  선후행 위반·float·노출도·기한 초과)까지 그대로 담아야 맞습니다. 계산 로직이 나중에 바뀌어도 과거
+  커밋을 열었을 때 그때 실제로 보고했던 숫자가 나와야 합니다 — 재계산 방식으로 만들면 다음 달에
+  `DelayCalculator`를 고치는 순간 지난달 커밋의 숫자가 조용히 바뀝니다. `progress_snapshots`(V19)가
+  같은 태도의 선례입니다.
+- **기준선(Baseline)과 역할이 다릅니다.** 기준선은 승인된 *약속*이라 계획 진척·편차의 계산에
+  쓰이고, 커밋은 그때의 *기록*이라 보기만 합니다. 둘을 합치면 "기록을 남기려고 기준선을 다시
+  찍는" 오남용이 생깁니다 — 기준선 재승인은 지연 신호를 리셋하는 무거운 행위라 기록 목적으로
+  쓰이면 안 됩니다.
+- **채번은 `MAX(version)+1`이고, 삭제된 번호는 재사용하지 않습니다.** `ProgressBasisService.
+  approveBaseline`의 `size()+1` 패턴을 그대로 복사하면 안 됩니다 — 기준선은 삭제가 없어 그 패턴이
+  안전했지만, 커밋은 삭제되므로 `[v1,v2,v3]`에서 v2를 지우면 `size()+1`이 v3을 다시 내놓아
+  `UNIQUE(project_id, version)`에 걸립니다. 빈 번호가 남는 것은 "중간에 뭔가 지워졌다"는 사실을
+  드러내므로 오히려 낫습니다.
+- **`TEXT` + `@JdbcTypeCode(SqlTypes.LONGVARCHAR)`를 씁니다.** 압축하지 않으므로(사용자 결정 — DB에서
+  내용을 직접 확인할 수 있어야 함) `raw_payload`·`computed_payload` 두 큰 JSON 문자열을 그대로
+  저장합니다. `CLOB`은 PostgreSQL에 없는 타입이고, `@Lob String`은 Hibernate 6에서 PostgreSQL의
+  `oid`(large object)로 매핑되어 깨집니다.
+- **기준일을 한 번만 정해 모든 화면에 내려보냅니다.** `WbsService`·`GanttService`·`ProgressService`·
+  `RaidService`·`DashboardService`에 `LocalDate referenceDate`를 받는 오버로드가 있는 이유가 이
+  때문입니다 — 커밋이 이 서비스들을 연달아 호출하는데, 각자 `LocalDate.now()`를 다시 읽으면 자정
+  직전 커밋에서 화면마다 "오늘"이 갈릴 수 있습니다. **1-인자 오버로드는 `LocalDate.now()`를 넘기는
+  얇은 위임으로 남아 있으니 지우지 마세요** — 기존 호출부가 전부 그걸 씁니다.
+- **압축·자동 삭제·자동 커밋·커밋 수정은 하지 않습니다**(사용자 결정). 용량 한도(프로젝트별,
+  기본 1GB)는 설정값(`project-flow.commit.max-bytes-per-project`)이고, 80% 이상이면 경고만,
+  100% 초과면 커밋을 막고 기존 커밋 목록을 함께 돌려줍니다 — 무엇을 지울지는 사람이 고릅니다.
+  커밋은 삭제만 가능하고 수정 API 자체가 없습니다(불변).
+- **복원은 새 프로젝트만 만듭니다.** `raw_payload`를 기존 `ImportService`에 그대로 넘겨 처리합니다 —
+  가져오기가 이미 "항상 새 프로젝트를 만들고 모든 id를 재매핑"하기 때문에 복원에 새 로직이 거의
+  없습니다. 현재 프로젝트를 덮어쓰는 복원은 만들지 않았습니다 — id 매핑과 진행 중인 Sprint(단일
+  팀 전제, 프로젝트당 하나)의 충돌을 풀 방법이 없기 때문입니다.
+
 ### 화면 간 상태 유지 (프론트엔드)
 
 탭을 옮겨도 선택과 데이터가 유지되어야 하므로, 컴포저블의 상태를 **모듈 스코프**에 두어 모든 뷰가 하나의
@@ -781,6 +828,10 @@ Story·Sprint에 걸려도 원본은 하나로 관리해야 하기 때문입니�
 - **`ensureLoaded`는 진행 중 요청을 공유합니다.** 라우트 전환 시 뷰 마운트와 선택 watcher가 같은 tick에
   겹쳐 동일 요청이 두 번 나가던 문제가 있었습니다. 뷰의 로드 경로는 `watch(selectedProjectId, …,
   { immediate: true })` **하나**로 유지하세요 — `onMounted`에서 추가로 부르면 그 중복이 되살아납니다.
+- **커밋 조회 모드는 이 리비전·로컬 날짜 조합을 쓰지 않습니다.** [`stores/commitView.ts`](frontend/src/stores/commitView.ts)의
+  캐시 키는 `commit:{id}` 하나뿐입니다 — 커밋은 불변이므로 무엇도 무효화할 필요가 없습니다. 활성화되면
+  각 화면의 api 클라이언트가 라이브 엔드포인트 대신 커밋 엔드포인트로 분기하고, `computed_payload`가
+  라이브 응답과 같은 shape이라 화면 컴포넌트 자체는 거의 수정할 필요가 없습니다.
 
 ## API 요약
 
@@ -826,6 +877,10 @@ Story·Sprint에 걸려도 원본은 하나로 관리해야 하기 때문입니�
 | `PUT` `DELETE` | `/api/projects/{projectId}/raid/{itemId}` | 항목 수정 / 삭제 |
 | `GET` | `/api/projects/{projectId}/export` | 프로젝트 전체를 JSON 한 파일로 내려받기 (attachment) |
 | `POST` | `/api/projects/import` | 내보낸 파일로 **새 프로젝트** 생성 (본문 = export 응답 그대로) |
+| `GET` `POST` | `/api/projects/{projectId}/commits` | 커밋 목록(+용량) 조회 / 현재 시점 커밋 |
+| `GET` `DELETE` | `/api/projects/{projectId}/commits/{version}` | 그 시점 전체 데이터 조회(판정값 포함) / 삭제 |
+| `GET` | `/api/projects/{projectId}/commits/{version}/export` | 그 시점 `raw_payload`를 JSON으로 내려받기 (attachment) |
+| `POST` | `/api/projects/commits/{commitId}/restore` | 커밋에서 **새 프로젝트** 생성 (복원) |
 
 WBS·간트의 모든 변경 API는 부분 응답이 아니라 갱신된 전체 데이터를 반환합니다.
 
@@ -836,6 +891,9 @@ WBS·간트의 모든 변경 API는 부분 응답이 아니라 갱신된 전체 
   (`change_logs`에 자리는 있으나 보여 주는 화면이 없습니다)
 - 3.5 Docker 환경 구성 실제 빌드/검증, 10. 테스트 및 배포
 - **PostgreSQL에서 마이그레이션 전체를 한 번 돌려 보기.** 특히 V18(이력 표 흡수)과 V21(RAID 컬럼
-  이전)은 데이터를 옮기는 마이그레이션인데 H2로만 확인했습니다
+  이전)은 데이터를 옮기는 마이그레이션인데 H2로만 확인했습니다. **V22(커밋 히스토리 테이블)도
+  같은 이유로 미검증입니다** — 이 저장소를 다루는 환경에 psql·Docker가 없어 H2로만 확인했습니다.
+  이식 가능한 문법(`TEXT`, `BIGINT GENERATED BY DEFAULT AS IDENTITY`, 표준 `FOREIGN KEY`/`UNIQUE`)만
+  썼지만 실제로 돌려 보지는 못했습니다
 - 일정 기능 확장 후보: 영업일/휴일 달력(지연 일수·기대 진행률이 함께 정확해집니다),
   FS 이외의 관계 종류(SS/FF/SF)
