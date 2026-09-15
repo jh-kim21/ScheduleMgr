@@ -7,7 +7,12 @@ const props = defineProps<{
   data: GanttData
   /** 저장이 거부된 이유(순환·중복 등). 대화상자 안에 보여야 사용자가 볼 수 있다. */
   error?: string | null
+  /** 커밋 시점 조회 중이면 추가·수정·삭제를 모두 막는다. */
+  readOnly?: boolean
 }>()
+
+/** 5.2 표의 화면 전체 공통 문구 — 화면마다 문구를 지어내지 않는다. */
+const READONLY_HINT = '커밋 시점 조회 중에는 변경할 수 없습니다'
 
 const emit = defineEmits<{
   add: [input: DependencyInput]
@@ -95,7 +100,7 @@ const submittable = computed(
 const draftSubmittable = computed(() => draft.value.predecessorId !== draft.value.successorId)
 
 function onSubmit() {
-  if (!submittable.value) return
+  if (props.readOnly || !submittable.value) return
   pendingAdd = {
     predecessorId: predecessorId.value!,
     successorId: successorId.value!,
@@ -105,11 +110,13 @@ function onSubmit() {
 }
 
 function openAdd() {
+  if (props.readOnly) return
   pendingAdd = null
   addOpen.value = true
 }
 
 function startEdit(dependency: GanttDependency) {
+  if (props.readOnly) return
   editingId.value = dependency.id
   draft.value = {
     predecessorId: dependency.predecessorId,
@@ -123,7 +130,7 @@ function cancelEdit() {
 }
 
 function onSave() {
-  if (editingId.value === null || !draftSubmittable.value) return
+  if (props.readOnly || editingId.value === null || !draftSubmittable.value) return
   emit('update', editingId.value, { ...draft.value })
 }
 </script>
@@ -132,7 +139,13 @@ function onSave() {
   <section class="dependencies">
     <header class="section-head">
       <h2>선후행 관계</h2>
-      <button type="button" class="add" :disabled="data.tasks.length < 2" @click="openAdd">
+      <button
+        type="button"
+        class="add"
+        :disabled="readOnly || data.tasks.length < 2"
+        :title="readOnly ? READONLY_HINT : undefined"
+        @click="openAdd"
+      >
         ＋ 관계 추가
       </button>
     </header>
@@ -224,8 +237,19 @@ function onSave() {
           </span>
 
           <span class="actions">
-            <button type="button" @click="startEdit(dependency)">수정</button>
-            <button type="button" class="danger" @click="emit('remove', dependency.id)">삭제</button>
+            <button
+              type="button"
+              :disabled="readOnly"
+              :title="readOnly ? READONLY_HINT : undefined"
+              @click="startEdit(dependency)"
+            >수정</button>
+            <button
+              type="button"
+              class="danger"
+              :disabled="readOnly"
+              :title="readOnly ? READONLY_HINT : undefined"
+              @click="emit('remove', dependency.id)"
+            >삭제</button>
           </span>
         </template>
       </li>

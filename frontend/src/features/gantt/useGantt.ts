@@ -2,6 +2,7 @@ import { ref } from 'vue'
 import { ganttApi, type DependencyInput, type GanttData } from '../../api/ganttApi'
 import { ApiError } from '../../api/http'
 import { cacheKeyFor, markWbsChanged } from '../../stores/scheduleCache'
+import { activeCommit, commitPayload, readOnly } from '../../stores/commitView'
 
 const EMPTY: GanttData = {
   chartStart: null,
@@ -34,9 +35,14 @@ export function useGantt() {
     return e instanceof ApiError ? e.message : fallback
   }
 
+  /** Commits are immutable, so a cache key of the commit id alone is enough (지시서 5.2). */
+  function currentCacheKey(projectId: number): string {
+    return readOnly.value && activeCommit.value ? `commit:${activeCommit.value.id}` : cacheKeyFor(projectId)
+  }
+
   function apply(result: GanttData, projectId: number) {
     data.value = result
-    cacheKey = cacheKeyFor(projectId)
+    cacheKey = currentCacheKey(projectId)
   }
 
   async function load(projectId: number) {
@@ -44,6 +50,10 @@ export function useGantt() {
     error.value = null
     lastRecalculation.value = null
     try {
+      if (readOnly.value && commitPayload.value) {
+        apply(commitPayload.value.gantt, projectId)
+        return
+      }
       apply(await ganttApi.data(projectId), projectId)
     } catch (e) {
       data.value = EMPTY
@@ -56,7 +66,7 @@ export function useGantt() {
 
   /** Refetches only when the cached chart is for another project, another day, or now stale. */
   function ensureLoaded(projectId: number): Promise<void> {
-    const key = cacheKeyFor(projectId)
+    const key = currentCacheKey(projectId)
     if (cacheKey === key) return Promise.resolve()
     // A route change can mount a view and fire its selection watcher in the same tick; without
     // this both would issue the same request.
@@ -73,6 +83,7 @@ export function useGantt() {
    * recalculation does that.
    */
   async function mutate(projectId: number, action: () => Promise<GanttData>, fallback: string) {
+    if (readOnly.value) return
     error.value = null
     lastRecalculation.value = null
     try {
@@ -101,6 +112,7 @@ export function useGantt() {
 
   /** Shifts WBS dates, so the WBS view is invalidated too. */
   async function recalculate(projectId: number) {
+    if (readOnly.value) return
     error.value = null
     lastRecalculation.value = null
     try {

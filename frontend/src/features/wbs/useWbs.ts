@@ -9,6 +9,7 @@ import {
   type WbsTree,
 } from '../../api/wbsApi'
 import { markWbsChanged, wbsCacheKeyFor } from '../../stores/scheduleCache'
+import { activeCommit, commitPayload, readOnly } from '../../stores/commitView'
 
 /** Shared at module scope so the tree survives navigating away and back. */
 const tree = ref<WbsNode[]>([])
@@ -25,16 +26,27 @@ export function useWbs() {
     return e instanceof ApiError ? e.message : fallback
   }
 
+  /** Commits are immutable, so a cache key of the commit id alone is enough (지시서 5.2). */
+  function currentCacheKey(projectId: number): string {
+    return readOnly.value && activeCommit.value ? `commit:${activeCommit.value.id}` : wbsCacheKeyFor(projectId)
+  }
+
   function apply(result: WbsTree, projectId: number) {
     tree.value = result.nodes
     referenceDate.value = result.referenceDate
-    cacheKey = wbsCacheKeyFor(projectId)
+    cacheKey = currentCacheKey(projectId)
   }
 
   async function load(projectId: number) {
     loading.value = true
     error.value = null
     try {
+      // 커밋 조회 중에는 네트워크 대신 활성 커밋의 payload를 그대로 쓴다 — computed_payload가
+      // 라이브 응답과 같은 shape이므로 apply() 를 그대로 재사용할 수 있다.
+      if (readOnly.value && commitPayload.value) {
+        apply(commitPayload.value.wbs, projectId)
+        return
+      }
       apply(await wbsApi.tree(projectId), projectId)
     } catch (e) {
       tree.value = []
@@ -48,7 +60,7 @@ export function useWbs() {
 
   /** Refetches only when the cached tree is for another project, another day, or now stale. */
   function ensureLoaded(projectId: number): Promise<void> {
-    const key = wbsCacheKeyFor(projectId)
+    const key = currentCacheKey(projectId)
     if (cacheKey === key) return Promise.resolve()
     // A route change can mount a view and fire its selection watcher in the same tick; without
     // this both would issue the same request.
@@ -72,6 +84,9 @@ export function useWbs() {
     action: () => Promise<WbsTree>,
     fallback: string,
   ): Promise<boolean> {
+    // 쓰기 진입점은 화면에서 이미 막혀 있어야 하지만, 여기서도 한 번 더 막는다 — 커밋 조회 중에는
+    // 서버에 아무것도 보내지 않는다.
+    if (readOnly.value) return false
     error.value = null
     try {
       const result = await action()

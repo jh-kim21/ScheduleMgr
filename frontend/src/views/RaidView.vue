@@ -7,6 +7,10 @@ import RaidList from '../features/raid/RaidList.vue'
 import { useRaid } from '../features/raid/useRaid'
 import { useProjects } from '../features/projects/useProjects'
 import { ensureSelection, selectedProjectId } from '../stores/projectSelection'
+import { readOnly } from '../stores/commitView'
+
+/** 5.2 표의 화면 전체 공통 문구 — 화면마다 문구를 지어내지 않는다. */
+const READONLY_HINT = '커밋 시점 조회 중에는 변경할 수 없습니다'
 import {
   RAID_TYPE_DESCRIPTIONS,
   RAID_TYPE_ENGLISH,
@@ -51,6 +55,7 @@ const editing = ref<RaidItem | null>(null)
  */
 const formOpen = ref(false)
 function openForm(item: RaidItem | null) {
+  if (readOnly.value) return
   editing.value = item
   formOpen.value = true
 }
@@ -109,6 +114,7 @@ const unowned = computed(() =>
 )
 
 async function handleSubmit(input: RaidItemInput) {
+  if (readOnly.value) return
   const projectId = selectedProjectId.value
   if (projectId === null) return
 
@@ -124,6 +130,7 @@ async function handleSubmit(input: RaidItemInput) {
 }
 
 async function handleRemove(item: RaidItem) {
+  if (readOnly.value) return
   const projectId = selectedProjectId.value
   if (projectId === null) return
   if (editing.value?.id === item.id) closeForm()
@@ -236,7 +243,13 @@ async function handleRemove(item: RaidItem) {
           </button>
         </div>
 
-        <button type="button" class="add" @click="openForm(null)">＋ 항목 추가</button>
+        <button
+          type="button"
+          class="add"
+          :disabled="readOnly"
+          :title="readOnly ? READONLY_HINT : undefined"
+          @click="openForm(null)"
+        >＋ 항목 추가</button>
       </div>
 
       <RaidForm
@@ -261,6 +274,7 @@ async function handleRemove(item: RaidItem) {
         :items="visibleItems"
         :editing-id="editing?.id ?? null"
         :filtered="filterActive && data.items.length > 0"
+        :read-only="readOnly"
         @edit="openForm($event)"
         @remove="handleRemove"
       />

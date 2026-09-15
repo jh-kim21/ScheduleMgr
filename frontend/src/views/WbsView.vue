@@ -8,7 +8,11 @@ import WbsTree from '../features/wbs/WbsTree.vue'
 import { useWbs } from '../features/wbs/useWbs'
 import { useProjects } from '../features/projects/useProjects'
 import { ensureSelection, selectedProjectId } from '../stores/projectSelection'
+import { readOnly } from '../stores/commitView'
 import { needsAttention } from '../shared/delay'
+
+/** 5.2 표의 화면 전체 공통 문구 — 화면마다 문구를 지어내지 않는다. */
+const READONLY_HINT = '커밋 시점 조회 중에는 변경할 수 없습니다'
 
 const route = useRoute()
 const router = useRouter()
@@ -109,18 +113,21 @@ async function handleSubmit(input: WbsItemInput) {
 }
 
 function openAddRoot() {
+  if (readOnly.value) return
   editing.value = null
   parentForNew.value = null
   formOpen.value = true
 }
 
 function startAddChild(parent: WbsNode) {
+  if (readOnly.value) return
   editing.value = null
   parentForNew.value = parent
   formOpen.value = true
 }
 
 function startEdit(node: WbsNode) {
+  if (readOnly.value) return
   parentForNew.value = null
   editing.value = node
   formOpen.value = true
@@ -140,6 +147,7 @@ function closeForm() {
 }
 
 function openImportForm() {
+  if (readOnly.value) return
   importFormOpen.value = true
 }
 
@@ -156,6 +164,7 @@ async function handleImportSubmit(input: { file: File; parentId: number | null }
 }
 
 async function handleRemove(node: WbsNode) {
+  if (readOnly.value) return
   const id = selectedProjectId.value
   if (id === null) return
   const warning = node.children.length > 0 ? '\n하위 항목도 모두 함께 삭제됩니다.' : ''
@@ -165,6 +174,7 @@ async function handleRemove(node: WbsNode) {
 }
 
 async function handleMove(itemId: number, input: WbsMoveInput) {
+  if (readOnly.value) return
   const id = selectedProjectId.value
   if (id === null) return
   await move(id, itemId, input)
@@ -176,8 +186,20 @@ async function handleMove(itemId: number, input: WbsMoveInput) {
     <div class="head">
       <h1>WBS</h1>
       <div v-if="projects.length > 0" class="head-actions">
-        <button type="button" class="add ghost" @click="openImportForm">＋ 파일에서 가져오기</button>
-        <button type="button" class="add" @click="openAddRoot">＋ 최상위 항목 추가</button>
+        <button
+          type="button"
+          class="add ghost"
+          :disabled="readOnly"
+          :title="readOnly ? READONLY_HINT : undefined"
+          @click="openImportForm"
+        >＋ 파일에서 가져오기</button>
+        <button
+          type="button"
+          class="add"
+          :disabled="readOnly"
+          :title="readOnly ? READONLY_HINT : undefined"
+          @click="openAddRoot"
+        >＋ 최상위 항목 추가</button>
       </div>
     </div>
 
@@ -233,6 +255,7 @@ async function handleMove(itemId: number, input: WbsMoveInput) {
         v-else
         :tree="tree"
         :focus-id="focusId"
+        :read-only="readOnly"
         @add-child="startAddChild"
         @edit="startEdit"
         @remove="handleRemove"

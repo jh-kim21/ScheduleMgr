@@ -2,6 +2,7 @@ import { ref } from 'vue'
 import { dashboardApi, type Dashboard } from '../../api/dashboardApi'
 import { ApiError } from '../../api/http'
 import { dashboardCacheKeyFor } from '../../stores/scheduleCache'
+import { activeCommit, commitPayload, readOnly } from '../../stores/commitView'
 
 /**
  * Shared at module scope like the other feature composables, so the dashboard survives navigating
@@ -19,12 +20,24 @@ let cacheKey: string | null = null
 let inFlight: { key: string; promise: Promise<void> } | null = null
 
 export function useDashboard() {
+  /** Commits are immutable, so a cache key of the commit id alone is enough (지시서 5.2). */
+  function currentCacheKey(projectId: number): string {
+    return readOnly.value && activeCommit.value
+      ? `commit:${activeCommit.value.id}`
+      : dashboardCacheKeyFor(projectId)
+  }
+
   async function load(projectId: number) {
     loading.value = true
     error.value = null
     try {
+      if (readOnly.value && commitPayload.value) {
+        data.value = commitPayload.value.dashboard
+        cacheKey = currentCacheKey(projectId)
+        return
+      }
       data.value = await dashboardApi.get(projectId)
-      cacheKey = dashboardCacheKeyFor(projectId)
+      cacheKey = currentCacheKey(projectId)
     } catch (e) {
       data.value = null
       cacheKey = null
@@ -35,7 +48,7 @@ export function useDashboard() {
   }
 
   function ensureLoaded(projectId: number): Promise<void> {
-    const key = dashboardCacheKeyFor(projectId)
+    const key = currentCacheKey(projectId)
     if (cacheKey === key) return Promise.resolve()
     // A route change can mount a view and fire its selection watcher in the same tick; without
     // this both would issue the same request.

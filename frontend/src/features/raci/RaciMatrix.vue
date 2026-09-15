@@ -17,7 +17,12 @@ const props = defineProps<{
   /** `wbsItemId:memberId` → the letters that cell holds, from `useRaci`. */
   cellIndex: Map<string, CellEntry>
   issuesByTask: Map<number, RaciIssue[]>
+  /** 커밋 시점 조회 중이면 글자 토글을 막는다. */
+  readOnly?: boolean
 }>()
+
+/** 5.2 표의 화면 전체 공통 문구 — 화면마다 문구를 지어내지 않는다. */
+const READONLY_HINT = '커밋 시점 조회 중에는 변경할 수 없습니다'
 
 const emit = defineEmits<{
   assign: [wbsItemId: number, memberId: number, role: RaciRole]
@@ -51,6 +56,7 @@ function assignmentIdFor(task: RaciTask, memberId: number, role: RaciRole): numb
 
 /** One click either adds the letter or removes the one already there. */
 function toggle(task: RaciTask, memberId: number, role: RaciRole) {
+  if (props.readOnly) return
   const assignmentId = assignmentIdFor(task, memberId, role)
   if (assignmentId === null) emit('assign', task.id, memberId, role)
   else emit('unassign', assignmentId)
@@ -81,6 +87,7 @@ function inheritedRole(task: RaciTask, memberId: number, role: RaciRole): Inheri
 }
 
 function cellTitle(task: RaciTask, member: { id: number; name: string }, role: RaciRole): string {
+  if (props.readOnly) return READONLY_HINT
   const base = `${task.code} ${task.name} · ${member.name} · ${RACI_LABELS[role]}(${RACI_LETTERS[role]})`
   const inherited = inheritedRole(task, member.id, role)
   if (!inherited) return base
@@ -165,6 +172,7 @@ function overriddenRoles(task: RaciTask): RaciRole[] {
                 type="button"
                 class="letter"
                 :data-role="role"
+                :disabled="readOnly"
                 :class="{
                   held: assignmentIdFor(task, member.id, role) !== null,
                   inherited:
@@ -362,9 +370,13 @@ tr.summary .name {
   cursor: pointer;
 }
 
-.letter:hover {
+.letter:hover:not(:disabled) {
   border-color: var(--accent-border);
   color: var(--text-h);
+}
+
+.letter:disabled {
+  cursor: not-allowed;
 }
 
 .letter.held {

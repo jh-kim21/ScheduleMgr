@@ -19,6 +19,8 @@ const props = defineProps<{
    * does not create or close an entry.
    */
   raidItems: RaidItem[]
+  /** 커밋 시점 조회 중이면 종료된 Sprint와 같은 방식(`frozen`)으로 드래그·상태 변경을 막는다. */
+  readOnly?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -38,7 +40,12 @@ const confirming = ref<SprintItem | null>(null)
 const blocking = ref<SprintItem | null>(null)
 const blockReason = ref('')
 
-const frozen = computed(() => props.sprint.status === 'CLOSED')
+/**
+ * 커밋 시점 조회 중에는 종료된 Sprint와 똑같이 다룬다 — 드래그·차단·완료 버튼이 이미 모두
+ * `frozen` 하나로 묶여 있어(위 template), 여기서 합치는 것만으로 5.2 표의 "카드 드래그앤드롭,
+ * 상태·차단 변경"을 전부 막는다.
+ */
+const frozen = computed(() => props.sprint.status === 'CLOSED' || props.readOnly === true)
 
 const columns = computed(() =>
   BACKLOG_STATUS_ORDER.map((status) => ({

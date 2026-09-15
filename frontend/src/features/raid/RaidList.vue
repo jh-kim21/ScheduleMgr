@@ -17,7 +17,12 @@ const props = defineProps<{
   editingId: number | null
   /** True when the register is non-empty but the filter hides everything. */
   filtered?: boolean
+  /** 커밋 시점 조회 중이면 더블클릭 편집·행 액션을 막는다. */
+  readOnly?: boolean
 }>()
+
+/** 5.2 표의 화면 전체 공통 문구 — 화면마다 문구를 지어내지 않는다. */
+const READONLY_HINT = '커밋 시점 조회 중에는 변경할 수 없습니다'
 
 const emit = defineEmits<{
   edit: [item: RaidItem]
@@ -42,8 +47,14 @@ const emptyMessage = computed(() =>
 )
 
 function onRemove(item: RaidItem) {
+  if (props.readOnly) return
   if (!confirm(`"${item.title}" 항목을 삭제할까요?`)) return
   emit('remove', item)
+}
+
+function onRowDblClick(event: MouseEvent, item: RaidItem) {
+  if (props.readOnly) return
+  selection.onRowDblClick(event, () => emit('edit', item))
 }
 
 /*
@@ -103,7 +114,7 @@ const selection = useRowSelection(
               }"
               :aria-selected="selection.isSelected(item.id)"
               @click="selection.select(item.id)"
-              @dblclick="selection.onRowDblClick($event, () => emit('edit', item))"
+              @dblclick="onRowDblClick($event, item)"
             >
               <td class="title-col">
                 <span class="title">{{ item.title }}</span>
@@ -158,8 +169,19 @@ const selection = useRowSelection(
 
               <td class="actions-col">
                 <span class="actions">
-                  <button type="button" @click="emit('edit', item)">수정</button>
-                  <button type="button" class="danger" @click="onRemove(item)">삭제</button>
+                  <button
+                    type="button"
+                    :disabled="readOnly"
+                    :title="readOnly ? READONLY_HINT : undefined"
+                    @click="emit('edit', item)"
+                  >수정</button>
+                  <button
+                    type="button"
+                    class="danger"
+                    :disabled="readOnly"
+                    :title="readOnly ? READONLY_HINT : undefined"
+                    @click="onRemove(item)"
+                  >삭제</button>
                 </span>
               </td>
             </tr>

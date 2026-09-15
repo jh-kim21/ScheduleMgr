@@ -15,6 +15,10 @@ import {
 } from '../../shared/progress'
 import { useRowSelection } from '../../shared/useRowSelection'
 import { selectedProjectId } from '../../stores/projectSelection'
+import { readOnly } from '../../stores/commitView'
+
+/** 5.2 표의 화면 전체 공통 문구 — 화면마다 문구를 지어내지 않는다. */
+const READONLY_HINT = '커밋 시점 조회 중에는 변경할 수 없습니다'
 
 const {
   data,
@@ -93,6 +97,7 @@ function toggle(wp: WorkPackageProgress) {
 
 /** Opens inline editing for `wp`, discarding any other row's unsaved edit. */
 function startEditBasis(wp: WorkPackageProgress) {
+  if (readOnly.value) return
   editingBasis.value = { wbsItemId: wp.wbsItemId, weight: wp.weight, agileRatio: wp.agileRatio }
 }
 
@@ -112,6 +117,7 @@ function normalizeBasisNumber(value: number | string | null): number | null {
 }
 
 async function saveBasis() {
+  if (readOnly.value) return
   const projectId = selectedProjectId.value
   const editing = editingBasis.value
   if (projectId === null || editing === null) return
@@ -125,6 +131,7 @@ async function saveBasis() {
 }
 
 async function confirmBaseline() {
+  if (readOnly.value) return
   const projectId = selectedProjectId.value
   if (projectId === null || !baselineBy.value.trim()) return
   const ok = await approveBaseline(projectId, baselineBy.value.trim(), baselineNote.value.trim() || null)
@@ -136,6 +143,7 @@ async function confirmBaseline() {
 }
 
 async function takeSnapshot() {
+  if (readOnly.value) return
   const projectId = selectedProjectId.value
   if (projectId === null) return
   const ok = await saveSnapshot(projectId, snapshotNote.value.trim() || null)
@@ -241,7 +249,12 @@ function snapshotSummary(metrics: string): string {
           기준선 v{{ data.baseline.version }} · {{ data.baseline.approvedBy }} ·
           {{ data.baseline.approvedAt.slice(0, 10) }}
         </span>
-        <button type="button" @click="baselineOpen = true">기준선 승인</button>
+        <button
+          type="button"
+          :disabled="readOnly"
+          :title="readOnly ? READONLY_HINT : undefined"
+          @click="baselineOpen = true"
+        >기준선 승인</button>
       </div>
     </div>
 
@@ -342,7 +355,13 @@ function snapshotSummary(metrics: string): string {
                   <button type="button" @click="toggle(wp)">
                     체크포인트 {{ wp.checkpointApproved }}/{{ wp.checkpointTotal }}
                   </button>
-                  <button type="button" class="ghost" @click="startEditBasis(wp)">가중치</button>
+                  <button
+                    type="button"
+                    class="ghost"
+                    :disabled="readOnly"
+                    :title="readOnly ? READONLY_HINT : undefined"
+                    @click="startEditBasis(wp)"
+                  >가중치</button>
                 </template>
               </td>
             </tr>
@@ -390,8 +409,13 @@ function snapshotSummary(metrics: string): string {
       적어 둡니다.
     </p>
     <div class="snapshot-form">
-      <input v-model="snapshotNote" type="text" placeholder="메모 (선택)" />
-      <button type="button" @click="takeSnapshot">현재 진척 저장</button>
+      <input v-model="snapshotNote" type="text" placeholder="메모 (선택)" :disabled="readOnly" />
+      <button
+        type="button"
+        :disabled="readOnly"
+        :title="readOnly ? READONLY_HINT : undefined"
+        @click="takeSnapshot"
+      >현재 진척 저장</button>
     </div>
     <ul v-if="snapshots.length > 0" class="snapshots">
       <li v-for="snapshot in snapshots" :key="snapshot.id">

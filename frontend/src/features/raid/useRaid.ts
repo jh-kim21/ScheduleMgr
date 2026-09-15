@@ -1,11 +1,12 @@
 import { computed, ref } from 'vue'
 import { ApiError } from '../../api/http'
-import { backlogApi } from '../../api/backlogApi'
+import { backlogApi, type Backlog } from '../../api/backlogApi'
 import { memberApi, type ProjectMember } from '../../api/memberApi'
 import { raidApi, type RaidItemInput, type RaidLog } from '../../api/raidApi'
-import { sprintApi } from '../../api/sprintApi'
-import { wbsApi, type WbsNode } from '../../api/wbsApi'
+import { sprintApi, type SprintList } from '../../api/sprintApi'
+import { wbsApi, type WbsNode, type WbsTree } from '../../api/wbsApi'
 import { raidCacheKeyFor } from '../../stores/scheduleCache'
+import { activeCommit, commitPayload, readOnly } from '../../stores/commitView'
 import { applyFilters, DEFAULT_FILTERS, type RaidFilters } from './raidFilter'
 
 /** One option in the link picker, flattened to the same shape whatever it points at. */
@@ -53,22 +54,44 @@ export function useRaid() {
     return e instanceof ApiError ? e.message : fallback
   }
 
+  /** Commits are immutable, so a cache key of the commit id alone is enough (지시서 5.2). */
+  function currentCacheKey(projectId: number): string {
+    return readOnly.value && activeCommit.value ? `commit:${activeCommit.value.id}` : raidCacheKeyFor(projectId)
+  }
+
   function apply(result: RaidLog, projectId: number) {
     data.value = result
-    cacheKey = raidCacheKeyFor(projectId)
+    cacheKey = currentCacheKey(projectId)
   }
 
   async function load(projectId: number) {
     loading.value = true
     error.value = null
     try {
-      const [log, memberList, tree, sprintList, backlog] = await Promise.all([
-        raidApi.log(projectId),
-        memberApi.list(projectId),
-        wbsApi.tree(projectId),
-        sprintApi.list(projectId),
-        backlogApi.list(projectId),
-      ])
+      // 커밋 조회 중에는 다섯 개의 네트워크 호출 대신 활성 커밋 payload의 wbs·members·sprints·
+      // backlog·raid를 그대로 쓴다 — 같은 shape이므로 아래의 조립 코드를 그대로 재사용할 수 있다.
+      const [log, memberList, tree, sprintList, backlog]: [
+        RaidLog,
+        ProjectMember[],
+        WbsTree,
+        SprintList,
+        Backlog,
+      ] =
+        readOnly.value && commitPayload.value
+          ? [
+              commitPayload.value.raid,
+              commitPayload.value.members,
+              commitPayload.value.wbs,
+              commitPayload.value.sprints,
+              commitPayload.value.backlog,
+            ]
+          : await Promise.all([
+              raidApi.log(projectId),
+              memberApi.list(projectId),
+              wbsApi.tree(projectId),
+              sprintApi.list(projectId),
+              backlogApi.list(projectId),
+            ])
       members.value = memberList
       const tasks: typeof wbsTasks.value = []
       flatten(tree.nodes, tasks)
@@ -101,7 +124,7 @@ export function useRaid() {
   }
 
   function ensureLoaded(projectId: number): Promise<void> {
-    const key = raidCacheKeyFor(projectId)
+    const key = currentCacheKey(projectId)
     if (cacheKey === key) return Promise.resolve()
     // A route change can mount a view and fire its selection watcher in the same tick; without
     // this both would issue the same request.
@@ -114,6 +137,7 @@ export function useRaid() {
   }
 
   async function mutate(projectId: number, action: () => Promise<RaidLog>, fallback: string) {
+    if (readOnly.value) return false
     error.value = null
     try {
       apply(await action(), projectId)

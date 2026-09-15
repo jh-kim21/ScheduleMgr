@@ -5,9 +5,11 @@ import {
   type CheckpointInput,
   type Progress,
   type SnapshotDetail,
+  type SnapshotList,
   type WorkPackageBasisInput,
 } from '../../api/progressApi'
 import { markWbsChanged, progressCacheKeyFor } from '../../stores/scheduleCache'
+import { activeCommit, commitPayload, readOnly } from '../../stores/commitView'
 
 /**
  * Shared at module scope like the other feature composables, so the progress screen keeps its data
@@ -26,17 +28,24 @@ export function useProgress() {
     return e instanceof ApiError ? e.message : fallback
   }
 
+  /** Commits are immutable, so a cache key of the commit id alone is enough (지시서 5.2). */
+  function currentCacheKey(projectId: number): string {
+    return readOnly.value && activeCommit.value
+      ? `commit:${activeCommit.value.id}`
+      : progressCacheKeyFor(projectId)
+  }
+
   async function load(projectId: number) {
     loading.value = true
     error.value = null
     try {
-      const [progress, snapshotList] = await Promise.all([
-        progressApi.get(projectId),
-        progressApi.snapshots(projectId),
-      ])
+      const [progress, snapshotList]: [Progress, SnapshotList] =
+        readOnly.value && commitPayload.value
+          ? [commitPayload.value.progress, commitPayload.value.snapshots]
+          : await Promise.all([progressApi.get(projectId), progressApi.snapshots(projectId)])
       data.value = progress
       snapshots.value = snapshotList.snapshots
-      cacheKey = progressCacheKeyFor(projectId)
+      cacheKey = currentCacheKey(projectId)
     } catch (e) {
       data.value = null
       snapshots.value = []
@@ -48,7 +57,7 @@ export function useProgress() {
   }
 
   function ensureLoaded(projectId: number): Promise<void> {
-    const key = progressCacheKeyFor(projectId)
+    const key = currentCacheKey(projectId)
     if (cacheKey === key) return Promise.resolve()
     if (inFlight?.key === key) return inFlight.promise
     const promise = load(projectId).finally(() => {
@@ -63,12 +72,13 @@ export function useProgress() {
    * checkpoint approval changes what that screen shows too.
    */
   async function mutate(projectId: number, action: () => Promise<Progress>, fallback: string) {
+    if (readOnly.value) return false
     error.value = null
     try {
       const result = await action()
       markWbsChanged()
       data.value = result
-      cacheKey = progressCacheKeyFor(projectId)
+      cacheKey = currentCacheKey(projectId)
       return true
     } catch (e) {
       error.value = describe(e, fallback)
@@ -120,6 +130,7 @@ export function useProgress() {
     )
 
   async function saveSnapshot(projectId: number, note: string | null) {
+    if (readOnly.value) return false
     error.value = null
     try {
       snapshots.value = (await progressApi.saveSnapshot(projectId, note)).snapshots

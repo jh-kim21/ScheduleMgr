@@ -5,6 +5,7 @@ import RaciMatrix from '../features/raci/RaciMatrix.vue'
 import { useRaci } from '../features/raci/useRaci'
 import { useProjects } from '../features/projects/useProjects'
 import { ensureSelection, selectedProjectId } from '../stores/projectSelection'
+import { readOnly } from '../stores/commitView'
 import {
   issueSummary,
   RACI_DESCRIPTIONS,
@@ -57,13 +58,13 @@ const issueGroups = computed(() =>
 const leafCount = computed(() => data.value.tasks.filter((task) => !task.summary).length)
 
 function handleAssign(wbsItemId: number, memberId: number, role: RaciRole) {
-  if (selectedProjectId.value !== null) {
-    assign(selectedProjectId.value, { wbsItemId, memberId, role })
-  }
+  if (readOnly.value || selectedProjectId.value === null) return
+  assign(selectedProjectId.value, { wbsItemId, memberId, role })
 }
 
 function handleUnassign(assignmentId: number) {
-  if (selectedProjectId.value !== null) unassign(selectedProjectId.value, assignmentId)
+  if (readOnly.value || selectedProjectId.value === null) return
+  unassign(selectedProjectId.value, assignmentId)
 }
 </script>
 
@@ -141,6 +142,7 @@ function handleUnassign(assignmentId: number) {
         :data="data"
         :cell-index="cellIndex"
         :issues-by-task="issuesByTask"
+        :read-only="readOnly"
         @assign="handleAssign"
         @unassign="handleUnassign"
       />

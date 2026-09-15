@@ -7,6 +7,7 @@ import GanttChart from '../features/gantt/GanttChart.vue'
 import { useGantt } from '../features/gantt/useGantt'
 import { useProjects } from '../features/projects/useProjects'
 import { ensureSelection, selectedProjectId } from '../stores/projectSelection'
+import { readOnly } from '../stores/commitView'
 
 const { projects, error: projectsError, ensureLoaded: ensureProjects } = useProjects()
 const {
@@ -97,21 +98,22 @@ const nextTightest = computed(() => {
 })
 
 async function handleAdd(input: DependencyInput) {
-  if (selectedProjectId.value !== null) await addDependency(selectedProjectId.value, input)
+  if (readOnly.value || selectedProjectId.value === null) return
+  await addDependency(selectedProjectId.value, input)
 }
 
 async function handleUpdate(dependencyId: number, input: DependencyInput) {
-  if (selectedProjectId.value !== null) {
-    await updateDependency(selectedProjectId.value, dependencyId, input)
-  }
+  if (readOnly.value || selectedProjectId.value === null) return
+  await updateDependency(selectedProjectId.value, dependencyId, input)
 }
 
 async function handleRemove(dependencyId: number) {
-  if (selectedProjectId.value !== null) await removeDependency(selectedProjectId.value, dependencyId)
+  if (readOnly.value || selectedProjectId.value === null) return
+  await removeDependency(selectedProjectId.value, dependencyId)
 }
 
 async function handleRecalculate() {
-  if (selectedProjectId.value === null) return
+  if (readOnly.value || selectedProjectId.value === null) return
   if (!confirm('선후행 관계를 만족하도록 일정을 뒤로 밀어냅니다. 진행할까요?')) return
   await recalculate(selectedProjectId.value)
 }
@@ -145,7 +147,13 @@ async function handleRecalculate() {
             임계 경로 강조
           </label>
 
-          <button type="button" class="recalc" :disabled="loading" @click="handleRecalculate">
+          <button
+            type="button"
+            class="recalc"
+            :disabled="loading || readOnly"
+            :title="readOnly ? '커밋 시점 조회 중에는 변경할 수 없습니다' : undefined"
+            @click="handleRecalculate"
+          >
             일정 재계산
           </button>
         </div>
@@ -224,6 +232,7 @@ async function handleRecalculate() {
         <DependencyEditor
           :data="data"
           :error="error"
+          :read-only="readOnly"
           @add="handleAdd"
           @update="handleUpdate"
           @remove="handleRemove"

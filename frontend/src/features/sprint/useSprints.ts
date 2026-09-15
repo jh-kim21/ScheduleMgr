@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue'
-import { backlogApi, type BacklogItem } from '../../api/backlogApi'
+import { backlogApi, type Backlog, type BacklogItem } from '../../api/backlogApi'
 import { ApiError } from '../../api/http'
 import {
   sprintApi,
@@ -9,6 +9,7 @@ import {
   type SprintList,
 } from '../../api/sprintApi'
 import { markBacklogChanged, markSprintChanged, sprintCacheKeyFor } from '../../stores/scheduleCache'
+import { activeCommit, commitPayload, readOnly } from '../../stores/commitView'
 
 /**
  * Shared at module scope like the other feature composables, so moving between Sprint and Board
@@ -32,9 +33,16 @@ export function useSprints() {
     return e instanceof ApiError ? e.message : fallback
   }
 
+  /** Commits are immutable, so a cache key of the commit id alone is enough (지시서 5.2). */
+  function currentCacheKey(projectId: number): string {
+    return readOnly.value && activeCommit.value
+      ? `commit:${activeCommit.value.id}`
+      : sprintCacheKeyFor(projectId)
+  }
+
   function apply(result: SprintList, projectId: number) {
     data.value = result
-    cacheKey = sprintCacheKeyFor(projectId)
+    cacheKey = currentCacheKey(projectId)
     // 선택이 사라졌으면(삭제 등) 실행 중인 것으로, 그것도 없으면 첫 Sprint로 돌아간다.
     const ids = result.sprints.map((sprint) => sprint.id)
     if (selectedSprintId.value === null || !ids.includes(selectedSprintId.value)) {
@@ -46,10 +54,10 @@ export function useSprints() {
     loading.value = true
     error.value = null
     try {
-      const [sprints, backlogList] = await Promise.all([
-        sprintApi.list(projectId),
-        backlogApi.list(projectId),
-      ])
+      const [sprints, backlogList]: [SprintList, Backlog] =
+        readOnly.value && commitPayload.value
+          ? [commitPayload.value.sprints, commitPayload.value.backlog]
+          : await Promise.all([sprintApi.list(projectId), backlogApi.list(projectId)])
       backlog.value = backlogList.items
       apply(sprints, projectId)
     } catch (e) {
@@ -63,7 +71,7 @@ export function useSprints() {
   }
 
   function ensureLoaded(projectId: number): Promise<void> {
-    const key = sprintCacheKeyFor(projectId)
+    const key = currentCacheKey(projectId)
     if (cacheKey === key) return Promise.resolve()
     if (inFlight?.key === key) return inFlight.promise
     const promise = load(projectId).finally(() => {
@@ -81,6 +89,7 @@ export function useSprints() {
    * so the assignable list and the per-entry Sprint name stay right.
    */
   async function mutate(projectId: number, action: () => Promise<SprintList>, fallback: string) {
+    if (readOnly.value) return false
     error.value = null
     try {
       const result = await action()

@@ -9,6 +9,7 @@ import { useProjects } from '../features/projects/useProjects'
 import { remainingLabel, SPRINT_STATUS_LABELS, sprintPeriod } from '../shared/sprint'
 import { localToday } from '../shared/delay'
 import { ensureSelection, selectedProjectId } from '../stores/projectSelection'
+import { readOnly } from '../stores/commitView'
 
 const { projects, error: projectsError, ensureLoaded: ensureProjects } = useProjects()
 /**
@@ -46,6 +47,7 @@ onMounted(async () => {
 const boards = computed(() => data.value.sprints)
 
 async function handleMove(backlogItemId: number, input: BoardMoveInput) {
+  if (readOnly.value) return
   const projectId = selectedProjectId.value
   const sprintId = selectedSprintId.value
   if (projectId === null || sprintId === null) return
@@ -53,6 +55,7 @@ async function handleMove(backlogItemId: number, input: BoardMoveInput) {
 }
 
 async function handleUnassign(item: SprintItem) {
+  if (readOnly.value) return
   const projectId = selectedProjectId.value
   const sprintId = selectedSprintId.value
   if (projectId === null || sprintId === null) return
@@ -123,6 +126,7 @@ async function handleUnassign(item: SprintItem) {
         <SprintBoard
           :sprint="selected"
           :raid-items="raidLog.items"
+          :read-only="readOnly"
           @move="handleMove"
           @unassign="handleUnassign"
         />

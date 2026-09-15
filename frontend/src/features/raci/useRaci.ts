@@ -10,6 +10,7 @@ export interface CellEntry {
 import { ApiError } from '../../api/http'
 import { raciApi, type RaciAssignmentInput, type RaciMatrix } from '../../api/raciApi'
 import { raciCacheKeyFor } from '../../stores/scheduleCache'
+import { activeCommit, commitPayload, readOnly } from '../../stores/commitView'
 import type { RaciRole } from '../../shared/raci'
 
 const EMPTY: RaciMatrix = { members: [], tasks: [], cells: [], issues: [] }
@@ -27,15 +28,24 @@ export function useRaci() {
     return e instanceof ApiError ? e.message : fallback
   }
 
+  /** Commits are immutable, so a cache key of the commit id alone is enough (지시서 5.2). */
+  function currentCacheKey(projectId: number): string {
+    return readOnly.value && activeCommit.value ? `commit:${activeCommit.value.id}` : raciCacheKeyFor(projectId)
+  }
+
   function apply(result: RaciMatrix, projectId: number) {
     data.value = result
-    cacheKey = raciCacheKeyFor(projectId)
+    cacheKey = currentCacheKey(projectId)
   }
 
   async function load(projectId: number) {
     loading.value = true
     error.value = null
     try {
+      if (readOnly.value && commitPayload.value) {
+        apply(commitPayload.value.raci, projectId)
+        return
+      }
       apply(await raciApi.matrix(projectId), projectId)
     } catch (e) {
       data.value = EMPTY
@@ -52,7 +62,7 @@ export function useRaci() {
    * Projects screen now, not here, so this view has no other way to learn its columns moved.
    */
   function ensureLoaded(projectId: number): Promise<void> {
-    const key = raciCacheKeyFor(projectId)
+    const key = currentCacheKey(projectId)
     if (cacheKey === key) return Promise.resolve()
     // A route change can mount a view and fire its selection watcher in the same tick; without
     // this both would issue the same request.
@@ -65,6 +75,7 @@ export function useRaci() {
   }
 
   async function mutate(projectId: number, action: () => Promise<RaciMatrix>, fallback: string) {
+    if (readOnly.value) return
     error.value = null
     try {
       apply(await action(), projectId)

@@ -25,7 +25,12 @@ const props = defineProps<{
   tree: WbsNode[]
   /** Row to reveal and highlight — set when arriving from a Backlog entry's WBS link. */
   focusId?: number | null
+  /** 커밋 시점 조회 중이면 드래그 이동·더블클릭 편집·행 액션을 모두 막는다. */
+  readOnly?: boolean
 }>()
+
+/** 5.2 표의 화면 전체 공통 문구 — 화면마다 문구를 지어내지 않는다. */
+const READONLY_HINT = '커밋 시점 조회 중에는 변경할 수 없습니다'
 
 const emit = defineEmits<{
   addChild: [parent: WbsNode]
@@ -234,11 +239,13 @@ function toggle(node: WbsNode) {
  * collapse arrow twice quickly reopened the edit dialog on top of the restored collapse state).
  */
 function onRowDblClick(event: MouseEvent, node: WbsNode) {
+  if (props.readOnly) return
   if ((event.target as HTMLElement).closest('button, a')) return
   emit('edit', node)
 }
 
 function onDragStart(event: DragEvent, node: WbsNode) {
+  if (props.readOnly) return
   dragging.value = node
   if (event.dataTransfer) {
     // Firefox refuses to start a drag unless some payload is set.
@@ -376,7 +383,7 @@ function rowClass(row: WbsRow) {
             :data-row-id="row.node.id"
             :class="rowClass(row)"
             :aria-selected="selectedId === row.node.id"
-            draggable="true"
+            :draggable="!readOnly"
             @click="selectRow(row.node.id)"
             @dblclick="onRowDblClick($event, row.node)"
             @dragstart="onDragStart($event, row.node)"
@@ -488,16 +495,29 @@ function rowClass(row: WbsRow) {
               -->
               <button
                 type="button"
-                :disabled="row.node.nodeType === 'WORK_PACKAGE'"
+                :disabled="readOnly || row.node.nodeType === 'WORK_PACKAGE'"
                 :title="
-                  row.node.nodeType === 'WORK_PACKAGE'
-                    ? 'Work Package에는 하위 항목을 둘 수 없습니다. 수정에서 구분을 Summary로 바꾸세요.'
-                    : '하위 항목 추가'
+                  readOnly
+                    ? READONLY_HINT
+                    : row.node.nodeType === 'WORK_PACKAGE'
+                      ? 'Work Package에는 하위 항목을 둘 수 없습니다. 수정에서 구분을 Summary로 바꾸세요.'
+                      : '하위 항목 추가'
                 "
                 @click="emit('addChild', row.node)"
               >하위</button>
-              <button type="button" @click="emit('edit', row.node)">수정</button>
-              <button type="button" class="danger" @click="emit('remove', row.node)">삭제</button>
+              <button
+                type="button"
+                :disabled="readOnly"
+                :title="readOnly ? READONLY_HINT : undefined"
+                @click="emit('edit', row.node)"
+              >수정</button>
+              <button
+                type="button"
+                class="danger"
+                :disabled="readOnly"
+                :title="readOnly ? READONLY_HINT : undefined"
+                @click="emit('remove', row.node)"
+              >삭제</button>
             </td>
           </tr>
         </tbody>
@@ -505,6 +525,7 @@ function rowClass(row: WbsRow) {
     </div>
 
     <div
+      v-if="!readOnly"
       class="root-dropzone"
       :class="{ active: dropTarget?.id === 'root' }"
       @dragover="onDragOverRoot"

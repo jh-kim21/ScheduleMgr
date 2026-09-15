@@ -12,6 +12,10 @@ import { BACKLOG_TYPE_LABELS } from '../shared/backlog'
 import { localToday } from '../shared/delay'
 import { cancelStartWarning, remainingLabel, SPRINT_STATUS_LABELS, sprintPeriod } from '../shared/sprint'
 import { ensureSelection, selectedProjectId } from '../stores/projectSelection'
+import { readOnly } from '../stores/commitView'
+
+/** 5.2 표의 화면 전체 공통 문구 — 화면마다 문구를 지어내지 않는다. */
+const READONLY_HINT = '커밋 시점 조회 중에는 변경할 수 없습니다'
 
 const { projects, error: projectsError, ensureLoaded: ensureProjects } = useProjects()
 const {
@@ -50,6 +54,7 @@ const assigning = ref(false)
 const assignMessage = ref<string | null>(null)
 
 function openForm(sprint: Sprint | null) {
+  if (readOnly.value) return
   editing.value = sprint
   formOpen.value = true
 }
@@ -87,6 +92,7 @@ const openItemCount = computed(() =>
 )
 
 async function handleSubmit(input: { name: string; goal: string | null; startDate: string; endDate: string }) {
+  if (readOnly.value) return
   const projectId = selectedProjectId.value
   if (projectId === null) return
   const ok = editing.value
@@ -114,6 +120,7 @@ const candidates = computed<AssignCandidate[]>(() =>
  * 남아 선택도 남아 있어야 "거부되면 입력값이 남는다"는 화면 규칙과 일치한다.
  */
 async function handleAssignMany(ids: number[]) {
+  if (readOnly.value) return
   const projectId = selectedProjectId.value
   const sprintId = selectedSprintId.value
   if (projectId === null || sprintId === null || ids.length === 0) return
@@ -138,11 +145,13 @@ async function handleAssignMany(ids: number[]) {
 
 
 function openClose(sprint: Sprint) {
+  if (readOnly.value) return
   closing.value = sprint
   carryOverTo.value = carryOverTargets.value[0]?.id ?? null
 }
 
 async function confirmClose() {
+  if (readOnly.value) return
   const projectId = selectedProjectId.value
   const sprint = closing.value
   closing.value = null
@@ -151,6 +160,7 @@ async function confirmClose() {
 }
 
 async function confirmCancelStart() {
+  if (readOnly.value) return
   const projectId = selectedProjectId.value
   const sprint = cancellingStart.value
   if (projectId === null || !sprint) return
@@ -184,7 +194,13 @@ async function confirmCancelStart() {
           단일 팀
         </span>
         <span v-if="loading" class="loading">불러오는 중…</span>
-        <button type="button" class="add" @click="openForm(null)">＋ Sprint 추가</button>
+        <button
+          type="button"
+          class="add"
+          :disabled="readOnly"
+          :title="readOnly ? READONLY_HINT : undefined"
+          @click="openForm(null)"
+        >＋ Sprint 추가</button>
       </div>
 
       <p v-if="error" class="error">{{ error }}</p>
@@ -256,33 +272,45 @@ async function confirmCancelStart() {
               <button
                 v-if="selected.status === 'PLANNED'"
                 type="button"
-                :disabled="!selected.canStart"
-                :title="selected.canStart ? '이 Sprint를 시작합니다' : '이미 실행 중인 Sprint가 있습니다 (단일 팀)'"
+                :disabled="readOnly || !selected.canStart"
+                :title="
+                  readOnly
+                    ? READONLY_HINT
+                    : selected.canStart
+                      ? '이 Sprint를 시작합니다'
+                      : '이미 실행 중인 Sprint가 있습니다 (단일 팀)'
+                "
                 @click="start(selectedProjectId!, selected.id)"
               >시작</button>
               <button
                 v-if="selected.status === 'ACTIVE'"
                 type="button"
+                :disabled="readOnly"
+                :title="readOnly ? READONLY_HINT : undefined"
                 @click="openClose(selected)"
               >종료</button>
               <button
                 v-if="selected.status === 'ACTIVE'"
                 type="button"
                 class="ghost"
+                :disabled="readOnly"
+                :title="readOnly ? READONLY_HINT : undefined"
                 @click="cancellingStart = selected"
               >시작 취소</button>
               <button
                 v-if="selected.status !== 'CLOSED'"
                 type="button"
                 class="ghost"
+                :disabled="readOnly"
+                :title="readOnly ? READONLY_HINT : undefined"
                 @click="openForm(selected)"
               >수정</button>
               <button
                 v-if="selected.status === 'PLANNED'"
                 type="button"
                 class="ghost danger"
-                :disabled="!selected.canDelete"
-                :title="selected.canDelete ? '삭제' : '배정된 항목이 있어 삭제할 수 없습니다'"
+                :disabled="readOnly || !selected.canDelete"
+                :title="readOnly ? READONLY_HINT : (selected.canDelete ? '삭제' : '배정된 항목이 있어 삭제할 수 없습니다')"
                 @click="remove(selectedProjectId!, selected.id)"
               >삭제</button>
             </div>
@@ -290,7 +318,12 @@ async function confirmCancelStart() {
 
           <div v-if="selected.status !== 'CLOSED'" class="assign">
             <span class="filter-label">항목 배정</span>
-            <SprintAssignTable :candidates="candidates" :busy="assigning" @assign="handleAssignMany" />
+            <SprintAssignTable
+              :candidates="candidates"
+              :busy="assigning"
+              :read-only="readOnly"
+              @assign="handleAssignMany"
+            />
             <p v-if="assignMessage" class="assign-result">{{ assignMessage }}</p>
             <span class="assign-note">
               완료 가능한 Story·Bug만, 그리고 다른 Sprint에 들어 있지 않은 것만 고를 수 있습니다.

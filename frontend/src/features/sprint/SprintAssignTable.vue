@@ -11,7 +11,12 @@ const props = defineProps<{
   candidates: AssignCandidate[]
   /** 배정 진행 중이면 컨트롤을 잠근다. */
   busy?: boolean
+  /** 커밋 시점 조회 중이면 체크박스·배정·더블클릭을 모두 막는다. */
+  readOnly?: boolean
 }>()
+
+/** busy와 readOnly 둘 다 "지금은 조작할 수 없다"는 같은 결과라 하나로 합쳐 쓴다. */
+const locked = computed(() => props.busy || props.readOnly)
 
 const emit = defineEmits<{ assign: [ids: number[]] }>()
 
@@ -50,6 +55,7 @@ watch(
 )
 
 function toggleOne(id: number) {
+  if (locked.value) return
   const idx = selectedIds.value.indexOf(id)
   if (idx === -1) selectedIds.value = [...selectedIds.value, id]
   else selectedIds.value = selectedIds.value.filter((existing) => existing !== id)
@@ -57,6 +63,7 @@ function toggleOne(id: number) {
 
 /** 검색으로 걸러진 것만 토글한다 — 안 보이는 것을 함께 선택하면 사용자가 모르는 항목을 배정하게 된다. */
 function toggleAllVisible() {
+  if (locked.value) return
   if (allVisibleSelected.value) {
     selectedIds.value = selectedIds.value.filter((id) => !visibleIds.value.includes(id))
   } else {
@@ -83,12 +90,13 @@ const selection = useRowSelection(() => visibleIds.value, body)
  * INPUT을 걸러내지 못해 직접 검사한다.
  */
 function handleRowDblClick(event: MouseEvent, id: number) {
+  if (locked.value) return
   if ((event.target as HTMLElement).tagName === 'INPUT') return
   selection.onRowDblClick(event, () => toggleOne(id))
 }
 
 function handleAssign() {
-  if (props.busy || summary.value.count === 0) return
+  if (locked.value || summary.value.count === 0) return
   // candidates 순서(= Backlog 우선순위 순서)대로 순차 배정하도록 selectedIds가 아닌 candidates를
   // 기준으로 뽑는다.
   const ids = props.candidates.filter((c) => selectedIds.value.includes(c.id)).map((c) => c.id)
@@ -104,10 +112,15 @@ function handleAssign() {
         type="search"
         class="search"
         placeholder="제목 또는 유형으로 검색"
-        :disabled="busy"
+        :disabled="locked"
       />
       <div class="summary">
-        <button type="button" :disabled="busy || summary.count === 0" @click="handleAssign">
+        <button
+          type="button"
+          :disabled="locked || summary.count === 0"
+          :title="readOnly ? '커밋 시점 조회 중에는 변경할 수 없습니다' : undefined"
+          @click="handleAssign"
+        >
           선택한 {{ summary.count }}건 배정
         </button>
         <span v-if="summary.count > 0" class="summary-detail">
@@ -128,7 +141,7 @@ function handleAssign() {
                 ref="selectAllCheckbox"
                 type="checkbox"
                 :checked="allVisibleSelected"
-                :disabled="busy"
+                :disabled="locked"
                 @change="toggleAllVisible"
               />
             </th>
@@ -151,7 +164,7 @@ function handleAssign() {
               <input
                 type="checkbox"
                 :checked="selectedIds.includes(item.id)"
-                :disabled="busy"
+                :disabled="locked"
                 @click.stop
                 @change="toggleOne(item.id)"
               />

@@ -14,6 +14,8 @@ import type { BacklogRow } from './backlogFilter'
 const props = defineProps<{
   rows: BacklogRow[]
   filtered: boolean
+  /** 커밋 시점 조회 중이면 더블클릭 편집·행 액션을 막는다. */
+  readOnly?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -22,9 +24,17 @@ const emit = defineEmits<{
   remove: [item: BacklogItem]
 }>()
 
+/** 5.2 표의 화면 전체 공통 문구 — 화면마다 문구를 지어내지 않는다. */
+const READONLY_HINT = '커밋 시점 조회 중에는 변경할 수 없습니다'
+
 /** 클릭 선택·방향키 이동·더블클릭 편집은 WBS 표와 같은 컴포저블을 쓴다 (모든 표가 공유). */
 const body = ref<HTMLElement | null>(null)
 const selection = useRowSelection(() => props.rows.map((row) => row.item.id), body)
+
+function onRowDblClick(event: MouseEvent, item: BacklogItem) {
+  if (props.readOnly) return
+  selection.onRowDblClick(event, () => emit('edit', item))
+}
 
 /**
  * Why a row is flagged. Ordered worst first: a link that cannot be used at all matters more than
@@ -51,6 +61,7 @@ function warningLabel(item: BacklogItem): string {
 
 /** 하위가 있으면 삭제할 수 없다 — 서버도 거부하므로 미리 막고 이유를 알린다. */
 function deleteTitle(item: BacklogItem): string {
+  if (props.readOnly) return READONLY_HINT
   if (item.childCount > 0) {
     return `하위 항목이 ${item.childCount}건 있어 삭제할 수 없습니다. 하위 항목을 먼저 옮기거나 삭제하세요.`
   }
@@ -62,6 +73,7 @@ function deleteTitle(item: BacklogItem): string {
 
 /** 진행 중인 Sprint의 항목을 접어두면 보드에서 사라지므로 서버가 거부한다. */
 function archiveTitle(item: BacklogItem): string {
+  if (props.readOnly) return READONLY_HINT
   if (item.archived) return '보관 해제'
   if (item.openSprintName) {
     return `'${item.openSprintName}'에 배정되어 있어 보관할 수 없습니다. Sprint에서 먼저 제거하세요.`
@@ -101,7 +113,7 @@ function archiveTitle(item: BacklogItem): string {
           }"
           :aria-selected="selection.isSelected(row.item.id)"
           @click="selection.select(row.item.id)"
-          @dblclick="selection.onRowDblClick($event, () => emit('edit', row.item))"
+          @dblclick="onRowDblClick($event, row.item)"
         >
           <td class="type">
             <span class="type-badge" :data-type="row.item.itemType">
@@ -157,17 +169,22 @@ function archiveTitle(item: BacklogItem): string {
             </span>
           </td>
           <td class="actions">
-            <button type="button" @click="emit('edit', row.item)">수정</button>
             <button
               type="button"
-              :disabled="!row.item.archived && row.item.openSprintName !== null"
+              :disabled="readOnly"
+              :title="readOnly ? READONLY_HINT : undefined"
+              @click="emit('edit', row.item)"
+            >수정</button>
+            <button
+              type="button"
+              :disabled="readOnly || (!row.item.archived && row.item.openSprintName !== null)"
               :title="archiveTitle(row.item)"
               @click="emit('archive', row.item, !row.item.archived)"
             >{{ row.item.archived ? '복구' : '보관' }}</button>
             <button
               type="button"
               class="danger"
-              :disabled="row.item.childCount > 0 || row.item.openSprintName !== null"
+              :disabled="readOnly || row.item.childCount > 0 || row.item.openSprintName !== null"
               :title="deleteTitle(row.item)"
               @click="emit('remove', row.item)"
             >삭제</button>

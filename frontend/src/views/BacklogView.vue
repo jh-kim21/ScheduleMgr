@@ -21,6 +21,10 @@ import {
   BACKLOG_TYPE_ORDER,
 } from '../shared/backlog'
 import { ensureSelection, selectedProjectId } from '../stores/projectSelection'
+import { readOnly } from '../stores/commitView'
+
+/** 5.2 표의 화면 전체 공통 문구 — 화면마다 문구를 지어내지 않는다. */
+const READONLY_HINT = '커밋 시점 조회 중에는 변경할 수 없습니다'
 
 const route = useRoute()
 const router = useRouter()
@@ -52,6 +56,7 @@ const editing = ref<BacklogItem | null>(null)
 const formOpen = ref(false)
 
 function openForm(item: BacklogItem | null) {
+  if (readOnly.value) return
   editing.value = item
   formOpen.value = true
 }
@@ -118,6 +123,7 @@ const notSprintReady = computed(() =>
 )
 
 async function handleSubmit(input: BacklogItemInput) {
+  if (readOnly.value) return
   const projectId = selectedProjectId.value
   if (projectId === null) return
 
@@ -133,12 +139,14 @@ async function handleSubmit(input: BacklogItemInput) {
 }
 
 async function handleArchive(item: BacklogItem, archived: boolean) {
+  if (readOnly.value) return
   const projectId = selectedProjectId.value
   if (projectId === null) return
   await setArchived(projectId, item.id, archived)
 }
 
 async function handleRemove(item: BacklogItem) {
+  if (readOnly.value) return
   const projectId = selectedProjectId.value
   if (projectId === null) return
   if (editing.value?.id === item.id) closeForm()
@@ -243,7 +251,13 @@ async function handleRemove(item: BacklogItem) {
           </button>
         </div>
 
-        <button type="button" class="add" @click="openForm(null)">＋ 항목 추가</button>
+        <button
+          type="button"
+          class="add"
+          :disabled="readOnly"
+          :title="readOnly ? READONLY_HINT : undefined"
+          @click="openForm(null)"
+        >＋ 항목 추가</button>
       </div>
 
       <p v-if="focusedPackage" class="focused">
@@ -265,6 +279,7 @@ async function handleRemove(item: BacklogItem) {
       <BacklogList
         :rows="rows"
         :filtered="filterActive"
+        :read-only="readOnly"
         @edit="openForm"
         @archive="handleArchive"
         @remove="handleRemove"

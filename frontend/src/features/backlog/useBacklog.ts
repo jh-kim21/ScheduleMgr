@@ -2,8 +2,9 @@ import { computed, reactive, ref } from 'vue'
 import { backlogApi, type Backlog, type BacklogItem, type BacklogItemInput } from '../../api/backlogApi'
 import { ApiError } from '../../api/http'
 import { memberApi, type ProjectMember } from '../../api/memberApi'
-import { wbsApi, type WbsNode } from '../../api/wbsApi'
+import { wbsApi, type WbsNode, type WbsTree } from '../../api/wbsApi'
 import { backlogCacheKeyFor, markBacklogChanged } from '../../stores/scheduleCache'
+import { activeCommit, commitPayload, readOnly } from '../../stores/commitView'
 import { DEFAULT_FILTERS, visibleRows, type BacklogFilters } from './backlogFilter'
 
 /**
@@ -34,9 +35,16 @@ export function useBacklog() {
     return e instanceof ApiError ? e.message : fallback
   }
 
+  /** Commits are immutable, so a cache key of the commit id alone is enough (지시서 5.2). */
+  function currentCacheKey(projectId: number): string {
+    return readOnly.value && activeCommit.value
+      ? `commit:${activeCommit.value.id}`
+      : backlogCacheKeyFor(projectId)
+  }
+
   function apply(result: Backlog, projectId: number) {
     data.value = result
-    cacheKey = backlogCacheKeyFor(projectId)
+    cacheKey = currentCacheKey(projectId)
   }
 
   /**
@@ -48,11 +56,15 @@ export function useBacklog() {
     loading.value = true
     error.value = null
     try {
-      const [backlog, memberList, tree] = await Promise.all([
-        backlogApi.list(projectId),
-        memberApi.list(projectId),
-        wbsApi.tree(projectId),
-      ])
+      // 커밋 조회 중에는 활성 커밋 payload의 backlog·members·wbs를 그대로 쓴다.
+      const [backlog, memberList, tree]: [Backlog, ProjectMember[], WbsTree] =
+        readOnly.value && commitPayload.value
+          ? [commitPayload.value.backlog, commitPayload.value.members, commitPayload.value.wbs]
+          : await Promise.all([
+              backlogApi.list(projectId),
+              memberApi.list(projectId),
+              wbsApi.tree(projectId),
+            ])
       members.value = memberList
       workPackages.value = collectWorkPackages(tree.nodes)
       apply(backlog, projectId)
@@ -68,7 +80,7 @@ export function useBacklog() {
   }
 
   function ensureLoaded(projectId: number): Promise<void> {
-    const key = backlogCacheKeyFor(projectId)
+    const key = currentCacheKey(projectId)
     if (cacheKey === key) return Promise.resolve()
     // A route change can mount the view and fire its selection watcher in the same tick.
     if (inFlight?.key === key) return inFlight.promise
@@ -84,6 +96,7 @@ export function useBacklog() {
    * The cache key is refreshed *after* the bump, so this view keeps what the server just returned.
    */
   async function mutate(projectId: number, action: () => Promise<Backlog>, fallback: string) {
+    if (readOnly.value) return false
     error.value = null
     try {
       const result = await action()
