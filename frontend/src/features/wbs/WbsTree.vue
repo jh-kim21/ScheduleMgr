@@ -2,6 +2,9 @@
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { WbsMoveInput, WbsNode } from '../../api/wbsApi'
+import type { WorkPackageProgress } from '../../api/progressApi'
+import CheckpointList from '../progress/CheckpointList.vue'
+import { approvalBadge, supportsCheckpoints } from './checkpointRow'
 import { backlogSummaryText } from '../../shared/backlog'
 import { delayBadge, delayDescription, needsAttention } from '../../shared/delay'
 import { executionModeLabel, executionModeSummaryText } from '../../shared/executionMode'
@@ -27,6 +30,15 @@ const props = defineProps<{
   focusId?: number | null
   /** 커밋 시점 조회 중이면 드래그 이동·더블클릭 편집·행 액션을 모두 막는다. */
   readOnly?: boolean
+  /** Needed to call the checkpoint API from an expanded row (`CheckpointList`). */
+  projectId?: number | null
+  /**
+   * Each Work Package's checkpoint data, keyed by `wbsItemId` (지시서 4.3 권장안) — this tree
+   * fetches its own nodes via `useWbs`, which knows nothing about checkpoints, so the view reads
+   * `useProgress` separately and indexes it here. Nodes without an entry (Summary, Agile,
+   * unspecified) simply render no badge.
+   */
+  workPackages?: Record<number, WorkPackageProgress>
 }>()
 
 /** 5.2 표의 화면 전체 공통 문구 — 화면마다 문구를 지어내지 않는다. */
@@ -41,6 +53,32 @@ const emit = defineEmits<{
 
 const collapsed = ref(new Set<number>())
 const rows = computed(() => flattenTree(props.tree, collapsed.value))
+
+/**
+ * Which Work Packages have their checkpoints expanded — deliberately its own `Set`, not folded
+ * into `collapsed`. `collapsed` drives `flattenTree` (WBS hierarchy: which rows exist, `↑↓`
+ * order, `←/→`), and a checkpoint is not a WBS child (지시서 4.2) — mixing the two would make a
+ * Work Package with checkpoints start behaving like a Summary with children (extra `rows` entries,
+ * arrow keys stepping into it) despite CLAUDE.md's "Work Package에는 하위를 둘 수 없다".
+ */
+const checkpointsOpen = ref(new Set<number>())
+
+function toggleCheckpoints(node: WbsNode) {
+  if (checkpointsOpen.value.has(node.id)) {
+    checkpointsOpen.value.delete(node.id)
+  } else {
+    checkpointsOpen.value.add(node.id)
+  }
+}
+
+function checkpointsFor(nodeId: number) {
+  return props.workPackages?.[nodeId]?.checkpoints ?? []
+}
+
+function checkpointBadge(nodeId: number): string {
+  const wp = props.workPackages?.[nodeId]
+  return approvalBadge(wp?.checkpointApproved ?? 0, wp?.checkpointTotal ?? 0)
+}
 
 /**
  * Reveals the focused row: its ancestors are expanded, then it is scrolled to and highlighted.
@@ -373,13 +411,13 @@ function rowClass(row: WbsRow) {
             <th class="mode">실행 방식</th>
             <th class="backlog">연결 Backlog</th>
             <th class="progress">진척</th>
+            <th class="checkpoint">체크포인트</th>
             <th></th>
           </tr>
         </thead>
         <tbody ref="body" tabindex="0" @keydown="onKeydown">
+          <template v-for="row in rows" :key="row.node.id">
           <tr
-            v-for="row in rows"
-            :key="row.node.id"
             :data-row-id="row.node.id"
             :class="rowClass(row)"
             :aria-selected="selectedId === row.node.id"
@@ -488,6 +526,23 @@ function rowClass(row: WbsRow) {
                 {{ ACCEPTANCE_STATUS_LABELS.PENDING }}
               </span>
             </td>
+            <!--
+              WATERFALL·HYBRID Work Package만 펼칠 수 있다 (지시서 4.1). 접힌 상태에서도
+              `승인 N/M` 배지로 상태를 보여주고, 그 배지 자체가 펼침 버튼이다 — Summary의
+              삼각형(▼/▶)과 모양을 다르게 해 "하위가 있다"로 오인되지 않게 한다.
+            -->
+            <td class="checkpoint">
+              <button
+                v-if="supportsCheckpoints(row.node)"
+                type="button"
+                class="cp-badge"
+                :class="{ open: checkpointsOpen.has(row.node.id) }"
+                :aria-expanded="checkpointsOpen.has(row.node.id)"
+                :title="checkpointsOpen.has(row.node.id) ? '체크포인트 접기' : '체크포인트 펼치기'"
+                @click="toggleCheckpoints(row.node)"
+              >{{ checkpointBadge(row.node.id) }}</button>
+              <span v-else class="none">-</span>
+            </td>
             <td class="actions">
               <!--
                 Work Package에는 하위를 둘 수 없다. 눌러 봐야 서버가 거부하므로 미리 막고
@@ -520,6 +575,26 @@ function rowClass(row: WbsRow) {
               >삭제</button>
             </td>
           </tr>
+          <!--
+            체크포인트 행 — `rows`(flattenTree)에 없는 별도 <tr>이다. WBS 코드가 없고
+            (`data-row-id` 자체를 주지 않는다), `↑↓`가 지나가는 목록에도 없으며, 드래그·드롭
+            핸들러도 없다. `CheckpointList`가 목록·추가·수정·삭제·승인을 모두 처리하므로 여기서는
+            펼침 상태만 관리한다(지시서 4.1-4.2).
+          -->
+          <tr
+            v-if="checkpointsOpen.has(row.node.id) && projectId != null"
+            class="checkpoint-row"
+          >
+            <td colspan="9">
+              <CheckpointList
+                :project-id="projectId"
+                :wbs-item-id="row.node.id"
+                :checkpoints="checkpointsFor(row.node.id)"
+                :editable="!readOnly"
+              />
+            </td>
+          </tr>
+          </template>
         </tbody>
       </table>
     </div>
@@ -771,6 +846,48 @@ tbody:focus-visible {
   border-radius: 999px;
   background: var(--warn-weak);
   color: var(--warn-badge-fg);
+}
+
+.checkpoint {
+  width: 8rem;
+  white-space: nowrap;
+}
+
+.checkpoint .none {
+  color: var(--text-faint);
+}
+
+/*
+ * Deliberately not shaped like `.toggle` (▼/▶) — a pill button, not a triangle, so it does not
+ * read as "this row has children" (지시서 4.2). Clicking the badge itself is the expand/collapse
+ * affordance.
+ */
+.cp-badge {
+  font-size: 0.7rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-dashed);
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cp-badge.open {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* 펼친 체크포인트 목록. WBS 행과 같은 배경을 쓰지 않아 하위 항목이 아니라 부가 패널임을 보인다. */
+tbody tr.checkpoint-row > td {
+  background: var(--surface-sunken);
+  padding: 0.6rem 0.75rem 0.75rem 2.5rem;
+  cursor: default;
+  white-space: normal;
+}
+
+tbody tr.checkpoint-row {
+  cursor: default;
 }
 
 .actions {

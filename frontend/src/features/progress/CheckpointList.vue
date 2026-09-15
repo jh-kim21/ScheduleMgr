@@ -1,62 +1,123 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { nextTick, ref } from 'vue'
 import type { CheckpointDetail } from '../../api/progressApi'
 import { useProgress } from './useProgress'
+import {
+  draftFrom,
+  emptyDraft,
+  isSubmittable,
+  toCheckpointInput,
+  type CheckpointDraft,
+} from './checkpointForm'
 
 /**
- * 승인 체크포인트 편집. `WbsForm`(항목을 저장하는 곳)과 `ProgressPanel`(진척 탭)이 함께 쓴다 —
- * 부모가 데이터를 넘기지 않고 이 컴포넌트가 직접 `useProgress()`를 읽고 쓴다. `useProgress`는
- * 모듈 스코프 공유 상태라, 어느 화면에서 불러도 같은 인스턴스를 본다(CLAUDE.md "모든 화면이 이
- * 서비스 하나를 읽습니다").
+ * 승인 체크포인트 표시·편집. `WbsTree`(정의: 추가·수정·삭제·승인, `editable: true` — Work Package
+ * 행을 펼쳐서 다룬다)와 `ProgressPanel`(조망: 읽기 전용, `editable: false`)이 함께 쓴다.
+ *
+ * 목록 자체는 부모가 넘긴다(`checkpoints`) — 부모마다 그 항목을 어디서 찾는지가 다르기 때문이다
+ * (WbsTree는 펼친 Work Package 하나, ProgressPanel은 펼친 행 하나). 변경은 여전히 `useProgress()`
+ * (모듈 스코프 공유 상태)로 하므로, 한쪽에서 바꾸면 다른 화면이 다음 방문에 같은 데이터를 본다.
  *
  * 패널 크롬(테두리·큰 여백)은 두지 않는다 — 자리는 부모가 정한다.
  */
 const props = defineProps<{
   projectId: number
   wbsItemId: number
+  checkpoints: CheckpointDetail[]
+  /** false면 아무 버튼도 폼도 렌더링하지 않는다(숨김이 아니라 없음) — 제목·가중치·완료조건·승인
+   * 상태(+승인자·승인일)만 표시하는 순수 조회 모드다. */
+  editable: boolean
 }>()
 
-const { data, loading, error, ensureLoaded, addCheckpoint, setApproval, deleteCheckpoint } = useProgress()
-
-watch(
-  () => props.projectId,
-  (id) => {
-    ensureLoaded(id)
-  },
-  { immediate: true },
-)
+const { error, addCheckpoint, updateCheckpoint, setApproval, deleteCheckpoint } = useProgress()
 
 /**
- * `data.value.workPackages`에서 이 항목을 찾는다. 없을 수 있는 경우:
- * - 아직 불러오는 중(`loading`).
- * - 이 항목이 Summary라서 애초에 집계 대상이 아님(체크포인트 목록에는 Work Package만 실린다).
- * - 방금 Work Package로 전환했는데 아직 다시 읽지 않음.
- * 세 경우 모두 사용자에게 "왜 안 보이는지"를 말해야 하므로, 조용히 빈 화면을 보여주지 않는다.
+ * 읽기 전용 잠금은 호출자가 `editable`로 건다 — 여기서 `readOnly`를 다시 보지 않는다. `WbsTree`가
+ * `:editable="!readOnly"`로 넘기므로 커밋 조회 중에는 이 컴포넌트의 버튼·폼 전체가 이미
+ * 렌더링되지 않는다. 여기서 두 번째 게이트(`:disabled="readOnly"`)를 만들면 "빠짐없이 잠갔다"를
+ * 확인할 자리가 둘이 된다(CLAUDE.md "커밋 조회 중에는 … 플래그를 하나로 묶어야 한다").
  */
-const workPackage = computed(
-  () => data.value?.workPackages.find((wp) => wp.wbsItemId === props.wbsItemId) ?? null,
-)
 
-const newTitle = ref('')
-const newWeight = ref<number | null>(null)
-const newCriteria = ref('')
+/** `null`이면 추가 모드, 아니면 그 id의 체크포인트를 고치는 중. */
+const editingId = ref<number | null>(null)
+const draft = ref<CheckpointDraft>(emptyDraft())
 
-/** 지금 인라인 승인 입력이 펼쳐진 체크포인트. 대화상자를 쓰지 않는 이유는 위 설계 결정 1 참고. */
+/**
+ * 추가/수정 폼(`.cp-form`)이 펼쳐져 있는지. 기본은 접힘 — 트리 안에 인라인으로 들어가면서 항상
+ * 펼쳐 두면 거슬린다. `editingId`가 있어도(수정 모드) 이 값이 `true`여야 폼이 보인다 —
+ * `startEdit`이 함께 열어 준다.
+ */
+const formOpen = ref(false)
+
+/** 폼의 첫 입력칸 — 열릴 때 포커스를 옮겨 준다. */
+const titleInput = ref<HTMLInputElement | null>(null)
+
+async function focusTitleInput() {
+  await nextTick()
+  titleInput.value?.focus()
+}
+
+/** 지금 인라인 승인 입력이 펼쳐진 체크포인트. 대화상자를 쓰지 않는 이유는 WbsTree가 이미
+ * 트리 안이라서다(오버레이 중첩 금지). */
 const approvingId = ref<number | null>(null)
 const approver = ref('')
 
+/**
+ * `v-model.number`는 빈 칸을 `null`이 아니라 빈 문자열로, 편집 중인 "-"·"."는 `NaN`으로 남긴다.
+ * 서버는 둘 다 받지 못하므로 여기서 걸러 `null`로 바꾼다 — `0`은 그대로 통과시킨다(0과 미입력은
+ * 다른 값이다).
+ */
+function normalizeWeight(value: number | string | null): number | null {
+  if (value === '' || value === null || Number.isNaN(value as number)) return null
+  return value as number
+}
+
+/** ＋ 체크포인트 추가 버튼. 목록이 비어 있어도 눌러 바로 첫 체크포인트를 만들 수 있다. */
+function openAddForm() {
+  editingId.value = null
+  draft.value = emptyDraft()
+  formOpen.value = true
+  focusTitleInput()
+}
+
+function startEdit(cp: CheckpointDetail) {
+  editingId.value = cp.id
+  draft.value = draftFrom(cp)
+  formOpen.value = true
+  focusTitleInput()
+}
+
+/** 추가·수정 모두에서 쓰는 닫기 — 폼을 접고 입력값을 비운다. */
+function closeForm() {
+  editingId.value = null
+  draft.value = emptyDraft()
+  formOpen.value = false
+}
+
 async function submit() {
-  if (!newTitle.value.trim()) return
-  const ok = await addCheckpoint(props.projectId, {
-    wbsItemId: props.wbsItemId,
-    title: newTitle.value.trim(),
-    weight: newWeight.value,
-    completionCriteria: newCriteria.value.trim() || null,
+  if (!isSubmittable(draft.value)) return
+  const wasAdding = editingId.value === null
+  const input = toCheckpointInput(props.wbsItemId, {
+    ...draft.value,
+    weight: normalizeWeight(draft.value.weight),
   })
-  if (ok) {
-    newTitle.value = ''
-    newWeight.value = null
-    newCriteria.value = ''
+  const ok = wasAdding
+    ? await addCheckpoint(props.projectId, input)
+    : await updateCheckpoint(props.projectId, editingId.value!, input)
+  // 거부되면 입력값을 그대로 남기고 폼도 열어 둔다 — 위의 `error`가 이유를 설명한다
+  // (CLAUDE.md 화면 규칙).
+  if (!ok) return
+  if (wasAdding) {
+    // 추가 후에는 열어 둔다 — RAID 입력 패널과 같은 규칙이다(CLAUDE.md RAID 설계:
+    // "수정 저장 후에는 닫고, 추가 후에는 열어 둡니다 — 여러 건을 연달아 기록하는 것이 흔하고,
+    // 아래 표에 새 행이 나타나는 것이 이미 확인 신호입니다"). Work Package를 Waterfall로 바꾼
+    // 직후 체크포인트를 3~5개 연달아 넣는 것이 이 화면의 가장 흔한 사용이라, 한 건마다
+    // ＋ 버튼을 다시 누르게 하면 안 된다.
+    draft.value = emptyDraft()
+    focusTitleInput()
+  } else {
+    // 수정 저장 후에는 닫는다 — 고칠 항목은 목록에서 다시 골라야 하므로 열어 둘 이유가 없다.
+    closeForm()
   }
 }
 
@@ -82,63 +143,81 @@ function revoke(cp: CheckpointDetail) {
 
 function remove(cp: CheckpointDetail) {
   if (approvingId.value === cp.id) cancelApprove()
+  if (editingId.value === cp.id) closeForm()
   deleteCheckpoint(props.projectId, cp.id)
 }
 </script>
 
 <template>
   <div class="checkpoint-list">
-    <p v-if="loading && !workPackage" class="notice muted">불러오는 중…</p>
-    <p v-else-if="!workPackage" class="notice">
-      이 항목의 진척 정보를 찾을 수 없습니다. WBS 화면을 새로고침한 뒤 다시 시도하세요.
-    </p>
-    <template v-else>
-      <p v-if="error" class="error">{{ error }}</p>
+    <p v-if="error" class="error">{{ error }}</p>
 
-      <ul v-if="workPackage.checkpoints.length > 0" class="checkpoints">
-        <li v-for="cp in workPackage.checkpoints" :key="cp.id">
-          <div class="row">
-            <span class="cp-title">{{ cp.title }}</span>
-            <span class="cp-weight">가중치 {{ cp.weight ?? '균등' }}</span>
-            <span v-if="cp.completionCriteria" class="cp-criteria">{{ cp.completionCriteria }}</span>
-            <span v-if="cp.approved" class="cp-approved">
-              승인 · {{ cp.approvedBy }} · {{ cp.approvedAt?.slice(0, 10) }}
-            </span>
-            <button v-if="cp.approved" type="button" class="link" @click="revoke(cp)">승인 취소</button>
+    <ul v-if="checkpoints.length > 0" class="checkpoints">
+      <li v-for="cp in checkpoints" :key="cp.id">
+        <div class="row">
+          <span class="cp-title">{{ cp.title }}</span>
+          <span class="cp-weight">가중치 {{ cp.weight ?? '균등' }}</span>
+          <span v-if="cp.completionCriteria" class="cp-criteria">{{ cp.completionCriteria }}</span>
+          <span v-if="cp.approved" class="cp-approved">
+            승인 · {{ cp.approvedBy }} · {{ cp.approvedAt?.slice(0, 10) }}
+          </span>
+          <span v-else class="cp-pending">미승인</span>
+          <span v-if="editable" class="cp-actions">
+            <button
+              v-if="cp.approved"
+              type="button"
+              @click="revoke(cp)"
+            >승인 취소</button>
             <button
               v-else-if="approvingId !== cp.id"
               type="button"
-              class="link"
               @click="startApprove(cp)"
             >승인</button>
-            <button type="button" class="link danger" @click="remove(cp)">삭제</button>
-          </div>
-          <!-- 인라인 승인 입력 — 부모(WbsForm)가 이미 ModalDialog 안이라 여기서 또 오버레이를 띄우면
-               대화상자 위에 대화상자가 겹친다(설계 결정 1). -->
-          <div v-if="approvingId === cp.id" class="approve-row">
-            <input
-              v-model="approver"
-              type="text"
-              placeholder="승인자 (예: 김재학)"
-              @keydown.enter="confirmApprove"
-              @keydown.esc="cancelApprove"
-            />
-            <button type="button" :disabled="!approver.trim()" @click="confirmApprove">확인</button>
-            <button type="button" class="ghost" @click="cancelApprove">취소</button>
-          </div>
-        </li>
-      </ul>
-      <p v-else class="notice muted">
-        체크포인트가 없습니다. Waterfall·Hybrid 진척은 이 목록이 분모이므로, 없으면 산정 전입니다.
-      </p>
+            <button type="button" @click="startEdit(cp)">수정</button>
+            <button type="button" class="danger" @click="remove(cp)">삭제</button>
+          </span>
+        </div>
+        <!-- 인라인 승인 입력 — 부모(WbsTree)가 이미 트리 안이라 여기서 또 오버레이를 띄우면
+             레이어가 겹친다. -->
+        <div v-if="editable && approvingId === cp.id" class="approve-row">
+          <input
+            v-model="approver"
+            type="text"
+            placeholder="승인자 (예: 김재학)"
+            @keydown.enter="confirmApprove"
+            @keydown.esc="cancelApprove"
+          />
+          <button type="button" :disabled="!approver.trim()" @click="confirmApprove">확인</button>
+          <button type="button" class="ghost" @click="cancelApprove">취소</button>
+        </div>
+      </li>
+    </ul>
+    <p v-else-if="editable" class="notice muted">
+      체크포인트가 없습니다. Waterfall·Hybrid 진척은 이 목록이 분모이므로, 없으면 산정 전입니다.
+    </p>
+    <p v-else class="notice muted">
+      체크포인트가 없습니다. WBS 화면에서 해당 업무를 펼쳐 등록하세요. Waterfall·Hybrid 진척은
+      이 목록이 분모이므로, 없으면 산정 전입니다.
+    </p>
 
-      <div class="cp-form">
-        <input v-model="newTitle" type="text" placeholder="체크포인트 제목" />
-        <input v-model.number="newWeight" type="number" min="0" placeholder="가중치" />
-        <input v-model="newCriteria" type="text" placeholder="완료 조건 (선택)" />
-        <button type="button" :disabled="!newTitle.trim()" @click="submit">추가</button>
-      </div>
-    </template>
+    <!-- 목록이 비어 있어도 이 버튼은 그대로 보인다 — 그 자리에서 바로 첫 체크포인트를 추가할 수
+         있어야 한다. -->
+    <button
+      v-if="editable && !formOpen"
+      type="button"
+      class="add"
+      @click="openAddForm"
+    >＋ 체크포인트 추가</button>
+
+    <div v-if="editable && formOpen" class="cp-form">
+      <input ref="titleInput" v-model="draft.title" type="text" placeholder="체크포인트 제목" />
+      <input v-model.number="draft.weight" type="number" min="0" placeholder="가중치" />
+      <input v-model="draft.criteria" type="text" placeholder="완료 조건 (선택)" />
+      <button type="button" :disabled="!isSubmittable(draft)" @click="submit">
+        {{ editingId === null ? '추가' : '저장' }}
+      </button>
+      <button type="button" class="ghost" @click="closeForm">취소</button>
+    </div>
   </div>
 </template>
 
@@ -195,6 +274,43 @@ function remove(cp: CheckpointDetail) {
   color: var(--accent);
 }
 
+.cp-pending {
+  font-size: 0.75rem;
+  color: var(--text-faint);
+}
+
+/* 승인/승인 취소·수정·삭제 — 행 안에 들어가는 작은 버튼이라 화면을 압도하면 안 된다. 다른
+ * 표의 행 액션(BacklogList·RaidList의 `.actions button`)과 같은 모양·크기 계열로 맞췄다. */
+.cp-actions {
+  display: flex;
+  gap: 0.3rem;
+  margin-left: auto;
+}
+
+.cp-actions button {
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--border-input);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.cp-actions button.danger {
+  color: var(--danger);
+  border-color: var(--danger-border);
+}
+
+.cp-actions button:disabled {
+  background: var(--disabled-bg);
+  color: var(--disabled-fg);
+  border-color: var(--border-soft);
+  cursor: not-allowed;
+}
+
 .approve-row {
   display: flex;
   gap: 0.4rem;
@@ -230,6 +346,12 @@ function remove(cp: CheckpointDetail) {
   min-width: 8rem;
 }
 
+/* 컨테이너(.checkpoint-list)가 flex-column이라 align-items 기본값(stretch)을 그대로 두면 이
+ * 버튼이 전체 폭으로 늘어난다 — 다른 화면의 "＋ … 추가" 버튼처럼 내용 크기만큼만 차지해야 한다. */
+.add {
+  align-self: flex-start;
+}
+
 button {
   padding: 0.3rem 0.6rem;
   border-radius: 6px;
@@ -253,17 +375,5 @@ button:disabled {
   color: var(--disabled-fg);
   border-color: var(--border-soft);
   cursor: not-allowed;
-}
-
-button.link {
-  border: none;
-  background: none;
-  padding: 0;
-  color: var(--accent);
-  font-size: 0.76rem;
-}
-
-button.link.danger {
-  color: var(--danger);
 }
 </style>

@@ -2,10 +2,12 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import type { WbsItemInput, WbsMoveInput, WbsNode } from '../api/wbsApi'
+import type { WorkPackageProgress } from '../api/progressApi'
 import WbsForm from '../features/wbs/WbsForm.vue'
 import WbsImportForm from '../features/wbs/WbsImportForm.vue'
 import WbsTree from '../features/wbs/WbsTree.vue'
 import { useWbs } from '../features/wbs/useWbs'
+import { useProgress } from '../features/progress/useProgress'
 import { useProjects } from '../features/projects/useProjects'
 import { ensureSelection, selectedProjectId } from '../stores/projectSelection'
 import { readOnly } from '../stores/commitView'
@@ -38,6 +40,20 @@ const { projects, error: projectsError, ensureLoaded: ensureProjects } = useProj
 const { tree, referenceDate, loading, error, ensureLoaded, create, update, move, remove, importFile } =
   useWbs()
 
+/**
+ * Checkpoints render inline in the tree (지시서 4장), and their data lives in the progress
+ * payload — `useWbs` knows nothing about them. This is the "권장" data path from 지시서 4.3:
+ * read `useProgress` alongside `useWbs` and index its `workPackages[]` by `wbsItemId` for
+ * `WbsTree`, instead of teaching the WBS API about checkpoints.
+ */
+const { data: progressData, ensureLoaded: ensureProgressLoaded } = useProgress()
+const workPackages = computed<Record<number, WorkPackageProgress>>(() => {
+  const byId: Record<number, WorkPackageProgress> = {}
+  for (const wp of progressData.value?.workPackages ?? []) {
+    byId[wp.wbsItemId] = wp
+  }
+  return byId
+})
 
 const editing = ref<WbsNode | null>(null)
 const parentForNew = ref<WbsNode | null>(null)
@@ -54,10 +70,28 @@ watch(
       editing.value = null
       parentForNew.value = null
     }
-    if (id !== null) ensureLoaded(id)
+    if (id !== null) {
+      ensureLoaded(id)
+      ensureProgressLoaded(id)
+    }
   },
   { immediate: true },
 )
+
+/**
+ * A checkpoint change (add/edit/delete/approve, all inline in `WbsTree` now) calls
+ * `markWbsChanged()`, but that only makes this screen's *own* cache stale for the next visit —
+ * it does not, by itself, make this still-open screen refetch. `closeForm()` below handles the
+ * same problem for the old (modal) editing path; this handles it for the new inline one, where
+ * there is no "close" event to hook. `useProgress().data` is shared module state, so it changes
+ * the moment any `WbsTree`-embedded `CheckpointList` mutates — including through this same view's
+ * own `progressData` — and `ensureLoaded` is a no-op unless the WBS revision actually moved, so
+ * this does not add extra requests on ordinary loads.
+ */
+watch(progressData, () => {
+  const id = selectedProjectId.value
+  if (id !== null) ensureLoaded(id)
+})
 
 onMounted(async () => {
   await ensureProjects()
@@ -226,7 +260,6 @@ async function handleMove(itemId: number, input: WbsMoveInput) {
         :parent="parentForNew"
         :siblings="siblings"
         :error="error"
-        :project-id="selectedProjectId"
         @submit="handleSubmit"
         @cancel="closeForm"
       />
@@ -256,6 +289,8 @@ async function handleMove(itemId: number, input: WbsMoveInput) {
         :tree="tree"
         :focus-id="focusId"
         :read-only="readOnly"
+        :project-id="selectedProjectId"
+        :work-packages="workPackages"
         @add-child="startAddChild"
         @edit="startEdit"
         @remove="handleRemove"

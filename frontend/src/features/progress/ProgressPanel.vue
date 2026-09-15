@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { WorkPackageProgress } from '../../api/progressApi'
 import { useProgress } from './useProgress'
+import CheckpointList from './CheckpointList.vue'
 import { executionModeLabel } from '../../shared/executionMode'
 import {
   ACCEPTANCE_STATUS_LABELS,
@@ -372,27 +373,16 @@ function snapshotSummary(metrics: string): string {
                   집계 대상 Story·Bug {{ wp.backlogDone }}/{{ wp.backlogTotal }} 완료
                 </p>
 
-                <ul v-if="wp.checkpoints.length > 0" class="checkpoints">
-                  <li v-for="cp in wp.checkpoints" :key="cp.id">
-                    <span class="cp-title">{{ cp.title }}</span>
-                    <span class="cp-weight">가중치 {{ cp.weight ?? '균등' }}</span>
-                    <span v-if="cp.completionCriteria" class="cp-criteria">
-                      {{ cp.completionCriteria }}
-                    </span>
-                    <span v-if="cp.approved" class="cp-approved">
-                      승인 · {{ cp.approvedBy }} · {{ cp.approvedAt?.slice(0, 10) }}
-                    </span>
-                    <span v-else class="cp-pending">승인 대기</span>
-                  </li>
-                </ul>
-                <p v-else class="note muted">
-                  체크포인트가 없습니다. Waterfall·Hybrid 진척은 이 목록이 분모이므로, 없으면
-                  산정 전입니다.
-                </p>
+                <!-- 정의·수정·삭제·승인은 모두 WBS 트리로 옮겼다 — Work Package 행을 펼치면 그
+                     자리에서 바로 다룬다. 여기는 여러 Work Package의 진척을 훑어보는 조망 화면이라
+                     읽기 전용 목록만 남긴다(editable:false). 승인은 "WBS에서 편집" 링크를 따라간다. -->
+                <CheckpointList
+                  :project-id="selectedProjectId!"
+                  :wbs-item-id="wp.wbsItemId"
+                  :checkpoints="wp.checkpoints"
+                  :editable="false"
+                />
 
-                <!-- 편집(추가·삭제·승인)은 WBS 폼으로 옮겼다 — 실행 방식을 Waterfall/Hybrid로
-                     바꾸는 바로 그 자리에서 분모를 채울 수 있어야 한다. 여기는 그 숫자
-                     (예: 3/5)가 무엇으로 이루어졌는지 보여주는 읽기 전용 자리다. -->
                 <RouterLink :to="{ path: '/wbs', query: { focus: String(wp.wbsItemId) } }" class="link">
                   WBS에서 편집 →
                 </RouterLink>
@@ -686,37 +676,6 @@ tr.detail > td {
 
 .note.muted {
   color: var(--text-faint);
-}
-
-.checkpoints {
-  list-style: none;
-  margin: 0.4rem 0;
-  padding: 0;
-}
-
-.checkpoints li {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  padding: 0.2rem 0;
-  font-size: 0.82rem;
-}
-
-.cp-title {
-  font-weight: 600;
-}
-
-.cp-weight,
-.cp-criteria,
-.cp-approved,
-.cp-pending {
-  font-size: 0.75rem;
-  color: var(--text-faint);
-}
-
-.cp-approved {
-  color: var(--accent);
 }
 
 .snapshot-form {
