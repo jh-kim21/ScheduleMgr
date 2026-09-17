@@ -122,6 +122,41 @@
    */
   --critical: #101317;
 
+  /*
+   * 대시보드 카드 문법 (docs/tasks/dashboard-redesign.md §3-a). 면 · 라운드 · 여백을 토큰으로
+   * 두어 카드가 몇 장이 되든 한 곳에서만 조정한다.
+   *
+   * --dash-bg 는 아직 대시보드 안에서만 깐다(.dashboard). 전역 --bg 를 회색으로 내리는 것은
+   * 표 · 폼 · 패널 전부에 영향이 가는 별건이라 이 작업에 끼워 넣지 않는다 (지시서 3-b).
+   */
+  --dash-bg: #f4f5f7;
+  --card-radius: 16px;
+  --card-pad: 20px;
+  --card-gap: 16px;
+  /*
+   * 다크에서는 그림자가 배경에 묻혀 카드가 서지 않는다. 라이트는 --elevation-1 로, 다크는 이
+   * 테두리로 세운다 — 한쪽에서만 쓰는 값이라 토큰을 하나 두고 반대쪽에서는 transparent 로 끈다.
+   */
+  --card-outline: transparent;
+
+  /*
+   * KPI 아이콘 원의 파스텔 여섯. 새 팔레트가 아니라 기존 상태색 · 강조색을 표면에 옅게 섞은
+   * 파생값이다 — 팔레트를 따로 들이면 다크 모드를 두 벌 관리하게 된다. 섞는 비율만 테마별로
+   * 다르고(어두운 면에서는 더 진하게 섞어야 보인다), 아이콘 글자색은 섞기 전 원색 그대로다.
+   */
+  --tint-green: color-mix(in srgb, var(--status-completed) 14%, var(--surface));
+  --tint-green-fg: var(--status-completed);
+  --tint-blue: color-mix(in srgb, var(--status-on-track) 14%, var(--surface));
+  --tint-blue-fg: var(--status-on-track);
+  --tint-violet: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  --tint-violet-fg: var(--accent);
+  --tint-amber: color-mix(in srgb, var(--status-at-risk) 16%, var(--surface));
+  --tint-amber-fg: var(--warn-badge-fg);
+  --tint-red: color-mix(in srgb, var(--status-delayed) 14%, var(--surface));
+  --tint-red-fg: var(--status-delayed);
+  --tint-gray: color-mix(in srgb, var(--status-not-started) 16%, var(--surface));
+  --tint-gray-fg: var(--text-dim);
+
   color-scheme: light;
   font: 16px/145% var(--sans);
   color: var(--text);
@@ -216,6 +251,22 @@
   --baseline: #cfd5de;
   --critical: #f2f4f7;
 
+  --dash-bg: #0f1114;
+  --card-outline: var(--border);
+
+  --tint-green: color-mix(in srgb, var(--status-completed) 22%, var(--surface));
+  --tint-green-fg: var(--status-completed);
+  --tint-blue: color-mix(in srgb, var(--status-on-track) 22%, var(--surface));
+  --tint-blue-fg: var(--status-on-track);
+  --tint-violet: color-mix(in srgb, var(--accent) 22%, var(--surface));
+  --tint-violet-fg: var(--accent);
+  --tint-amber: color-mix(in srgb, var(--status-at-risk) 24%, var(--surface));
+  --tint-amber-fg: var(--warn-badge-fg);
+  --tint-red: color-mix(in srgb, var(--status-delayed) 22%, var(--surface));
+  --tint-red-fg: var(--status-delayed);
+  --tint-gray: color-mix(in srgb, var(--status-not-started) 24%, var(--surface));
+  --tint-gray-fg: var(--text-dim);
+
   color-scheme: dark;
 }
 
@@ -291,4 +342,12 @@ p {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/*
+ * 숫자를 훑어 비교하는 자리(KPI · 카드의 집계값)에 건다. 고정폭 숫자가 아니면 자릿수가 바뀔 때
+ * 숫자가 좌우로 흔들려, 값이 갱신될 때마다 카드가 미세하게 움직이는 것처럼 보인다.
+ */
+.num {
+  font-variant-numeric: tabular-nums;
 }
