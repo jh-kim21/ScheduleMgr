@@ -52,5 +52,5 @@ export const FULL_DASHBOARD: Dashboard = {
     highExposure: [{ raidItemId: 2, type: 'RISK', title: '인력 이탈', ownerName: null, detail: '노출도 9' }],
     overdue: [{ raidItemId: 3, type: 'DEPENDENCY', title: 'PG 계약', ownerName: '이', detail: '3일 초과' }] },
   scope: { hasBaseline: true, baselineItemCount: 42, currentItemCount: 43, added: ['5.1'], removed: [], weightChanged: ['1.2'] },
-  gaps: [{ kind: 'EXECUTION_MODE_MISSING', label: '실행 방식 미지정', count: 1, wbsItemIds: [5], backlogItemIds: [] }],
+  gaps: [{ kind: 'EXECUTION_MODE_UNSPECIFIED', label: '실행 방식 미지정', count: 1, wbsItemIds: [5], backlogItemIds: [] }],
 }

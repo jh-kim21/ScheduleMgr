@@ -172,15 +172,69 @@ class ProgressCalculatorTest {
         }
 
         @Test
-        @DisplayName("일부 자식만 가중치가 있으면 평균에서 빼고 불완전으로 알린다 — 0%로 세지 않는다")
-        void partialWeightsAreReported() {
+        @DisplayName("일부 자식만 가중치가 있으면 나머지를 1로 채운다 — 빼지 않는다")
+        void partialWeightsFallBackToOne() {
             WbsItem parent = summary("단계");
             manual(parent, "가중치 있음", 100, 10);
             manual(parent, "가중치 없음", 0, null);
 
-            // 가중치 없는 자식을 0으로 세면 50%가 되지만, 그것은 근거 없는 숫자다.
-            assertThat(percentOf(parent)).isEqualTo(100.0);
-            assertThat(resultOf(parent).incompleteWeights()).isTrue();
+            // 빼면 남은 자식 하나의 진척(100%)이 곧 가지 전체가 된다 — 적지 않은 자식이
+            // 사라지는 것이지 0이 아니다. 체크포인트·Backlog·기준선과 같은 규칙으로 1을 채운다:
+            // (10×100 + 1×0) / 11.
+            assertThat(percentOf(parent)).isEqualTo(1000.0 / 11);
+            assertThat(basisOf(parent)).isEqualTo(ProgressBasis.ROLLUP);
+            assertThat(resultOf(parent).incompleteWeights()).isFalse();
+            assertThat(resultOf(parent).incomplete()).isFalse();
+        }
+
+        @Test
+        @DisplayName("가중치를 0으로 하나만 적어도 가지 전체가 산정 전이 되지 않는다")
+        void zeroWeightDoesNotBlankTheBranch() {
+            WbsItem parent = summary("단계");
+            manual(parent, "0으로 적음", 0, 0);
+            manual(parent, "안 적음", 80, null);
+
+            // 예전에는 anyWeight가 켜지고 '안 적음'이 빠져 weightSum==0 → 가지 전체가 산정 전이었다.
+            assertThat(percentOf(parent)).isEqualTo(80.0);
+            assertThat(basisOf(parent)).isEqualTo(ProgressBasis.ROLLUP);
+        }
+
+        @Test
+        @DisplayName("적힌 가중치가 전부 0이면 여전히 산정 전 — 폴백이 이 가드를 덮지 않는다")
+        void allZeroWeightsStillNotEstimable() {
+            WbsItem parent = summary("단계");
+            manual(parent, "가", 100, 0);
+            manual(parent, "나", 50, 0);
+
+            assertThat(percentOf(parent)).isNull();
+            assertThat(basisOf(parent)).isEqualTo(ProgressBasis.NOT_ESTIMABLE);
+        }
+
+        @Test
+        @DisplayName("최상위 한 곳에 가중치를 적어도 나머지 가지가 프로젝트 진척에서 탈락하지 않는다")
+        void oneWeightedRootDoesNotHijackTheProject() {
+            WbsItem existing = summary("기존 단계");
+            manual(existing, "가", 40, null);
+            manual(existing, "나", 60, null);
+            rootWorkPackage("새 항목", null, 0, 10);
+
+            // 예전에는 '기존 단계'(50%)가 통째로 빠져 프로젝트 진척이 새 항목의 값 0%가 됐다.
+            // 이제 1 : 10으로 함께 센다 — (1×50 + 10×0) / 11.
+            assertThat(projectResult().percent()).isEqualTo(50.0 / 11);
+        }
+
+        @Test
+        @DisplayName("가중치를 적은 최상위가 산정 전이어도 프로젝트 진척이 통째로 사라지지 않는다")
+        void weightedButUnestimableRootDoesNotBlankTheProject() {
+            WbsItem existing = summary("기존 단계");
+            manual(existing, "가", 40, null);
+            // 집계 대상 Story가 없는 Agile Work Package — percent가 null이다.
+            rootWorkPackage("새 항목", ExecutionMode.AGILE, 0, 10);
+
+            // 예전에는 산정 전인 자식이 빠지고 '기존 단계'까지 가중치가 없다고 빠져
+            // weightSum==0 → 프로젝트 진척이 통째로 "산정 전"이었다.
+            assertThat(projectResult().percent()).isEqualTo(40.0);
+            assertThat(projectResult().incompleteChildren()).isTrue();
         }
 
         @Test
@@ -308,6 +362,14 @@ class ProgressCalculatorTest {
         return item;
     }
 
+    /** 최상위(부모 없음) Work Package. 프로젝트 진척은 루트들의 rollUp이라 이 모양이 필요하다. */
+    private WbsItem rootWorkPackage(String name, ExecutionMode mode, int progress, Integer weight) {
+        WbsItem item = register(new WbsItem(PROJECT_ID, null, name, null, null, null, progress,
+                items.size(), WbsNodeType.WORK_PACKAGE, mode));
+        item.restoreProgressBasis(weight, null, null);
+        return item;
+    }
+
     private void story(WbsItem workPackage, Integer weight, boolean done) {
         BacklogItem item = new BacklogItem(PROJECT_ID, workPackage.getId(), null,
                 BacklogItemType.STORY, "story", null, BacklogPriority.MEDIUM,
@@ -330,6 +392,13 @@ class ProgressCalculatorTest {
         Map<Long, ProgressResult> results = ProgressCalculator.compute(
                 WbsTreeAssembler.assemble(items), backlog, checkpoints);
         return results.get(item.getId());
+    }
+
+    /** 프로젝트 전체 진척 — 루트들을 같은 식으로 접은 값. */
+    private ProgressResult projectResult() {
+        List<WbsNode> roots = WbsTreeAssembler.assemble(items);
+        return ProgressCalculator.projectProgress(roots,
+                ProgressCalculator.compute(roots, backlog, checkpoints));
     }
 
     private Double percentOf(WbsItem item) {

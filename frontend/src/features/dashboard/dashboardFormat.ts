@@ -21,7 +21,7 @@ export function taskRoute(task: TaskRef) {
 /** 데이터 누락이 향하는 화면. kind 마다 원인이 있는 곳이 다르다. */
 export function gapRoute(gap: DataGap) {
   if (gap.kind.startsWith('BACKLOG')) return { path: '/backlog' }
-  if (gap.kind === 'NOT_ESTIMABLE' || gap.kind === 'WEIGHT_MISSING') return PROGRESS_TAB
+  if (gap.kind === 'NOT_ESTIMABLE') return PROGRESS_TAB
   return { path: '/wbs', query: { focus: gap.wbsItemIds[0] } }
 }
 

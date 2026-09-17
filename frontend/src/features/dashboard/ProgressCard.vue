@@ -76,7 +76,7 @@ const modes = computed<BarListItem[]>(() =>
     </dl>
 
     <p v-if="data.progress.incomplete" class="warn-note">
-      일부 하위가 산정 전이거나 가중치가 없어 이 숫자에 빠져 있습니다. 0%로 대신하지 않았습니다.
+      일부 하위가 아직 산정 전이라 이 숫자에 빠져 있습니다. 0%로 대신하지 않았습니다.
     </p>
 
     <p class="subhead">실행 방식별 Work Package</p>

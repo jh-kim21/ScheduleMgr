@@ -25,6 +25,11 @@ import java.util.Map;
  * carry no weights falls back to the leaf-count weighting this app has always used
  * ({@link ProgressBasis#LEGACY_ROLLUP}). Where nothing has opted in, every number is identical to
  * before Step 5; the design's weighted formula takes over branch by branch as weights are entered.
+ *
+ * <p>A <em>partly</em> weighted branch is not a third policy: a child without a weight counts as 1
+ * ({@link #weightOf}), exactly as it does in the checkpoint, Backlog and baseline denominators. It
+ * used to be dropped from the average, which let a single weighted sibling speak for the whole
+ * branch — one weight entered at the top could redefine the project's progress.
  */
 public final class ProgressCalculator {
 
@@ -176,14 +181,14 @@ public final class ProgressCalculator {
      * Σ(직계 자식 가중치 × 자식 진척) / Σ(직계 자식 가중치).
      *
      * <p>With no weights anywhere among the direct children this falls back to leaf-count
-     * weighting, which is what the app has always done — see the transition policy above. With
-     * weights present, children that lack one are left out of the average and reported through
-     * {@code incompleteWeights} rather than being treated as zero.
+     * weighting, which is what the app has always done — see the transition policy above. Once any
+     * sibling carries a weight, a child that lacks one weighs 1 ({@link #weightOf}) — the same
+     * {@code null} reading as every other denominator here. No child is ever dropped for lacking a
+     * weight.
      */
     private static ProgressResult rollUp(List<WbsNode> children, Map<Long, ProgressResult> results) {
         boolean anyWeight = children.stream().anyMatch(child -> child.item().getWeight() != null);
         boolean incompleteChildren = false;
-        boolean incompleteWeights = false;
 
         double weighted = 0;
         double weightSum = 0;
@@ -198,30 +203,23 @@ public final class ProgressCalculator {
                 incompleteChildren = true;
             }
 
-            Integer declared = child.item().getWeight();
-            double weight;
-            if (anyWeight) {
-                if (declared == null) {
-                    // 조용히 빼지 않고 불완전으로 알린다 (지시서 5-B).
-                    incompleteWeights = true;
-                    continue;
-                }
-                weight = declared;
-            } else {
-                weight = leafCount(child);
-            }
+            // 형제 중 누구든 가중치를 적었으면 그 값을, 안 적은 형제는 1을 쓴다. 아무도 안 적었으면
+            // 예전처럼 leaf 개수로 센다 (전환 정책).
+            double weight = anyWeight ? weightOf(child.item().getWeight()) : leafCount(child);
             weighted += weight * childResult.percent();
             weightSum += weight;
         }
 
         if (weightSum == 0) {
-            return new ProgressResult(null, ProgressBasis.NOT_ESTIMABLE, incompleteWeights, true,
+            // 폴백이 들어온 뒤 여기 오는 길은 둘뿐이다 — 산정 가능한 자식이 하나도 없거나,
+            // 적힌 가중치가 전부 0이다.
+            return new ProgressResult(null, ProgressBasis.NOT_ESTIMABLE, false, true,
                     anyWeight ? "하위 가중치의 합이 0이거나 산정 가능한 하위가 없습니다."
                               : "산정 가능한 하위 항목이 없습니다.");
         }
         return new ProgressResult(weighted / weightSum,
                 anyWeight ? ProgressBasis.ROLLUP : ProgressBasis.LEGACY_ROLLUP,
-                incompleteWeights, incompleteChildren, null);
+                false, incompleteChildren, null);
     }
 
     private static int leafCount(WbsNode node) {
@@ -247,7 +245,9 @@ public final class ProgressCalculator {
      * @param percent            0~100, 반올림하지 않은 값. {@code null}이면 <b>산정 전</b>이며 0%가 아니다.
      *                           반올림은 표시 단계에서만 한다 (지시서 완료 기준)
      * @param basis              어떻게 계산된 값인가
-     * @param incompleteWeights  일부 하위에 가중치가 없어 평균에서 빠졌다
+     * @param incompleteWeights  <b>항상 {@code false}.</b> 가중치 없는 하위를 평균에서 빼던 시절의
+     *                           신호이고, 지금은 1로 채우므로 빠지는 하위가 없다. 이미 찍힌 커밋
+     *                           payload와 모양을 맞추려고 필드만 남긴다
      * @param incompleteChildren 일부 하위가 산정 전이거나 그 자체로 불완전하다
      * @param note               산정 전인 이유 (사람에게 보여줄 한 줄)
      */

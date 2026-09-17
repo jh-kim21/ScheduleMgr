@@ -360,8 +360,12 @@ public class DashboardService {
     /**
      * What the figures above cannot answer because nobody has decided it yet (지시서 3항).
      *
-     * <p>Reported, not filled in. A missing weight is an open decision, and defaulting it would move
-     * every number that reads it without anyone having chosen.
+     * <p>Reported, not filled in. An unspecified execution mode is an open decision, and choosing
+     * one here would move every number that reads it without anyone having chosen.
+     *
+     * <p>A missing <em>weight</em> is not on this list. {@code ProgressCalculator} reads it as 1,
+     * the same as the checkpoint, Backlog and baseline denominators do, so nothing is pending —
+     * counting it made the normal state (no weights anywhere) look like a gap.
      */
     private List<DataGap> gaps(ProgressResponse progress, BacklogResponse backlog) {
         List<DataGap> gaps = new ArrayList<>();
@@ -373,15 +377,6 @@ public class DashboardService {
         if (!unspecifiedMode.isEmpty()) {
             gaps.add(new DataGap("EXECUTION_MODE_UNSPECIFIED", "실행 방식 미지정 Work Package",
                     unspecifiedMode.size(), unspecifiedMode, List.of()));
-        }
-
-        List<Long> noWeight = progress.workPackages().stream()
-                .filter(workPackage -> workPackage.weight() == null)
-                .map(WorkPackageProgress::wbsItemId)
-                .toList();
-        if (!noWeight.isEmpty()) {
-            gaps.add(new DataGap("WEIGHT_MISSING", "가중치가 없는 Work Package",
-                    noWeight.size(), noWeight, List.of()));
         }
 
         List<Long> notEstimable = progress.workPackages().stream()

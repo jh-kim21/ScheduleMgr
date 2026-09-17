@@ -28,7 +28,7 @@ function task(overrides: Partial<TaskRef> = {}): TaskRef {
 }
 
 function gap(overrides: Partial<DataGap> = {}): DataGap {
-  return { kind: 'EXECUTION_MODE_MISSING', label: '실행 방식 미지정', count: 1, wbsItemIds: [5], backlogItemIds: [], ...overrides }
+  return { kind: 'EXECUTION_MODE_UNSPECIFIED', label: '실행 방식 미지정', count: 1, wbsItemIds: [5], backlogItemIds: [], ...overrides }
 }
 
 function raid(overrides: Partial<RaidRef> = {}): RaidRef {
@@ -58,12 +58,8 @@ describe('gapRoute — kind 3갈래 분기', () => {
     expect(gapRoute(gap({ kind: 'NOT_ESTIMABLE' }))).toEqual(PROGRESS_TAB)
   })
 
-  it('WEIGHT_MISSING도 진척 탭으로 보낸다', () => {
-    expect(gapRoute(gap({ kind: 'WEIGHT_MISSING' }))).toEqual(PROGRESS_TAB)
-  })
-
   it('그 외 kind는 WBS 화면으로, focus에 첫 wbsItemId를 싣는다', () => {
-    expect(gapRoute(gap({ kind: 'EXECUTION_MODE_MISSING', wbsItemIds: [7, 8] }))).toEqual({
+    expect(gapRoute(gap({ kind: 'EXECUTION_MODE_UNSPECIFIED', wbsItemIds: [7, 8] }))).toEqual({
       path: '/wbs',
       query: { focus: 7 },
     })
