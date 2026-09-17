@@ -112,3 +112,32 @@ Return a concise completion report containing:
 - remaining issues or risks
 
 If implementation is incomplete, state exactly what remains.
+
+## 9. Archive the specification
+
+Status lives in the folder, not in the filename or in frontmatter. The filename is the `/dev`
+argument, so renaming it breaks the call.
+
+| Location | Meaning |
+|---|---|
+| `docs/tasks/<feature>.md` | Not implemented yet, or in progress — callable as `/dev <feature>` |
+| `docs/tasks/done/<feature>.md` | Implemented. Kept as a record |
+
+When the specification has been fully delivered, move it:
+
+```bash
+mv docs/tasks/$feature.md docs/tasks/done/
+# use `git mv` instead once docs/ is tracked
+```
+
+Move it only when both hold:
+
+1. Required builds and tests pass.
+2. Nothing within the specification's own scope is left unimplemented.
+
+**Do not move it when the specification defines later phases or optional follow-up work that has
+not been done** — a Phase B, an appendix of candidates, a deferred section. The file must stay
+callable as `/dev <feature>` for that remaining work. Report what remains and say the
+specification was left in place, rather than archiving a spec that is only partly delivered.
+
+State in the final report either where the specification was moved, or why it stayed.
