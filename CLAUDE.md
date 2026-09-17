@@ -225,6 +225,33 @@ WBS나 그 위에 얹는 기능(간트, 진행 관리 등)을 건드릴 때 아�
   크기 제한을 desktop/server 공통으로 10MB로 올려 두었습니다 — 데이터는 작아도 스타일이 많은
   실제 엑셀 파일은 기본값(1MB)을 쉽게 넘깁니다.
 
+### 업무 분야(Tag) 설계상 알아둘 점
+
+Service·Web 같은 분야로 Work Package를 훑기 위한 표시용 분류입니다(`wbs_tags` + `wbs_item_tags`, V23).
+`project_members`와 같은 패턴입니다 — **프로젝트 스코프이고 이름이 프로젝트 안에서 유일**합니다.
+자유 문자열이면 `Web`/`web`/`WEB`이 섞여 훑기가 깨지고, 한 업무가 두 분야에 걸치는 것이 정상이라
+단일 분류 컬럼으로도 두지 않았습니다.
+
+- **`tagIds`의 `null`과 `[]`는 다릅니다.** `null` = 변경 없음, `[]` = 전부 해제입니다. 항목의 분야는
+  `PUT /wbs/{itemId}`가 함께 받는데(별도 엔드포인트를 두면 폼 저장이 두 번 나갑니다), 이 필드를
+  모르는 호출자가 저장하면 분야가 조용히 전부 지워지기 때문입니다 — 커밋 `da96ebe`와 같은 사고입니다.
+  **폼은 언제나 배열을 명시적으로 보냅니다.**
+- **수정은 차집합만 처리합니다.** 전부 지우고 다시 넣으면 살아남은 연결도 새 행이 됩니다(RAID 링크와
+  같은 이유).
+- **Summary에는 분야를 붙이지 않되, 전환할 때 지우지 않고 보관합니다.** 실행 방식과 같은 규칙이라
+  *"비어야 한다"가 아니라 "바꿀 수 없다"*로 구현돼 있습니다 — 폼이 보관값을 그대로 되돌려 보내므로
+  **집합이 같으면 통과시켜야 합니다.** 되돌리지 마세요.
+- **상위는 하위의 분야를 합집합으로 요약합니다**(`tagSummary`, 손자까지). `ExecutionModeSummary`와
+  같은 방식입니다 — 자식이 없으면 `null`이고, 상위가 보관 중인 자기 값은 요약에 넣지 않습니다.
+- **연결은 양쪽 다 `ON DELETE CASCADE`입니다.** 태그나 WBS 항목이 사라지면 연결만 사라집니다 —
+  RAID 링크와 달리 여기서는 남길 기록이 없습니다(분야는 그 자체로 이력이 아닙니다).
+- **`color`는 자유 색값이 아니라 팔레트 슬롯 이름**입니다(`blue`·`teal`·… 여덟 중 하나). 모르는
+  값이 오면 거부하지 않고 이름 해시로 떨어집니다. 임의의 hex를 그대로 칠하면 다크 모드에서 읽히는지
+  보장할 수 없고, "하드코딩 색 0건" 규칙이 데이터 쪽으로 새어 나갑니다. **해시로 고정하는 이유는
+  랜덤이면 다시 그릴 때마다 색이 바뀌기 때문입니다.**
+- **마스터 관리는 프로젝트 화면(행의 `분야` 버튼)에서 합니다.** 구성원과 같은 이유입니다 — 프로젝트
+  스코프 개념이 WBS에 종속될 이유가 없습니다. WBS 폼은 고르기만 합니다.
+
 ### 실행 방식(Execution Mode) 설계상 알아둘 점
 
 WBS와 Agile을 잇는 하이브리드 설계의 첫 조각입니다
@@ -332,7 +359,7 @@ WBS(범위)와 Agile(실행)을 잇는 실제 연결 지점입니다. 자세한 
   표시됩니다 — 현재 상태와 과거 실적은 다른 사실입니다.
 - **진행 중 Sprint에 배정된 Backlog 항목은 보관·삭제할 수 없습니다.** `sprint_items`가 Backlog 항목에
   CASCADE라서 지우면 그 Sprint의 배정 기록까지 사라집니다(WBS 삭제 가드와 같은 이유).
-- **캐시 리비전이 넷입니다** (WBS / Backlog / Sprint / 구성원, Step 7부터). Board 이동은 Backlog
+- **캐시 리비전이 다섯입니다** (WBS / Backlog / Sprint / 구성원 / RACI). Board 이동은 Backlog
   상태 변경이라 두 화면이 함께 낡지만, 간트는 둘 다 모릅니다. 하나로 묶으면 카드를 한 번 옮길 때마다
   간트까지 다시 읽습니다.
 - **새 도메인 예외를 만들면 `GlobalExceptionHandler`에 함께 등록하세요.** Step 4에서 빠뜨려 Sprint의
@@ -361,6 +388,16 @@ Work Package의 실행 방식에 따라 네 가지 식으로 계산하고, 상�
   뺄 수 없는 두 숫자입니다.
 - **`storyPoint`·`progressWeight`·`weight`는 서로 다른 값**입니다. 포인트는 팀의 추정, `progressWeight`는
   Backlog 항목의 비중, `weight`는 WBS 형제 사이의 비중입니다. 같은 단위로 합산하지 마세요.
+- **가중치를 안 적은 형제는 1로 셉니다 — 빼지 않습니다.** 체크포인트·Backlog·기준선 분모와 같은
+  `null` 읽기입니다. 예전에는 형제 중 하나라도 값이 있으면(`anyWeight`) 안 적은 형제를 평균에서
+  **제외**했는데, 그러면 살아남은 자식이 하나일 때 그 자식의 진척이 곧 가지 전체의 진척이 되어
+  최상위에 가중치 한 칸을 넣는 것만으로 프로젝트 진척이 통째로 바뀌었습니다. **`anyWeight` 분기
+  자체는 지우지 마세요** — 아무도 적지 않은 가지는 여전히 leaf 개수 가중(`LEGACY_ROLLUP`)이어야
+  하고, 지우면 기존 프로젝트의 숫자가 바뀝니다. `ProgressResult.incompleteWeights`는 그 시절의
+  신호라 **항상 `false`**이고, 이미 찍힌 커밋 payload와 모양을 맞추려고 필드만 남겨 두었습니다.
+- **그래서 최상위 항목에는 가중치를 묻지 않습니다**(사용자 결정, `WbsForm`의 `isRoot`). 입력만
+  감출 뿐 **값은 payload에 그대로 실어 보냅니다** — 빼면 기존에 값이 있던 항목이 저장하는 순간
+  `null`로 덮입니다(커밋 `da96ebe`와 같은 사고). 하위 레벨에서는 그대로 입력받습니다.
 - **인수(`acceptance_status`)는 진척과 직교**합니다. 실행이 100%여도 인수가 남았으면 완료로 보지
   않습니다(`acceptancePending`).
 - **모든 화면이 이 서비스 하나를 읽습니다.** WBS 트리·간트·대시보드가 각자 계산하면 같은 프로젝트에
@@ -500,6 +537,13 @@ WBS의 이점이 사라지고 같은 업무의 세 일정을 눈으로 잇기 �
   [취소]로 되돌릴 수 없습니다 — 트리의 다른 동작(이동·정렬)도 원래 즉시 반영되므로 자연스럽습니다.
   **WBS 폼(`ModalDialog`)에는 체크포인트가 없습니다** — 폼은 이미 대화상자 안이라 목록을 넣으면
   대화상자 안에 목록이 겹치고, 폼의 "저장/취소"와 체크포인트의 즉시 저장이 한 화면에서 엇갈립니다.
+- **체크포인트는 추가 후 폼을 열어 두고 제목 칸으로 포커스를 되돌립니다(수정은 닫습니다).**
+  RAID 입력 패널과 같은 규칙입니다 — 한 Work Package에 여러 건을 연달아 넣는 것이 흔하고, 위
+  목록에 새 행이 나타나는 것이 이미 확인 신호입니다. **승인자 이름은 모듈 스코프 `ref`에 한 세션
+  동안 기억**해 전체 선택 상태로 미리 채웁니다(바로 덮어쓸 수 있어야 하므로). 인스턴스 스코프에
+  두면 트리에서 행을 옮길 때마다 다시 쳐야 합니다 — 펼친 Work Package마다 인스턴스가 하나씩
+  생기기 때문입니다. **거부된 이름은 기억하지 않습니다**(같은 실패를 되풀이시키게 됩니다).
+  `localStorage`까지는 두지 않았습니다.
 - **대화상자는 `body`로 teleport** 합니다. 표 행이나 스크롤 컨테이너 안에서 렌더하면 `overflow`를
   가진 조상에 걸려 잘립니다(내보내기 메뉴·간트 툴팁이 같은 이유로 같은 방식).
 - **표는 셀을 줄바꿈하지 않고 가로 스크롤로 넘깁니다.** 전역 유틸리티
@@ -589,8 +633,15 @@ WBS의 이점이 사라지고 같은 업무의 세 일정을 눈으로 잇기 �
   화면에서 바뀌고, 그 화면은 RACI 매트릭스가 있는지조차 모릅니다. 대신 `markMembersChanged()`가
   `memberRev`를 올려, 구성원 이름을 보여주는 화면(`raciCacheKeyFor`의 열, `dashboardCacheKeyFor`의
   RACI 위반·차단 카드, `raidCacheKeyFor`의 `ownerName`, `backlogCacheKeyFor`의 `assigneeName`,
-  `sprintCacheKeyFor`의 `assigneeName`·연결된 RAID `ownerName`)를 모두 무효화합니다. 구성원 이름을
-  보여주지 않는 WBS·간트·Progress에는 넣지 않습니다.
+  `sprintCacheKeyFor`의 `assigneeName`·연결된 RAID `ownerName`)를 모두 무효화합니다. **WBS 트리도
+  여기 들어갑니다** — 담당자 열이 구성원 이름을 보여주므로(아래 "WBS 트리의 담당자 열"). 구성원
+  이름을 보여주지 않는 간트·Progress에는 넣지 않습니다.
+- **WBS 트리의 담당자 열은 이 매트릭스를 읽기만 합니다**(`responsible`/`responsibleInherited`).
+  `WbsService`가 같은 `RaciInheritance.resolve`를 불러 `RESPONSIBLE`만 싣습니다 — 두 화면이 다른
+  담당자를 말하면 안 되므로 계산을 복제하지 마세요. 트리에서 배정을 **바꿀 수는 없습니다**(셀이
+  `/raci`로 링크만 합니다). 쓰기 경로가 둘이 되면 `RaciValidator` 규칙을 두 벌 관리하게 됩니다.
+  그래서 **`raciRev`가 필요합니다** — RACI에서 배정을 바꿔도 WBS가 옛 담당자를 계속 보여주면 안
+  되는데, RACI 화면은 WBS 트리가 담당자를 보여주는지조차 모릅니다.
 - **삭제는 DB 연쇄에 의존합니다.** `raci_assignments`의 `member_id`·`wbs_item_id`가
   `ON DELETE CASCADE`라서 구성원이나 WBS 항목을 지우면 배정도 함께 사라집니다. 프로젝트 화면에서
   구성원을 지울 때도 그 배정이 함께 사라진다는 것을 삭제 확인 문구로 알립니다.
@@ -863,8 +914,14 @@ Story·Sprint에 걸려도 원본은 하나로 관리해야 하기 때문입니�
 - **구성원이 바뀌면 `markMembersChanged()`가 `memberRev`를 올립니다** → RACI(열)·대시보드(RACI 위반·
   차단 카드)·RAID(`ownerName`)·Backlog(`assigneeName`)·Sprint(`assigneeName`, 연결된 RAID
   `ownerName`)가 다음 방문에 다시 읽습니다. 구성원은 Step 7부터 프로젝트 화면에서 바뀌므로, 바뀐
-  화면이 이 화면들에 직접 알려줄 방법이 없어 이 리비전이 필요합니다. 구성원 이름을 보여주지 않는
-  WBS·간트·Progress에는 넣지 않습니다.
+  화면이 이 화면들에 직접 알려줄 방법이 없어 이 리비전이 필요합니다. **WBS 트리도 담당자 열이
+  이름을 보여주므로 함께 들어갑니다.** 구성원 이름을 보여주지 않는 간트·Progress에는 넣지 않습니다.
+- **RACI 배정이 바뀌면 `markRaciChanged()`가 `raciRev`를 올립니다** → WBS 트리가 다음 방문에
+  담당자 열을 다시 읽습니다. **`raciCacheKeyFor` 자신에는 넣지 않습니다** — RACI의 모든 변경 API가
+  매트릭스 전체를 반환하므로 그 화면은 이미 최신입니다. 간트·Progress에도 넣지 않습니다(담당자를
+  보여주지 않습니다). 이 리비전이 없으면 RACI에서 담당자를 바꿔도 WBS가 옛 이름을 계속 보여줍니다.
+- **업무 분야(Tag) 마스터 변경에는 별도 리비전을 두지 않습니다** — `markWbsChanged()`로 충분합니다.
+  트리를 다시 읽으면 칩의 이름·색이 따라옵니다.
 - **로컬 날짜가 캐시 키에 들어갑니다** → 탭을 밤새 열어둬도 다음 날 지연 판정이 갱신됩니다. 이 날짜는
   무효화용이며, 화면에 표시하는 기준일은 항상 서버의 `referenceDate`입니다.
 - **`ensureLoaded`는 진행 중 요청을 공유합니다.** 라우트 전환 시 뷰 마운트와 선택 watcher가 같은 tick에
@@ -888,6 +945,8 @@ Story·Sprint에 걸려도 원본은 하나로 관리해야 하기 때문입니�
 | `PUT` | `/api/projects/{projectId}/wbs/{itemId}/move` | 재부모화·재정렬 (`parentId`, `position`) |
 | `DELETE` | `/api/projects/{projectId}/wbs/{itemId}` | WBS 항목 삭제 (하위 포함) |
 | `POST` | `/api/projects/{projectId}/wbs/import` | Excel·CSV 파일로 WBS 항목 일괄 추가 (`multipart/form-data`, `file` + 선택적 `parentId`) |
+| `GET` `POST` | `/api/projects/{projectId}/wbs/tags` | 업무 분야 목록 / 등록 (변경 시 전체 목록 반환) |
+| `PUT` `DELETE` | `/api/projects/{projectId}/wbs/tags/{tagId}` | 분야 수정 / 삭제 (연결만 사라지고 WBS 항목은 남음) |
 | `GET` | `/api/projects/{projectId}/gantt` | 간트 데이터 (막대 + 선후행 + 선후행 위반 + 지연 판정 + 임계 경로) |
 | `POST` | `/api/projects/{projectId}/gantt/dependencies` | 선후행 관계 등록 (`predecessorId`, `successorId`, `lagDays`) |
 | `PUT` | `/api/projects/{projectId}/gantt/dependencies/{dependencyId}` | 선후행 관계 수정 (선행·후행·`lagDays` 모두 변경 가능) |
