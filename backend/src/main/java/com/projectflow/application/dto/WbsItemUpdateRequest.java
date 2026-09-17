@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 
 import java.time.LocalDate;
+import java.util.List;
 
 /**
  * @param nodeType         {@code null} leaves the entry's current kind alone, so a client that does
@@ -19,6 +20,10 @@ import java.time.LocalDate;
  * @param agileRatio       Hybrid's α (0–100). Required for {@code HYBRID}; without it the entry is
  *                         산정 전 rather than given an invented default
  * @param acceptanceStatus formal acceptance, kept apart from progress. {@code null} = 절차 없음
+ * @param tagIds           업무 분야 to attach. <b>{@code null} means "leave them alone"; an empty
+ *                         list means "remove them all".</b> Without that distinction a caller that
+ *                         does not know about the field — an older client, another screen's form —
+ *                         would silently wipe every tag each time it saved (커밋 {@code da96ebe})
  */
 public record WbsItemUpdateRequest(
         @NotBlank String name,
@@ -33,6 +38,7 @@ public record WbsItemUpdateRequest(
         AcceptanceStatus acceptanceStatus,
         LocalDate actualStartDate,
         LocalDate actualEndDate,
-        LocalDate forecastEndDate
+        LocalDate forecastEndDate,
+        List<Long> tagIds
 ) {
 }

@@ -45,12 +45,35 @@ const sprintRev = ref(0)
  * - {@link sprintCacheKeyFor} — each card shows `assigneeName`, and a card with a linked RAID entry
  *   also shows that entry's `ownerName`.
  *
- * Left out on purpose, because their payload types carry no member field at all — `wbsApi.ts`'s
- * `WbsNode`, `ganttApi.ts`'s `GanttTask`/`GanttData` and `progressApi.ts`'s `WorkPackageProgress`
- * have nothing resembling an assignee, owner or member name — so a member edit cannot make them
- * stale: {@link wbsCacheKeyFor}, {@link cacheKeyFor} (Gantt), {@link progressCacheKeyFor}.
+ * {@link wbsCacheKeyFor} used to be on the "left out" list below, and no longer is: since Phase C
+ * the WBS tree carries each row's 담당자 (`WbsNode.responsible`/`responsibleInherited`), which are
+ * member names.
+ *
+ * Left out on purpose, because their payload types carry no member field at all — `ganttApi.ts`'s
+ * `GanttTask`/`GanttData` and `progressApi.ts`'s `WorkPackageProgress` have nothing resembling an
+ * assignee, owner or member name — so a member edit cannot make them stale: {@link cacheKeyFor}
+ * (Gantt), {@link progressCacheKeyFor}.
  */
 const memberRev = ref(0)
+
+/**
+ * RACI assignment changes (assign/unassign).
+ *
+ * New in Phase C, and it exists for one screen: the WBS tree now shows each row's 담당자, which is
+ * the RACI `RESPONSIBLE` letter — computed by the server with the same `RaciInheritance` the matrix
+ * uses. So an assignment made on the RACI screen makes the *WBS tree* stale, and the RACI screen has
+ * no way to tell it: the two views share nothing but this counter.
+ *
+ * Deliberately separate from {@link memberRev}: renaming a member and re-assigning a letter are
+ * different edits, and folding them together would make every rename refetch payloads that only
+ * carry assignments (and vice versa).
+ *
+ * Left out of {@link raciCacheKeyFor} on purpose — the RACI screen is where these changes are made,
+ * and every RACI mutation returns the whole rebuilt matrix, so that view is already up to date. Also
+ * left out of {@link cacheKeyFor} (Gantt) and {@link progressCacheKeyFor}, which show no 담당자 at
+ * all.
+ */
+const raciRev = ref(0)
 
 export function wbsRevision(): number {
   return revision.value
@@ -72,6 +95,16 @@ export function markMembersChanged() {
 }
 
 /**
+ * Call after any RACI assignment change, so the WBS tree refetches its 담당자 column.
+ *
+ * The RACI screen itself does not need this (it applies the matrix each mutation returns) — it calls
+ * it *for the WBS tree*, which is the only other screen that renders the `RESPONSIBLE` letter.
+ */
+export function markRaciChanged() {
+  raciRev.value += 1
+}
+
+/**
  * Identity of a cached Gantt response: same key means the cached data is still good.
  *
  * Since Step 6 the Gantt carries Sprint lanes and the common progress figure, so a Backlog or
@@ -85,9 +118,18 @@ export function cacheKeyFor(projectId: number): string {
 /**
  * The WBS tree keys on the Backlog revision as well, since every Work Package row carries a
  * linked-item count that a Backlog edit changes.
+ *
+ * Since Phase C it also keys on the member *and* RACI revisions, because each row now shows its
+ * 담당자. The two answer different questions and both have to be here: `memberRev` covers "the name
+ * changed" (renamed or removed on the Projects screen), `raciRev` covers "who it is changed" (a
+ * letter assigned or cleared on the RACI screen). Neither screen can tell this one directly.
+ *
+ * 업무 분야 태그 (Phase D) needs no revision of its own — a tag rename or recolour is applied
+ * through `useWbsTags`, which calls {@link markWbsChanged}, and re-reading the tree brings the chip
+ * names and colours with it.
  */
 export function wbsCacheKeyFor(projectId: number): string {
-  return `${projectId}:${revision.value}:${backlogRev.value}:${localToday()}`
+  return `${projectId}:${revision.value}:${backlogRev.value}:${memberRev.value}:${raciRev.value}:${localToday()}`
 }
 
 /**
@@ -135,7 +177,10 @@ export function progressCacheKeyFor(projectId: number): string {
  * from the WBS tree, each row now carries its Backlog 담당자 (Step 6), and nothing in it is judged
  * against "today". Assignment changes (`assign`/`unassign`) are made through the RACI screen itself,
  * which applies the response it gets back, so they need no invalidation — the same reasoning that
- * keeps dependency edits out of {@link markWbsChanged}. Members are the matrix's *columns*, though,
+ * keeps dependency edits out of {@link markWbsChanged}. That is why {@link markRaciChanged} exists
+ * but does not appear here: it is bumped *for the WBS tree*, not for this screen, and adding it here
+ * would make every letter toggle refetch a matrix the server just handed back. Members are the
+ * matrix's *columns*, though,
  * and since Step 7 they are added/edited/removed from the Projects screen instead — a screen that
  * has no idea the RACI matrix exists, so it cannot apply anything back here. Without this revision, a
  * newly added member would never appear as a column until some other edit happened to bump one of

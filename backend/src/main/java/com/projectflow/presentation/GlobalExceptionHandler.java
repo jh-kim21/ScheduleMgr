@@ -15,12 +15,14 @@ import com.projectflow.domain.InvalidRaciAssignmentException;
 import com.projectflow.domain.InvalidRaidLinkException;
 import com.projectflow.domain.InvalidSprintException;
 import com.projectflow.domain.InvalidWbsHierarchyException;
+import com.projectflow.domain.InvalidWbsTagException;
 import com.projectflow.domain.ProjectMemberNotFoundException;
 import com.projectflow.domain.ProjectNotFoundException;
 import com.projectflow.domain.RaidItemNotFoundException;
 import com.projectflow.domain.SprintNotFoundException;
 import com.projectflow.domain.WbsImportException;
 import com.projectflow.domain.WbsItemNotFoundException;
+import com.projectflow.domain.WbsTagNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -48,6 +50,7 @@ public class GlobalExceptionHandler {
             BacklogItemNotFoundException.class,
             SprintNotFoundException.class,
             CommitNotFoundException.class,
+            WbsTagNotFoundException.class,
     })
     public ResponseEntity<Map<String, Object>> handleNotFound(RuntimeException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorBody(HttpStatus.NOT_FOUND, ex.getMessage()));
@@ -79,6 +82,7 @@ public class GlobalExceptionHandler {
             InvalidRaidLinkException.class,
             InvalidSprintException.class,
             WbsImportException.class,
+            InvalidWbsTagException.class,
     })
     public ResponseEntity<Map<String, Object>> handleInvalidStructure(RuntimeException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorBody(HttpStatus.BAD_REQUEST, ex.getMessage()));

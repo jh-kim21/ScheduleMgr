@@ -309,7 +309,7 @@ class ProjectCommitServiceTest {
                 new ExportedProject(PROJECT_ID, "커밋 테스트", null, ProjectStatus.IN_PROGRESS,
                         LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31), null, null),
                 List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of(), List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(), List.of(), List.of());
     }
 
     private ProgressResponse emptyProgress() {

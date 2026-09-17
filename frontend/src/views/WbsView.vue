@@ -7,6 +7,7 @@ import WbsForm from '../features/wbs/WbsForm.vue'
 import WbsImportForm from '../features/wbs/WbsImportForm.vue'
 import WbsTree from '../features/wbs/WbsTree.vue'
 import { useWbs } from '../features/wbs/useWbs'
+import { useWbsTags } from '../features/wbs/useWbsTags'
 import { useProgress } from '../features/progress/useProgress'
 import { useProjects } from '../features/projects/useProjects'
 import { ensureSelection, selectedProjectId } from '../stores/projectSelection'
@@ -55,6 +56,12 @@ const workPackages = computed<Record<number, WorkPackageProgress>>(() => {
   return byId
 })
 
+/**
+ * 고를 수 있는 업무 분야. 마스터는 프로젝트 화면에서 관리하므로 이 화면은 읽기만 하지만, 폼이
+ * 고를 목록이 필요하다 — 트리의 칩은 노드에 실려 오므로 이것은 폼 전용이다.
+ */
+const { tags: availableTags, ensureLoaded: ensureTagsLoaded } = useWbsTags()
+
 const editing = ref<WbsNode | null>(null)
 const parentForNew = ref<WbsNode | null>(null)
 /** 폼은 대화상자로 띄운다 — 이 화면의 주된 행위는 트리를 읽는 것이다. */
@@ -73,6 +80,9 @@ watch(
     if (id !== null) {
       ensureLoaded(id)
       ensureProgressLoaded(id)
+      // 커밋 조회 중에는 부르지 않는다 — 마스터 목록은 폼(고르는 쪽)에만 필요한데 그 폼이 열리지
+      // 않고, 이 엔드포인트는 커밋이 아니라 지금의 태그를 돌려준다.
+      if (!readOnly.value) ensureTagsLoaded(id)
     }
   },
   { immediate: true },
@@ -259,6 +269,7 @@ async function handleMove(itemId: number, input: WbsMoveInput) {
         :editing="editing"
         :parent="parentForNew"
         :siblings="siblings"
+        :available-tags="availableTags"
         :error="error"
         @submit="handleSubmit"
         @cancel="closeForm"

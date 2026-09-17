@@ -225,7 +225,8 @@ public class ProjectCommitService {
                 original.sprintItems(),
                 original.checkpoints(),
                 original.baselines(),
-                original.snapshots());
+                original.snapshots(),
+                original.tags());
         return importService.importProject(toImport);
     }
 

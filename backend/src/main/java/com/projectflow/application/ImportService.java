@@ -13,6 +13,7 @@ import com.projectflow.application.dto.ProjectExportResponse.ExportedRaidLink;
 import com.projectflow.application.dto.ProjectExportResponse.ExportedSprint;
 import com.projectflow.application.dto.ProjectExportResponse.ExportedSnapshot;
 import com.projectflow.application.dto.ProjectExportResponse.ExportedSprintItem;
+import com.projectflow.application.dto.ProjectExportResponse.ExportedTag;
 import com.projectflow.application.dto.ProjectExportResponse.ExportedWbsItem;
 import com.projectflow.application.dto.ProjectResponse;
 import com.projectflow.domain.AcceptanceCheckpoint;
@@ -46,6 +47,10 @@ import com.projectflow.domain.WbsDependency;
 import com.projectflow.domain.WbsDependencyRepository;
 import com.projectflow.domain.WbsItem;
 import com.projectflow.domain.WbsItemRepository;
+import com.projectflow.domain.WbsItemTag;
+import com.projectflow.domain.WbsItemTagRepository;
+import com.projectflow.domain.WbsTag;
+import com.projectflow.domain.WbsTagRepository;
 import com.projectflow.domain.WbsNodeType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -92,9 +97,10 @@ public class ImportService {
      * migration did — child presence decides the kind, and the mode stays 미지정. A file below
      * version 3 simply has no Backlog section, one below 4 has no Sprints, and one below 5 has no
      * aggregation basis — a missing section is the same as an empty one, and a project with no
-     * weights or checkpoints reads as 산정 전, which is the honest answer for it.
+     * weights or checkpoints reads as 산정 전, which is the honest answer for it. One below 7 has
+     * no 업무 분야 section, which reads as a project that has not labelled anything yet.
      */
-    private static final int SUPPORTED_FORMAT_VERSION = 6;
+    private static final int SUPPORTED_FORMAT_VERSION = 7;
 
     private final ProjectRepository projectRepository;
     private final ProjectMemberRepository memberRepository;
@@ -109,6 +115,8 @@ public class ImportService {
     private final AcceptanceCheckpointRepository checkpointRepository;
     private final BaselineRepository baselineRepository;
     private final ProgressSnapshotRepository snapshotRepository;
+    private final WbsTagRepository tagRepository;
+    private final WbsItemTagRepository itemTagRepository;
 
     public ImportService(ProjectRepository projectRepository,
                           ProjectMemberRepository memberRepository,
@@ -122,7 +130,9 @@ public class ImportService {
                           SprintItemRepository sprintItemRepository,
                           AcceptanceCheckpointRepository checkpointRepository,
                           BaselineRepository baselineRepository,
-                          ProgressSnapshotRepository snapshotRepository) {
+                          ProgressSnapshotRepository snapshotRepository,
+                          WbsTagRepository tagRepository,
+                          WbsItemTagRepository itemTagRepository) {
         this.projectRepository = projectRepository;
         this.memberRepository = memberRepository;
         this.wbsItemRepository = wbsItemRepository;
@@ -136,6 +146,8 @@ public class ImportService {
         this.checkpointRepository = checkpointRepository;
         this.baselineRepository = baselineRepository;
         this.snapshotRepository = snapshotRepository;
+        this.tagRepository = tagRepository;
+        this.itemTagRepository = itemTagRepository;
     }
 
     @Transactional
@@ -153,7 +165,10 @@ public class ImportService {
 
         // 손으로 편집한 파일에서 절이 빠져 있을 수 있어 null 안전 접근자를 쓴다.
         Map<Long, Long> memberIds = insertMembers(projectId, members(file));
+        // 분야 먼저 — WBS 행의 tagIds가 새 id를 가리켜야 한다.
+        Map<Long, Long> tagIds = insertTags(projectId, tags(file));
         Map<Long, Long> wbsIds = insertWbsItems(projectId, wbsItems(file));
+        insertItemTags(wbsItems(file), wbsIds, tagIds);
         insertDependencies(projectId, dependencies(file), wbsIds);
         insertRaciAssignments(projectId, raciAssignments(file), wbsIds, memberIds);
         Map<Long, Long> raidIds = insertRaidItems(projectId, raidItems(file), memberIds);
@@ -187,6 +202,18 @@ public class ImportService {
 
         Set<Long> memberIds = idsOf(members(file), ExportedMember::id, "구성원");
         Set<Long> wbsIds = idsOf(wbsItems(file), ExportedWbsItem::id, "WBS 항목");
+        Set<Long> tagIds = idsOf(tags(file), ExportedTag::id, "분야");
+
+        Set<String> tagNames = new HashSet<>();
+        for (ExportedTag tag : tags(file)) {
+            if (tag.name() == null || tag.name().isBlank()) {
+                throw new InvalidImportException("이름이 비어 있는 분야가 있습니다: id=" + tag.id());
+            }
+            // wbs_tags(project_id, name)은 UNIQUE다 — 삽입에서 500으로 터지기 전에 잡는다.
+            if (!tagNames.add(tag.name().strip().toLowerCase())) {
+                throw new InvalidImportException("같은 이름의 분야가 두 번 들어 있습니다: " + tag.name());
+            }
+        }
 
         for (ExportedWbsItem item : wbsItems(file)) {
             if (item.name() == null || item.name().isBlank()) {
@@ -199,6 +226,14 @@ public class ImportService {
             }
             if (Objects.equals(item.parentId(), item.id())) {
                 throw new InvalidImportException("자기 자신을 상위로 가리키는 WBS 항목이 있습니다: id=" + item.id());
+            }
+            Set<String> seenTags = new HashSet<>();
+            for (Long tagId : tagIdsOf(item)) {
+                requireKnown(tagIds, tagId, "WBS 항목 '%s'의 분야".formatted(item.name()));
+                if (!seenTags.add(String.valueOf(tagId))) {
+                    throw new InvalidImportException(
+                            "WBS 항목 '%s'에 같은 분야가 두 번 있습니다.".formatted(item.name()));
+                }
             }
         }
         // 순환 상위 참조는 트리를 만들 수 없게 하므로 삽입 전에 잡는다.
@@ -531,6 +566,41 @@ public class ImportService {
     }
 
     /**
+     * The 분야 master list, remapped like every other id. Names travel as they are: they are
+     * unique inside the file, and the new project is empty, so nothing can collide.
+     */
+    private Map<Long, Long> insertTags(Long projectId, List<ExportedTag> tags) {
+        Map<Long, Long> idMap = new HashMap<>();
+        for (ExportedTag tag : tags) {
+            WbsTag saved = tagRepository.save(new WbsTag(
+                    projectId, tag.name().strip(), tag.color(), tag.sortOrder()));
+            idMap.put(tag.id(), saved.getId());
+        }
+        return idMap;
+    }
+
+    /**
+     * Links each entry to its 분야 with both sides remapped.
+     *
+     * <p>Tags on an entry the importer resolved to {@code SUMMARY} are kept rather than dropped:
+     * conversion retains them in the live model too, so refusing them here would quietly lose data
+     * the source install considers normal.
+     */
+    private void insertItemTags(List<ExportedWbsItem> items, Map<Long, Long> wbsIds,
+                                 Map<Long, Long> tagIds) {
+        List<WbsItemTag> links = new ArrayList<>();
+        for (ExportedWbsItem item : items) {
+            Long newItemId = wbsIds.get(item.id());
+            for (Long tagId : tagIdsOf(item)) {
+                links.add(new WbsItemTag(newItemId, tagIds.get(tagId)));
+            }
+        }
+        if (!links.isEmpty()) {
+            itemTagRepository.saveAll(links);
+        }
+    }
+
+    /**
      * Parents before children, because a child's {@code parentId} has to be a new id that already
      * exists. File order is not relied on — an exported file happens to be in tree order, but a
      * hand-edited one need not be.
@@ -706,6 +776,15 @@ public class ImportService {
 
     private List<ExportedSnapshot> snapshots(ProjectExportResponse file) {
         return file.snapshots() == null ? List.of() : file.snapshots();
+    }
+
+    /** Absent in files below formatVersion 7 — a project that never labelled anything. */
+    private List<ExportedTag> tags(ProjectExportResponse file) {
+        return file.tags() == null ? List.of() : file.tags();
+    }
+
+    private List<Long> tagIdsOf(ExportedWbsItem item) {
+        return item.tagIds() == null ? List.of() : item.tagIds();
     }
 
     /**

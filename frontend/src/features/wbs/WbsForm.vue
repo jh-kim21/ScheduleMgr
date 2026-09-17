@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue'
 import ModalDialog from '../../components/ModalDialog.vue'
+import TagChip from './TagChip.vue'
 import type { WbsItemInput, WbsNode } from '../../api/wbsApi'
+import type { WbsTag } from '../../api/wbsTagApi'
 import {
   ACCEPTANCE_STATUS_LABELS,
   ACCEPTANCE_STATUS_ORDER,
@@ -20,6 +22,11 @@ const props = defineProps<{
   parent: WbsNode | null
   /** 가중치 제안의 근거가 되는 형제 항목들. 항상 호출부가 계산해 넘긴다(빈 배열도 명시적으로). */
   siblings: WbsNode[]
+  /**
+   * 이 프로젝트에 등록된 업무 분야 전체 — 고를 수 있는 값의 목록이다. 마스터는 프로젝트 화면에서
+   * 관리하므로 여기서는 새로 만들 수 없고, 비어 있으면 그 사실을 안내한다.
+   */
+  availableTags: WbsTag[]
   /** 저장이 거부된 이유. 대화상자 안에 보여야 사용자가 볼 수 있다. */
   error?: string | null
 }>()
@@ -44,6 +51,9 @@ const empty: WbsItemInput = {
   actualStartDate: null,
   actualEndDate: null,
   forecastEndDate: null,
+  // 폼은 언제나 배열을 명시적으로 보낸다 — `null`(= 변경 없음)은 이 필드를 모르는 호출자를 위한
+  // 값이고, 폼이 보여 준 집합이 곧 저장될 집합이다.
+  tagIds: [],
 }
 
 const form = reactive<WbsItemInput>({ ...empty })
@@ -68,6 +78,18 @@ const retainedMode = computed(() =>
 
 /** 하위가 있는 항목을 Work Package로 되돌릴 수는 없다 — 서버도 거부한다. */
 const canBeWorkPackage = computed(() => (props.editing?.children.length ?? 0) === 0)
+
+/**
+ * 최상위(부모가 없는) 항목인지. 이 항목에서만 가중치 입력을 감춘다(사용자 결정) — 최상위 형제는
+ * 프로젝트의 큰 단계들이라 서로의 비중을 숫자로 적을 근거가 가장 희박하고, 여기서 한 칸만 채우면
+ * 프로젝트 전체 진척이 그 한 항목으로 쏠린다. 하위 레벨에서는 그대로 입력받는다.
+ *
+ * 수정이면 그 항목의 `parentId`, 추가면 `parent` prop을 본다 — 두 경로 모두 "부모가 없는가"라는
+ * 같은 질문에 답해야 한다.
+ */
+const isRoot = computed(() =>
+  props.editing ? props.editing.parentId === null : props.parent === null,
+)
 
 /**
  * `form`의 날짜를 보므로 사용자가 일정을 입력하는 동안 제안값이 따라 움직인다 — placeholder로만
@@ -97,6 +119,27 @@ const weightPlaceholder = computed(() =>
  * 조건을 두 곳이 다르게 읽게 된다. 중복처럼 보여도 지우면 안 된다.
  */
 const weightEmpty = computed(() => form.weight === null || (form.weight as unknown) === '')
+
+/**
+ * 분야는 실제 작업의 속성이라 Summary에서는 바꿀 수 없다 — 실행 방식과 같은 규칙이고, 서버도
+ * 거부한다. 지우지 않고 보관하므로 폼은 보관값을 그대로 되돌려 보낸다(값이 같으면 통과한다).
+ */
+const tagsDisabled = computed(() => form.nodeType === 'SUMMARY')
+
+const selectedTagIds = computed(() => new Set(form.tagIds ?? []))
+
+/**
+ * 태그를 붙이거나 뗀다. **배열을 제자리에서 고치지 않고 새로 만든다** — `empty`는 모듈 스코프
+ * 상수이고 `Object.assign(form, empty)`가 그 배열을 참조로 복사하므로, 제자리에서 `push`하면
+ * 폼을 한 번 초기화한 뒤부터 `empty` 자신이 오염돼 다음 새 항목이 남의 태그를 달고 열린다.
+ */
+function toggleTag(tagId: number) {
+  if (tagsDisabled.value) return
+  const current = form.tagIds ?? []
+  form.tagIds = current.includes(tagId)
+    ? current.filter((id) => id !== tagId)
+    : [...current, tagId]
+}
 
 const title = computed(() => {
   if (props.editing) return `항목 수정 — ${props.editing.code} ${props.editing.name}`
@@ -180,7 +223,12 @@ function onSubmit() {
       </div>
 
       <div class="row">
-        <label>
+        <!--
+          최상위 항목에서는 가중치를 묻지 않는다(사용자 결정). 입력만 감출 뿐 `form.weight`는
+          그대로 두고 저장 시 함께 보낸다 — 여기서 payload에서 빼면 기존에 값이 있던 최상위
+          항목이 저장하는 순간 null로 덮인다(커밋 `da96ebe`와 같은 종류의 사고).
+        -->
+        <label v-if="!isRoot">
           가중치
           <input v-model.number="form.weight" type="number" min="0" :placeholder="weightPlaceholder" />
         </label>
@@ -221,20 +269,69 @@ function onSubmit() {
         </label>
       </div>
 
-      <p class="hint muted">
-        가중치를 비워 두면 이 가지는 예전처럼 하위 평균으로 집계됩니다. 0은 "진척에 기여하지 않음"이라
-        미입력과 다릅니다.
+      <!--
+        업무 분야. 마스터는 프로젝트 화면(행의 `분야` 버튼)에서 관리하고 여기서는 고르기만 한다 —
+        구성원을 RACI가 아니라 프로젝트 화면에서 관리하는 것과 같은 이유다(프로젝트 스코프 개념이
+        WBS에 종속될 이유가 없다).
+      -->
+      <fieldset class="tag-picker">
+        <legend>분야</legend>
+        <p v-if="availableTags.length === 0" class="tag-empty">
+          등록된 분야가 없습니다. 프로젝트 화면의 <strong>분야</strong> 버튼에서 먼저 만드세요.
+        </p>
+        <template v-else>
+          <button
+            v-for="tag in availableTags"
+            :key="tag.id"
+            type="button"
+            class="tag-toggle"
+            :disabled="tagsDisabled"
+            :aria-pressed="selectedTagIds.has(tag.id)"
+            @click="toggleTag(tag.id)"
+          >
+            <TagChip :tag="tag" :muted="!selectedTagIds.has(tag.id)" :selected="selectedTagIds.has(tag.id)" />
+          </button>
+        </template>
+      </fieldset>
+
+      <p v-if="tagsDisabled" class="hint">
+        Summary 항목은 분야를 갖지 않습니다 — 분야는 실제 작업의 속성이고, 상위 행은 하위의 분야를
+        모아서 보여 줍니다.
+        <template v-if="(form.tagIds?.length ?? 0) > 0">
+          전환 전에 붙어 있던 분야({{ form.tagIds?.length }}개)는 지우지 않고 보관 중이며, 구분을 Work
+          Package로 되돌리면 다시 적용됩니다.
+        </template>
       </p>
 
-      <p v-if="weightSuggestion && weightEmpty" class="hint muted">
+      <!--
+        가중치를 비워 두면 서버가 1로 계산한다 — 형제에서 빠지는 것이 아니다. 예전 문구("하위
+        평균으로 집계됩니다")는 형제 중 하나라도 가중치가 있으면 거짓이었고, 그 경우 이 항목은
+        평균에서 아예 제외됐다.
+      -->
+      <p v-if="!isRoot" class="hint muted">
+        가중치를 비워 두면 1로 계산됩니다. 형제 중 누구도 적지 않았다면 이 가지는 예전처럼 하위
+        항목 개수로 가중됩니다. 0은 "진척에 기여하지 않음"이라 미입력과 다릅니다.
+      </p>
+
+      <p v-if="!isRoot && weightSuggestion && weightEmpty" class="hint muted">
         <template v-if="weightSuggestion.basis === 'DURATION'">
           형제 항목의 가중치와 기간으로 보면 {{ weightSuggestion.value }} 정도입니다. 제안일 뿐이라
-          입력하지 않으면 저장되지 않습니다.
+          입력하지 않으면 1로 계산됩니다.
         </template>
         <template v-else>
           형제 항목의 평균 가중치는 {{ weightSuggestion.value }}입니다. 제안일 뿐이라 입력하지 않으면
-          저장되지 않습니다.
+          1로 계산됩니다.
         </template>
+      </p>
+
+      <!--
+        입력칸은 감췄지만 값은 보관한다(위 주석) — 저장된 값이 있는데 화면 어디에도 보이지 않으면
+        최상위 형제 사이의 집계가 왜 그 숫자인지 설명할 자리가 사라진다. 실행 방식의 "보관 중"
+        안내와 같은 태도다.
+      -->
+      <p v-if="isRoot && form.weight !== null && (form.weight as unknown) !== ''" class="hint muted">
+        이 항목에 저장된 가중치({{ form.weight }})는 지우지 않고 그대로 보관하며 집계에도 계속
+        쓰입니다. 최상위 항목의 가중치는 이 폼에서 다루지 않으므로 저장해도 값은 바뀌지 않습니다.
       </p>
 
       <p class="hint muted">
@@ -307,6 +404,47 @@ select:disabled {
 .row {
   display: flex;
   gap: 0.75rem;
+}
+
+.tag-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  padding: 0.5rem;
+  margin: 0;
+}
+
+.tag-picker legend {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  padding: 0 0.25rem;
+}
+
+.tag-empty {
+  font-size: 0.78rem;
+  color: var(--text-faint);
+}
+
+/* 버튼 크롬을 지우고 칩 자체를 누르게 한다 — 칩 옆에 체크박스를 두면 줄이 두 배가 된다. */
+.tag-toggle {
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.tag-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.tag-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 999px;
 }
 
 .hint.muted {

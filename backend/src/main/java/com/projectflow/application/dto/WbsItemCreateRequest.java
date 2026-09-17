@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 
 import java.time.LocalDate;
+import java.util.List;
 
 /**
  * @param parentId         parent entry id, or {@code null} to create a root-level entry
@@ -20,6 +21,10 @@ import java.time.LocalDate;
  *                         Work Package created straight into HYBRID does not need a follow-up edit
  *                         just to stop reading as 산정 전
  * @param acceptanceStatus formal acceptance, kept apart from progress. {@code null} = 절차 없음
+ * @param tagIds           업무 분야 to attach. <b>{@code null} means "leave them alone"; an empty
+ *                         list means "remove them all".</b> Without that distinction a caller that
+ *                         does not know about the field — an older client, another screen's form —
+ *                         would silently wipe every tag each time it saved (커밋 {@code da96ebe})
  */
 public record WbsItemCreateRequest(
         Long parentId,
@@ -35,6 +40,7 @@ public record WbsItemCreateRequest(
         AcceptanceStatus acceptanceStatus,
         LocalDate actualStartDate,
         LocalDate actualEndDate,
-        LocalDate forecastEndDate
+        LocalDate forecastEndDate,
+        List<Long> tagIds
 ) {
 }

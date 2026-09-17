@@ -9,6 +9,25 @@ import type {
 import { http } from './http'
 
 /**
+ * A person on a WBS row, as the tree carries them. Just `(memberId, name)`: the tree renders 담당자
+ * read-only and links to `/raci` to change them, so it never needs an assignment id.
+ */
+export interface MemberRef {
+  memberId: number
+  name: string
+}
+
+/**
+ * A 업무 분야 tag. `color` is optional — when it is null the screen picks a palette slot from the
+ * name (`tagColor.ts`), never at random, so the same tag keeps the same colour on every repaint.
+ */
+export interface TagRef {
+  id: number
+  name: string
+  color: string | null
+}
+
+/**
  * A WBS tree node. `code`, `level`, `summary`, `executionModeSummary`, the delay fields and — for
  * summary nodes — `startDate`, `endDate` and `progress` are derived by the server from tree
  * position, children and the reference date, so the client renders them as-is.
@@ -58,6 +77,28 @@ export interface WbsNode extends DelayInfo {
   actualStartDate?: string | null
   actualEndDate?: string | null
   forecastEndDate?: string | null
+  /**
+   * 담당자 — the RACI `RESPONSIBLE` letter, computed server-side with the same `RaciInheritance` the
+   * matrix uses so the two screens cannot name different people. Split in two the way a RACI cell
+   * splits `roles`/`inherited`: an inherited name is declared on an ancestor and cannot be removed
+   * from this row. A member appears in at most one of the lists.
+   *
+   * Empty arrays rather than null when nobody is assigned. Code that reads them still falls back to
+   * `[]`, because a commit taken before Phase C replays a stored payload that has no such field.
+   */
+  responsible: MemberRef[]
+  responsibleInherited: MemberRef[]
+  /**
+   * 업무 분야 — the tags attached to this row. Tags belong on real work, so only a Work Package
+   * normally carries them; a Summary may still hold a set retained from before it was converted
+   * (the server keeps it rather than clearing it, exactly like `executionMode`).
+   */
+  tags: TagRef[]
+  /**
+   * The union of the tags below this row (grandchildren included), or `null` when it has no
+   * children — the same rule as `executionModeSummary`. A row's own retained tags are not in it.
+   */
+  tagSummary: TagRef[] | null
   children: WbsNode[]
 }
 
@@ -94,6 +135,18 @@ export interface WbsItemInput {
   actualStartDate: string | null
   actualEndDate: string | null
   forecastEndDate: string | null
+  /**
+   * 업무 분야 태그의 전체 집합.
+   *
+   * **`null` = 변경 없음, `[]` = 전부 해제.** 이 구분이 있어야 태그를 모르는 호출자(가져오기,
+   * 구형 클라이언트, 다른 화면)가 항목을 저장해도 태그가 조용히 지워지지 않는다 — 커밋
+   * `da96ebe`(실적/예상 종료일이 저장마다 사라지던 결함)와 같은 종류의 사고다.
+   *
+   * **`WbsForm`은 항상 배열을 명시적으로 보낸다** — 폼이 화면에 보여 준 집합이 곧 저장될 집합이고,
+   * "변경 없음"으로 보낼 이유가 없다. Summary 항목은 서버가 변경을 거부하므로 보관값을 그대로
+   * 되돌려 보낸다(실행 방식과 같다).
+   */
+  tagIds: number[] | null
 }
 
 export interface WbsMoveInput {

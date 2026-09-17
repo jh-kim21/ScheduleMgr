@@ -4,7 +4,10 @@ import { RouterLink } from 'vue-router'
 import type { WbsMoveInput, WbsNode } from '../../api/wbsApi'
 import type { WorkPackageProgress } from '../../api/progressApi'
 import CheckpointList from '../progress/CheckpointList.vue'
+import TagChip from './TagChip.vue'
 import { approvalBadge, supportsCheckpoints } from './checkpointRow'
+import { responsibleNames, responsibleTitle, type ResponsibleName } from './responsibleCell'
+import { tagCell, type TagCell } from './tagCell'
 import { backlogSummaryText } from '../../shared/backlog'
 import { delayBadge, delayDescription, needsAttention } from '../../shared/delay'
 import { executionModeLabel, executionModeSummaryText } from '../../shared/executionMode'
@@ -53,6 +56,43 @@ const emit = defineEmits<{
 
 const collapsed = ref(new Set<number>())
 const rows = computed(() => flattenTree(props.tree, collapsed.value))
+
+/**
+ * 담당자·분야 두 열의 판정을 보이는 행마다 한 번씩만 계산해 둔다.
+ *
+ * 템플릿에서 `responsibleNames(row.node)`를 직접 부르면 한 행에서만 서너 번(길이 확인 · `v-for` ·
+ * `title`) 배열을 새로 만들고, 그 값이 매번 새 참조라 렌더 캐시도 듣지 않는다. 여기서 한 번 만들어
+ * 맵으로 나눠 준다.
+ */
+interface RowCells {
+  responsible: ResponsibleName[]
+  /** 셀 전체의 `title`. 이름이 없으면 null이라 `title` 속성 자체가 붙지 않는다. */
+  responsibleHint: string | null
+  tags: TagCell
+}
+
+const EMPTY_CELLS: RowCells = {
+  responsible: [],
+  responsibleHint: null,
+  tags: { chips: [], rolledUp: false, retained: [] },
+}
+
+const cellsByRow = computed(() => {
+  const map = new Map<number, RowCells>()
+  for (const row of rows.value) {
+    const responsible = responsibleNames(row.node)
+    map.set(row.node.id, {
+      responsible,
+      responsibleHint: responsibleTitle(responsible),
+      tags: tagCell(row.node),
+    })
+  }
+  return map
+})
+
+function cellsFor(node: WbsNode): RowCells {
+  return cellsByRow.value.get(node.id) ?? EMPTY_CELLS
+}
 
 /**
  * Which Work Packages have their checkpoints expanded — deliberately its own `Set`, not folded
@@ -412,6 +452,8 @@ function rowClass(row: WbsRow) {
             <th class="backlog">연결 Backlog</th>
             <th class="progress">진척</th>
             <th class="checkpoint">체크포인트</th>
+            <th class="owner">담당자</th>
+            <th class="tags">분야</th>
             <th></th>
           </tr>
         </thead>
@@ -521,7 +563,7 @@ function rowClass(row: WbsRow) {
                 v-if="row.node.progressBasis && row.node.progressBasis !== 'MANUAL'"
                 class="basis"
               >{{ PROGRESS_BASIS_LABELS[row.node.progressBasis] }}</span>
-              <span v-if="row.node.progressIncomplete" class="incomplete" title="일부 하위가 산정 전이거나 가중치가 없습니다.">불완전</span>
+              <span v-if="row.node.progressIncomplete" class="incomplete" title="일부 하위가 아직 산정 전입니다.">불완전</span>
               <span v-if="row.node.acceptancePending" class="pending">
                 {{ ACCEPTANCE_STATUS_LABELS.PENDING }}
               </span>
@@ -542,6 +584,57 @@ function rowClass(row: WbsRow) {
                 @click="toggleCheckpoints(row.node)"
               >{{ checkpointBadge(row.node.id) }}</button>
               <span v-else class="none">-</span>
+            </td>
+            <!--
+              담당자는 RACI의 Responsible을 그대로 읽는다 — 새 컬럼이 아니라 같은 사실이다. 여기서
+              바꾸지 않는 것이 의도이고(쓰기 경로가 둘이면 RaciValidator 규칙을 두 벌 관리하게 된다),
+              셀 전체를 RACI로 가는 링크로 만들어 그 동선을 알린다.
+            -->
+            <td class="owner">
+              <RouterLink
+                v-if="cellsFor(row.node).responsible.length > 0"
+                to="/raci"
+                class="who-link cell-clip"
+                :title="cellsFor(row.node).responsibleHint ?? undefined"
+              >
+                <template
+                  v-for="(who, index) in cellsFor(row.node).responsible"
+                  :key="who.memberId"
+                ><span v-if="index > 0" class="sep">, </span><span
+                  class="who"
+                  :class="{ inherited: who.inherited }"
+                  :title="who.inherited ? '상위 단계에서 물려받음' : undefined"
+                >{{ who.name }}</span></template>
+              </RouterLink>
+              <span v-else class="none">-</span>
+            </td>
+            <!--
+              분야(태그). 실행 방식 열과 같은 규칙이다 — 자식이 있으면 자기 값 대신 하위 요약을
+              보여주고, 전환 전부터 들고 있던 자기 태그는 "보관"으로만 알린다.
+            -->
+            <td class="tags">
+              <span
+                v-if="cellsFor(row.node).tags.chips.length > 0"
+                class="chips cell-clip"
+                :title="
+                  cellsFor(row.node).tags.rolledUp
+                    ? `하위 항목들의 분야입니다 — ${cellsFor(row.node).tags.chips.map((tag) => tag.name).join(', ')}`
+                    : cellsFor(row.node).tags.chips.map((tag) => tag.name).join(', ')
+                "
+              >
+                <TagChip
+                  v-for="tag in cellsFor(row.node).tags.chips"
+                  :key="tag.id"
+                  :tag="tag"
+                  :muted="cellsFor(row.node).tags.rolledUp"
+                />
+              </span>
+              <span v-else class="none">-</span>
+              <span
+                v-if="cellsFor(row.node).tags.retained.length > 0"
+                class="retained"
+                title="구분을 Work Package로 되돌리면 다시 적용됩니다."
+              >보관 {{ cellsFor(row.node).tags.retained.length }}</span>
             </td>
             <td class="actions">
               <!--
@@ -585,7 +678,8 @@ function rowClass(row: WbsRow) {
             v-if="checkpointsOpen.has(row.node.id) && projectId != null"
             class="checkpoint-row"
           >
-            <td colspan="9">
+            <!-- 열 수와 반드시 같아야 한다 (Phase C·D로 9 → 11). 어긋나면 이 서랍이 표를 깨뜨린다. -->
+            <td colspan="11">
               <CheckpointList
                 :project-id="projectId"
                 :wbs-item-id="row.node.id"
@@ -854,6 +948,68 @@ tbody:focus-visible {
 }
 
 .checkpoint .none {
+  color: var(--text-faint);
+}
+
+.owner {
+  width: 11rem;
+  font-size: 0.82rem;
+}
+
+/*
+ * 전역 .cell-clip 은 22rem 까지 허용한다 — 설명 칸 기준이라 이 열에는 너무 넓다. 길이만 좁히고
+ * 줄임표 처리는 그대로 쓴다(색·글꼴을 덮는 것이 아니므로 토큰 규칙과 무관하다).
+ */
+.owner .cell-clip,
+.tags .cell-clip {
+  max-width: 11rem;
+}
+
+.owner .who-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.owner .who-link:hover .who {
+  text-decoration: underline;
+}
+
+/*
+ * 물려받은 담당자. 이 행에서 지울 수 없고 상위 행을 고쳐야 하는 값이라, 자기 담당자와 같은 무게로
+ * 읽히면 안 된다 — RACI 셀이 상속 글자를 따로 싣는 것과 같은 이유다.
+ */
+.owner .inherited {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.owner .none {
+  color: var(--text-faint);
+}
+
+.tags {
+  width: 12rem;
+}
+
+.tags .chips {
+  display: block;
+}
+
+/* 칩 사이 간격. .cell-clip 이 block + nowrap 이라 여백은 칩 쪽에서 준다. */
+.tags .chips > * + * {
+  margin-left: 0.25rem;
+}
+
+.tags .none {
+  color: var(--text-faint);
+}
+
+.tags .retained {
+  margin-left: 0.35rem;
+  font-size: 0.68rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  border: 1px dashed var(--border-dashed);
   color: var(--text-faint);
 }
 

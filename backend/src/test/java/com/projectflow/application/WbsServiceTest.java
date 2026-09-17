@@ -1,5 +1,7 @@
 package com.projectflow.application;
 
+import com.projectflow.application.dto.MemberRef;
+import com.projectflow.application.dto.TagRef;
 import com.projectflow.application.dto.WbsItemCreateRequest;
 import com.projectflow.application.dto.WbsItemMoveRequest;
 import com.projectflow.application.dto.WbsItemUpdateRequest;
@@ -22,9 +24,13 @@ import com.projectflow.domain.BacklogStatus;
 import com.projectflow.domain.ExecutionMode;
 import com.projectflow.domain.ExecutionModeSummary;
 import com.projectflow.domain.InvalidWbsHierarchyException;
+import com.projectflow.domain.InvalidWbsTagException;
 import com.projectflow.domain.Project;
 import com.projectflow.domain.ProjectRepository;
 import com.projectflow.domain.ProjectStatus;
+import com.projectflow.domain.RaciAssignment;
+import com.projectflow.domain.RaciAssignmentRepository;
+import com.projectflow.domain.RaciRole;
 import com.projectflow.domain.Sprint;
 import com.projectflow.domain.SprintItem;
 import com.projectflow.domain.SprintItemRepository;
@@ -33,7 +39,11 @@ import com.projectflow.domain.ProjectMember;
 import com.projectflow.domain.ProjectMemberRepository;
 import com.projectflow.domain.WbsItem;
 import com.projectflow.domain.WbsItemRepository;
+import com.projectflow.domain.WbsItemTag;
+import com.projectflow.domain.WbsItemTagRepository;
 import com.projectflow.domain.WbsNodeType;
+import com.projectflow.domain.WbsTag;
+import com.projectflow.domain.WbsTagRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -42,6 +52,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
@@ -66,6 +77,10 @@ class WbsServiceTest {
     private final List<BacklogItem> backlogItems = new ArrayList<>();
     /** One store now: Step 5 folded the two narrow history tables into change_logs. */
     private final List<ChangeLog> changes = new ArrayList<>();
+    private final List<ProjectMember> members = new ArrayList<>();
+    private final List<RaciAssignment> raciAssignments = new ArrayList<>();
+    private final List<WbsTag> tags = new ArrayList<>();
+    private final List<WbsItemTag> itemTags = new ArrayList<>();
 
     private WbsService service;
     /** Shared link store, so a test can seed a RAID link and check it was detached. */
@@ -80,7 +95,9 @@ class WbsServiceTest {
                 backlogItemRepository(), changeLogRepository(), wbsItemRepository(),
                 memberRepository(), projectRepository(), sprintService(), raid.service());
         service = new WbsService(wbsItemRepository(), projectRepository(), changeLogRepository(),
-                backlogService, progressService(), raid.service());
+                backlogService, progressService(), raid.service(),
+                raciAssignmentRepository(), memberRepository(),
+                tagRepository(), itemTagRepository());
     }
 
     @Nested
@@ -259,7 +276,8 @@ class WbsServiceTest {
                     null, "인수 테스트", null, null, null, null,
                     WbsNodeType.WORK_PACKAGE, ExecutionMode.HYBRID, 3, 60,
                     AcceptanceStatus.PENDING,
-                    LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 5), LocalDate.of(2026, 1, 7));
+                    LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 5), LocalDate.of(2026, 1, 7),
+                    null);
 
             service.createItem(PROJECT_ID, request);
 
@@ -301,7 +319,7 @@ class WbsServiceTest {
             // 항목의 집계값을 담고 있다가 그대로 제출된다 — 서버가 최종 방어선이어야 한다.
             WbsItemUpdateRequest request = new WbsItemUpdateRequest(
                     "단계 이름 변경", null, LocalDate.of(2099, 1, 1), LocalDate.of(2099, 1, 2), 99,
-                    WbsNodeType.SUMMARY, null, null, null, null, null, null, null);
+                    WbsNodeType.SUMMARY, null, null, null, null, null, null, null, null);
 
             service.updateItem(PROJECT_ID, stage, request);
 
@@ -319,7 +337,7 @@ class WbsServiceTest {
 
             WbsItemUpdateRequest request = new WbsItemUpdateRequest(
                     "개발", null, LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 10), 40,
-                    WbsNodeType.WORK_PACKAGE, null, null, null, null, null, null, null);
+                    WbsNodeType.WORK_PACKAGE, null, null, null, null, null, null, null, null);
 
             service.updateItem(PROJECT_ID, id, request);
 
@@ -531,17 +549,249 @@ class WbsServiceTest {
         return changes.stream().filter(c -> c.getField().equals("executionMode")).toList();
     }
 
+    @Nested
+    @DisplayName("담당자 — RACI의 Responsible을 읽어 싣는다")
+    class Responsible {
+
+        @Test
+        @DisplayName("자기 배정은 responsible에, 상위에서 온 것은 responsibleInherited에 담는다")
+        void splitsOwnAndInherited() {
+            service.createItem(PROJECT_ID, create(null, "단계", WbsNodeType.SUMMARY, null));
+            Long stage = byName("단계").getId();
+            service.createItem(PROJECT_ID, create(stage, "개발", WbsNodeType.WORK_PACKAGE, null));
+            Long dev = byName("개발").getId();
+
+            ProjectMember lead = member("김재학");
+            assign(stage, lead.getId(), RaciRole.RESPONSIBLE);
+
+            WbsNodeResponse stageNode = onlyRoot(service.getTree(PROJECT_ID));
+            WbsNodeResponse devNode = stageNode.children().get(0);
+
+            assertThat(stageNode.responsible()).extracting(MemberRef::memberId)
+                    .containsExactly(lead.getId());
+            assertThat(stageNode.responsible()).extracting(MemberRef::name)
+                    .containsExactly("김재학");
+            assertThat(stageNode.responsibleInherited()).isEmpty();
+
+            assertThat(devNode.responsible()).isEmpty();
+            assertThat(devNode.responsibleInherited()).extracting(MemberRef::memberId)
+                    .containsExactly(lead.getId());
+            assertThat(dev).isEqualTo(devNode.id());
+        }
+
+        @Test
+        @DisplayName("하위가 자기 담당자를 적으면 그것만 유효하다 — 상위 것은 함께 오지 않는다")
+        void ownAssignmentOverridesTheInheritedOne() {
+            service.createItem(PROJECT_ID, create(null, "단계", WbsNodeType.SUMMARY, null));
+            Long stage = byName("단계").getId();
+            service.createItem(PROJECT_ID, create(stage, "개발", WbsNodeType.WORK_PACKAGE, null));
+            Long dev = byName("개발").getId();
+
+            assign(stage, member("김재학").getId(), RaciRole.RESPONSIBLE);
+            ProjectMember worker = member("이승하");
+            assign(dev, worker.getId(), RaciRole.RESPONSIBLE);
+
+            WbsNodeResponse devNode = onlyRoot(service.getTree(PROJECT_ID)).children().get(0);
+            assertThat(devNode.responsible()).extracting(MemberRef::memberId)
+                    .containsExactly(worker.getId());
+            assertThat(devNode.responsibleInherited()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("ACCOUNTABLE은 싣지 않는다 — 요구는 담당자 하나다")
+        void carriesResponsibleOnly() {
+            service.createItem(PROJECT_ID, create(null, "개발", WbsNodeType.WORK_PACKAGE, null));
+            Long dev = byName("개발").getId();
+            assign(dev, member("김재학").getId(), RaciRole.ACCOUNTABLE);
+
+            WbsNodeResponse node = onlyRoot(service.getTree(PROJECT_ID));
+            assertThat(node.responsible()).isEmpty();
+            assertThat(node.responsibleInherited()).isEmpty();
+        }
+    }
+
+    @Nested
+    @DisplayName("분야 (업무 Tag)")
+    class Tags {
+
+        @Test
+        @DisplayName("수정은 차집합만 처리한다 — 살아남은 연결은 같은 행 그대로다")
+        void updatesByDifferenceOnly() {
+            WbsTag service_ = tag("Service");
+            WbsTag web = tag("Web");
+            WbsTag batch = tag("Batch");
+            service.createItem(PROJECT_ID, create(null, "개발", WbsNodeType.WORK_PACKAGE, null));
+            Long dev = byName("개발").getId();
+
+            service.updateItem(PROJECT_ID, dev, updateWithTags("개발", WbsNodeType.WORK_PACKAGE,
+                    List.of(service_.getId(), web.getId())));
+            WbsItemTag survivor = linkOf(dev, service_.getId());
+
+            service.updateItem(PROJECT_ID, dev, updateWithTags("개발", WbsNodeType.WORK_PACKAGE,
+                    List.of(service_.getId(), batch.getId())));
+
+            assertThat(tagIdsOf(dev)).containsExactlyInAnyOrder(service_.getId(), batch.getId());
+            // 전부 지우고 다시 넣었다면 이 행은 새 객체가 된다 (지시서 부록 함정 8).
+            assertThat(linkOf(dev, service_.getId())).isSameAs(survivor);
+        }
+
+        @Test
+        @DisplayName("null은 그대로 두고, 빈 배열은 전부 해제한다")
+        void nullKeepsTagsAndEmptyClearsThem() {
+            WbsTag web = tag("Web");
+            service.createItem(PROJECT_ID, create(null, "개발", WbsNodeType.WORK_PACKAGE, null));
+            Long dev = byName("개발").getId();
+            service.updateItem(PROJECT_ID, dev,
+                    updateWithTags("개발", WbsNodeType.WORK_PACKAGE, List.of(web.getId())));
+
+            // 이 필드를 모르는 호출자의 저장 — 조용히 지워지면 안 된다.
+            service.updateItem(PROJECT_ID, dev, update("개발", WbsNodeType.WORK_PACKAGE, null));
+            assertThat(tagIdsOf(dev)).containsExactly(web.getId());
+
+            service.updateItem(PROJECT_ID, dev,
+                    updateWithTags("개발", WbsNodeType.WORK_PACKAGE, List.of()));
+            assertThat(tagIdsOf(dev)).isEmpty();
+        }
+
+        @Test
+        @DisplayName("다른 프로젝트의 태그 id는 거부한다")
+        void rejectsTagsFromAnotherProject() {
+            WbsTag foreign = new WbsTag(999L, "남의 분야", null, 0);
+            ReflectionTestUtils.setField(foreign, "id", ids.incrementAndGet());
+            tags.add(foreign);
+            service.createItem(PROJECT_ID, create(null, "개발", WbsNodeType.WORK_PACKAGE, null));
+            Long dev = byName("개발").getId();
+
+            assertThatThrownBy(() -> service.updateItem(PROJECT_ID, dev,
+                    updateWithTags("개발", WbsNodeType.WORK_PACKAGE, List.of(foreign.getId()))))
+                    .isInstanceOf(InvalidWbsTagException.class)
+                    .hasMessageContaining("이 프로젝트에 없는 분야");
+            assertThat(tagIdsOf(dev)).isEmpty();
+        }
+
+        @Test
+        @DisplayName("Summary의 분야는 바꿀 수 없되, 보관값을 그대로 되보내면 통과한다")
+        void summaryKeepsButCannotChangeTags() {
+            WbsTag web = tag("Web");
+            WbsTag batch = tag("Batch");
+            service.createItem(PROJECT_ID, create(null, "전환 대상", WbsNodeType.WORK_PACKAGE, null));
+            Long id = byName("전환 대상").getId();
+            service.updateItem(PROJECT_ID, id,
+                    updateWithTags("전환 대상", WbsNodeType.WORK_PACKAGE, List.of(web.getId())));
+
+            // 실행 방식과 같은 규칙 — 전환해도 지우지 않고, 폼이 되돌려 보낸 같은 집합은 통과한다.
+            service.updateItem(PROJECT_ID, id,
+                    updateWithTags("전환 대상", WbsNodeType.SUMMARY, List.of(web.getId())));
+            assertThat(tagIdsOf(id)).containsExactly(web.getId());
+
+            assertThatThrownBy(() -> service.updateItem(PROJECT_ID, id,
+                    updateWithTags("전환 대상", WbsNodeType.SUMMARY, List.of(batch.getId()))))
+                    .isInstanceOf(InvalidWbsTagException.class)
+                    .hasMessageContaining("Summary");
+            assertThat(tagIdsOf(id)).containsExactly(web.getId());
+        }
+
+        @Test
+        @DisplayName("생성 요청의 분야도 함께 붙는다. Summary로 만들면서 붙이는 것은 거부하고 항목도 만들지 않는다")
+        void appliesTagsOnCreate() {
+            WbsTag web = tag("Web");
+
+            service.createItem(PROJECT_ID,
+                    createWithTags(null, "개발", WbsNodeType.WORK_PACKAGE, List.of(web.getId())));
+            assertThat(tagIdsOf(byName("개발").getId())).containsExactly(web.getId());
+
+            assertThatThrownBy(() -> service.createItem(PROJECT_ID,
+                    createWithTags(null, "단계", WbsNodeType.SUMMARY, List.of(web.getId()))))
+                    .isInstanceOf(InvalidWbsTagException.class);
+            // 거부는 삽입보다 앞에 있다 — 거부된 요청이 항목만 만들어 놓고 끝나면 안 된다.
+            assertThat(items).extracting(WbsItem::getName).doesNotContain("단계");
+        }
+
+        @Test
+        @DisplayName("상위는 하위(손자 포함)의 분야를 마스터 순서로 요약하고, 자식이 없으면 null이다")
+        void summarisesTagsFromBelow() {
+            WbsTag web = tag("Web");
+            WbsTag service_ = tag("Service");
+            service.createItem(PROJECT_ID, create(null, "1단계", WbsNodeType.SUMMARY, null));
+            Long top = byName("1단계").getId();
+            service.createItem(PROJECT_ID, create(top, "1.1단계", WbsNodeType.SUMMARY, null));
+            Long mid = byName("1.1단계").getId();
+            service.createItem(PROJECT_ID,
+                    createWithTags(mid, "손자", WbsNodeType.WORK_PACKAGE, List.of(service_.getId())));
+            service.createItem(PROJECT_ID,
+                    createWithTags(top, "자식", WbsNodeType.WORK_PACKAGE, List.of(web.getId())));
+
+            WbsNodeResponse topNode = onlyRoot(service.getTree(PROJECT_ID));
+            assertThat(topNode.tagSummary()).extracting(TagRef::name)
+                    .containsExactly("Web", "Service");
+            assertThat(topNode.tags()).isEmpty();
+
+            WbsNodeResponse leaf = topNode.children().stream()
+                    .filter(node -> node.name().equals("자식"))
+                    .findFirst()
+                    .orElseThrow();
+            assertThat(leaf.tagSummary()).isNull();
+            assertThat(leaf.tags()).extracting(TagRef::name).containsExactly("Web");
+        }
+    }
+
     // ------------------------------------------------------------------ 도우미
 
     private WbsItemCreateRequest create(Long parentId, String name,
                                          WbsNodeType nodeType, ExecutionMode mode) {
         return new WbsItemCreateRequest(parentId, name, null, null, null, null, nodeType,
-                mode, null, null, null, null, null, null);
+                mode, null, null, null, null, null, null, null);
     }
 
     private WbsItemUpdateRequest update(String name, WbsNodeType nodeType, ExecutionMode mode) {
         return new WbsItemUpdateRequest(name, null, null, null, null, nodeType, mode,
-                null, null, null, null, null, null);
+                null, null, null, null, null, null, null);
+    }
+
+    private WbsItemCreateRequest createWithTags(Long parentId, String name, WbsNodeType nodeType,
+                                                  List<Long> tagIds) {
+        return new WbsItemCreateRequest(parentId, name, null, null, null, null, nodeType,
+                null, null, null, null, null, null, null, tagIds);
+    }
+
+    private WbsItemUpdateRequest updateWithTags(String name, WbsNodeType nodeType,
+                                                  List<Long> tagIds) {
+        return new WbsItemUpdateRequest(name, null, null, null, null, nodeType, null,
+                null, null, null, null, null, null, tagIds);
+    }
+
+    private ProjectMember member(String name) {
+        ProjectMember created = new ProjectMember(PROJECT_ID, name, null, null);
+        ReflectionTestUtils.setField(created, "id", ids.incrementAndGet());
+        members.add(created);
+        return created;
+    }
+
+    private void assign(Long wbsItemId, Long memberId, RaciRole role) {
+        RaciAssignment assignment = new RaciAssignment(PROJECT_ID, wbsItemId, memberId, role);
+        ReflectionTestUtils.setField(assignment, "id", ids.incrementAndGet());
+        raciAssignments.add(assignment);
+    }
+
+    private WbsTag tag(String name) {
+        WbsTag created = new WbsTag(PROJECT_ID, name, null, tags.size());
+        ReflectionTestUtils.setField(created, "id", ids.incrementAndGet());
+        tags.add(created);
+        return created;
+    }
+
+    private List<Long> tagIdsOf(Long itemId) {
+        return itemTags.stream()
+                .filter(link -> link.getWbsItemId().equals(itemId))
+                .map(WbsItemTag::getTagId)
+                .toList();
+    }
+
+    private WbsItemTag linkOf(Long itemId, Long tagId) {
+        return itemTags.stream()
+                .filter(link -> link.getWbsItemId().equals(itemId) && link.getTagId().equals(tagId))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("연결이 없습니다: %d-%d".formatted(itemId, tagId)));
     }
 
     private WbsNodeResponse onlyRoot(WbsTreeResponse tree) {
@@ -780,21 +1030,120 @@ class WbsServiceTest {
         return new ProjectMemberRepository() {
             @Override
             public ProjectMember save(ProjectMember member) {
+                if (member.getId() == null) {
+                    ReflectionTestUtils.setField(member, "id", ids.incrementAndGet());
+                }
+                if (!members.contains(member)) {
+                    members.add(member);
+                }
                 return member;
             }
 
             @Override
             public Optional<ProjectMember> findById(Long id) {
-                return Optional.empty();
+                return members.stream().filter(member -> member.getId().equals(id)).findFirst();
             }
 
             @Override
             public List<ProjectMember> findByProjectId(Long projectId) {
-                return List.of();
+                return members.stream()
+                        .filter(member -> member.getProjectId().equals(projectId))
+                        .toList();
             }
 
             @Override
             public void delete(ProjectMember member) {
+                members.remove(member);
+            }
+        };
+    }
+
+    private RaciAssignmentRepository raciAssignmentRepository() {
+        return new RaciAssignmentRepository() {
+            @Override
+            public RaciAssignment save(RaciAssignment assignment) {
+                if (assignment.getId() == null) {
+                    ReflectionTestUtils.setField(assignment, "id", ids.incrementAndGet());
+                }
+                if (!raciAssignments.contains(assignment)) {
+                    raciAssignments.add(assignment);
+                }
+                return assignment;
+            }
+
+            @Override
+            public Optional<RaciAssignment> findById(Long id) {
+                return raciAssignments.stream()
+                        .filter(assignment -> assignment.getId().equals(id))
+                        .findFirst();
+            }
+
+            @Override
+            public List<RaciAssignment> findByProjectId(Long projectId) {
+                return raciAssignments.stream()
+                        .filter(assignment -> assignment.getProjectId().equals(projectId))
+                        .toList();
+            }
+
+            @Override
+            public void delete(RaciAssignment assignment) {
+                raciAssignments.remove(assignment);
+            }
+        };
+    }
+
+    private WbsTagRepository tagRepository() {
+        return new WbsTagRepository() {
+            @Override
+            public WbsTag save(WbsTag tag) {
+                if (tag.getId() == null) {
+                    ReflectionTestUtils.setField(tag, "id", ids.incrementAndGet());
+                }
+                if (!tags.contains(tag)) {
+                    tags.add(tag);
+                }
+                return tag;
+            }
+
+            @Override
+            public List<WbsTag> findByProjectId(Long projectId) {
+                return tags.stream()
+                        .filter(tag -> tag.getProjectId().equals(projectId))
+                        .toList();
+            }
+
+            @Override
+            public void delete(WbsTag tag) {
+                tags.remove(tag);
+            }
+        };
+    }
+
+    private WbsItemTagRepository itemTagRepository() {
+        return new WbsItemTagRepository() {
+            @Override
+            public List<WbsItemTag> saveAll(List<WbsItemTag> links) {
+                itemTags.addAll(links);
+                return links;
+            }
+
+            @Override
+            public List<WbsItemTag> findByWbsItemIdIn(Collection<Long> wbsItemIds) {
+                return itemTags.stream()
+                        .filter(link -> wbsItemIds.contains(link.getWbsItemId()))
+                        .toList();
+            }
+
+            @Override
+            public List<WbsItemTag> findByTagId(Long tagId) {
+                return itemTags.stream()
+                        .filter(link -> link.getTagId().equals(tagId))
+                        .toList();
+            }
+
+            @Override
+            public void deleteAll(List<WbsItemTag> links) {
+                itemTags.removeAll(links);
             }
         };
     }

@@ -14,6 +14,7 @@ const emit = defineEmits<{
   edit: [project: Project]
   remove: [project: Project]
   members: [project: Project]
+  tags: [project: Project]
   commits: [project: Project]
 }>()
 
@@ -64,6 +65,18 @@ const selection = useRowSelection(() => props.projects.map((project) => project.
               @click="emit('members', project)"
             >
               구성원
+            </button>
+            <!--
+              업무 분야(태그) 마스터. 구성원 옆에 두는 이유는 같다 — 프로젝트 스코프 개념이라
+              WBS 화면에 종속될 이유가 없고, 이름이 프로젝트 안에서 유일해야 하는 것도 같다.
+            -->
+            <button
+              class="ghost"
+              :disabled="readOnly"
+              :title="readOnly ? '커밋 시점을 보는 동안에는 분야를 바꿀 수 없습니다.' : undefined"
+              @click="emit('tags', project)"
+            >
+              분야
             </button>
             <button
               class="ghost"

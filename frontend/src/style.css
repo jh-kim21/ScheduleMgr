@@ -157,6 +157,32 @@
   --tint-gray: color-mix(in srgb, var(--status-not-started) 16%, var(--surface));
   --tint-gray-fg: var(--text-dim);
 
+  /*
+   * 업무 분야 태그 칩의 팔레트 여덟. 태그에 색을 지정하지 않으면 화면이 이름 해시로 이 중 하나를
+   * 고른다 (`features/wbs/tagColor.ts`) — 랜덤이면 다시 그릴 때마다 색이 바뀌어 "분야별로 훑는다"는
+   * 이 열의 목적 자체가 사라진다.
+   *
+   * 지연 상태 팔레트(--status-*)를 빌려 쓰지 않는다: 같은 표 안에서 빨간 칩이 "지연"으로 읽히는데,
+   * 분야는 상태가 아니다. 대신 배경은 면에 옅게 섞고 글자는 원색을 그대로 써서, 칩이 배지가 아니라
+   * 분류표로 보이게 한다.
+   */
+  --tag-blue-bg: #e7efff;
+  --tag-blue-fg: #2c5fb8;
+  --tag-teal-bg: #e0f4f1;
+  --tag-teal-fg: #17796d;
+  --tag-green-bg: #e4f4e8;
+  --tag-green-fg: #2a7a48;
+  --tag-lime-bg: #eef3dd;
+  --tag-lime-fg: #5c7018;
+  --tag-amber-bg: #fbf0d8;
+  --tag-amber-fg: #8a6412;
+  --tag-orange-bg: #fcebdf;
+  --tag-orange-fg: #9c5220;
+  --tag-rose-bg: #fce8ec;
+  --tag-rose-fg: #a93a54;
+  --tag-violet-bg: #efeafb;
+  --tag-violet-fg: #64459f;
+
   color-scheme: light;
   font: 16px/145% var(--sans);
   color: var(--text);
@@ -266,6 +292,28 @@
   --tint-red-fg: var(--status-delayed);
   --tint-gray: color-mix(in srgb, var(--status-not-started) 24%, var(--surface));
   --tint-gray-fg: var(--text-dim);
+
+  /*
+   * 태그 팔레트의 다크 판. 라이트에서 그대로 쓰면 옅은 배경이 면을 뚫고 나오고 진한 글자가 묻힌다 —
+   * 배경은 어두운 면 쪽으로, 글자는 밝은 쪽으로 각각 뒤집는다. 슬롯 이름은 같으므로
+   * `tagColor.ts`도 컴포넌트도 테마를 알 필요가 없다.
+   */
+  --tag-blue-bg: #1b2739;
+  --tag-blue-fg: #86b2f0;
+  --tag-teal-bg: #162b2a;
+  --tag-teal-fg: #63c7ba;
+  --tag-green-bg: #1a2a20;
+  --tag-green-fg: #72c58e;
+  --tag-lime-bg: #24291a;
+  --tag-lime-fg: #aec468;
+  --tag-amber-bg: #2c2517;
+  --tag-amber-fg: #d9ad5c;
+  --tag-orange-bg: #2e2119;
+  --tag-orange-fg: #dd9468;
+  --tag-rose-bg: #2e1d23;
+  --tag-rose-fg: #e0879b;
+  --tag-violet-bg: #251f36;
+  --tag-violet-fg: #ad94e4;
 
   color-scheme: dark;
 }

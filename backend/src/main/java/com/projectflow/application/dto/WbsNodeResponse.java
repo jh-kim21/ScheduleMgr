@@ -48,6 +48,17 @@ import java.util.Map;
  * @param actualEndDate        when it actually finished, {@code null} when not recorded
  * @param forecastEndDate      when it now looks like it will finish, separate from the planned
  *                             {@code endDate} so a slip can be stated without rewriting the plan
+ * @param responsible          RACI Responsible assigned <em>on this row</em>; empty, never null
+ * @param responsibleInherited Responsible inherited from a phase above; empty, never null. Kept
+ *                             apart from {@code responsible} for the same reason a RACI cell splits
+ *                             {@code roles}/{@code inherited} — an inherited name cannot be removed
+ *                             here, the row that holds the letter has to be edited instead
+ * @param tags                 업무 분야 attached to this row; empty, never null. A converted Summary
+ *                             may still carry some (they are retained, not erased, exactly like
+ *                             {@code executionMode})
+ * @param tagSummary           the union of the 분야 below, grandchildren included; {@code null}
+ *                             when the entry has no children, like {@code executionModeSummary}.
+ *                             A Summary's own retained tags are <em>not</em> counted in it
  */
 public record WbsNodeResponse(
         Long id,
@@ -79,8 +90,35 @@ public record WbsNodeResponse(
         int expectedProgress,
         int progressGap,
         long delayDays,
-        List<WbsNodeResponse> children
+        List<WbsNodeResponse> children,
+        List<MemberRef> responsible,
+        List<MemberRef> responsibleInherited,
+        List<TagRef> tags,
+        List<TagRef> tagSummary
 ) {
+
+    /**
+     * Everything a row shows that does not come from the WBS itself: who is responsible (from
+     * {@code raci_assignments}) and what 분야 it carries (from {@code wbs_item_tags}).
+     *
+     * <p>Resolved by {@code WbsService} for the whole project in one pass and handed in keyed by
+     * entry id, rather than computed here: both need data this record has no business reaching
+     * for, and {@code tagSummary} needs the project's tag order to sort a union by.
+     *
+     * @param tagSummary {@code null} for an entry with no children — the caller decides, because it
+     *                   is the one that can see the tree
+     */
+    public record RowAnnotations(
+            List<MemberRef> responsible,
+            List<MemberRef> responsibleInherited,
+            List<TagRef> tags,
+            List<TagRef> tagSummary
+    ) {
+        /** Nothing assigned and nothing tagged — also what an entry missing from the map gets. */
+        public static final RowAnnotations EMPTY =
+                new RowAnnotations(List.of(), List.of(), List.of(), null);
+    }
+
     /**
      * @param backlogByWbsItem Backlog counts linked directly to each entry; rolled up here so a
      *                         collapsed branch still shows that it has execution items
@@ -88,6 +126,16 @@ public record WbsNodeResponse(
     public static WbsNodeResponse from(WbsNode node, LocalDate referenceDate,
                                         Map<Long, BacklogSummary> backlogByWbsItem,
                                         Map<Long, ProgressResult> progressByWbsItem) {
+        return from(node, referenceDate, backlogByWbsItem, progressByWbsItem, Map.of());
+    }
+
+    /**
+     * @param annotationsByWbsItem per-row 담당자·분야, already resolved for the whole project
+     */
+    public static WbsNodeResponse from(WbsNode node, LocalDate referenceDate,
+                                        Map<Long, BacklogSummary> backlogByWbsItem,
+                                        Map<Long, ProgressResult> progressByWbsItem,
+                                        Map<Long, RowAnnotations> annotationsByWbsItem) {
         ProgressResult computed = progressByWbsItem.get(node.item().getId());
         // 지연 판정은 저장된 progress가 아니라 실행 방식 기반 값을 우선한다 — 결함 수정(2026-09):
         // Agile Work Package는 진척 칸(computedProgress)이 100%여도 저장된 progress가 그대로면
@@ -101,8 +149,12 @@ public record WbsNodeResponse(
                 node.startDate(), node.endDate(), effectiveProgress, referenceDate);
 
         List<WbsNodeResponse> children = node.children().stream()
-                .map(child -> from(child, referenceDate, backlogByWbsItem, progressByWbsItem))
+                .map(child -> from(child, referenceDate, backlogByWbsItem, progressByWbsItem,
+                        annotationsByWbsItem))
                 .toList();
+
+        RowAnnotations annotations = annotationsByWbsItem
+                .getOrDefault(node.item().getId(), RowAnnotations.EMPTY);
 
         BacklogSummary backlog = backlogByWbsItem
                 .getOrDefault(node.item().getId(), BacklogSummary.EMPTY);
@@ -147,7 +199,11 @@ public record WbsNodeResponse(
                 delay.expectedProgress(),
                 delay.progressGap(),
                 delay.delayDays(),
-                children
+                children,
+                annotations.responsible(),
+                annotations.responsibleInherited(),
+                annotations.tags(),
+                annotations.tagSummary()
         );
     }
 }

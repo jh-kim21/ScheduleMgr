@@ -1,10 +1,13 @@
 package com.projectflow.application;
 
 import com.projectflow.application.dto.BacklogSummary;
+import com.projectflow.application.dto.MemberRef;
+import com.projectflow.application.dto.TagRef;
 import com.projectflow.application.dto.WbsItemCreateRequest;
 import com.projectflow.application.dto.WbsItemMoveRequest;
 import com.projectflow.application.dto.WbsItemUpdateRequest;
 import com.projectflow.application.dto.WbsNodeResponse;
+import com.projectflow.application.dto.WbsNodeResponse.RowAnnotations;
 import com.projectflow.application.dto.WbsTreeResponse;
 import com.projectflow.domain.AcceptanceStatus;
 import com.projectflow.domain.BacklogItem;
@@ -14,15 +17,28 @@ import com.projectflow.domain.ChangeReason;
 import com.projectflow.domain.ExecutionMode;
 import com.projectflow.domain.ProgressCalculator.ProgressResult;
 import com.projectflow.domain.InvalidWbsHierarchyException;
+import com.projectflow.domain.InvalidWbsTagException;
+import com.projectflow.domain.ProjectMember;
+import com.projectflow.domain.ProjectMemberRepository;
 import com.projectflow.domain.ProjectNotFoundException;
 import com.projectflow.domain.ProjectRepository;
+import com.projectflow.domain.RaciAssignment;
+import com.projectflow.domain.RaciAssignmentRepository;
+import com.projectflow.domain.RaciInheritance;
+import com.projectflow.domain.RaciInheritance.EffectiveRole;
+import com.projectflow.domain.RaciInheritance.RoleSource;
+import com.projectflow.domain.RaciRole;
 import com.projectflow.domain.RaidLinkTarget;
 
 import com.projectflow.domain.WbsItem;
+import com.projectflow.domain.WbsItemTag;
+import com.projectflow.domain.WbsItemTagRepository;
 import com.projectflow.domain.WbsNode;
 import com.projectflow.domain.WbsItemNotFoundException;
 import com.projectflow.domain.WbsItemRepository;
 import com.projectflow.domain.WbsNodeType;
+import com.projectflow.domain.WbsTag;
+import com.projectflow.domain.WbsTagRepository;
 import com.projectflow.domain.WbsTreeAssembler;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,6 +67,18 @@ public class WbsService {
     private final BacklogService backlogService;
     private final ProgressService progressService;
 
+    /**
+     * RACI is read straight from its repositories, not through {@code RaciService}: the tree shows
+     * who is responsible, and application → application calls are the dashboard's exception alone.
+     * The inheritance itself is resolved by the same domain helper the matrix uses, so the two
+     * screens cannot end up naming different people.
+     */
+    private final RaciAssignmentRepository raciAssignmentRepository;
+    private final ProjectMemberRepository memberRepository;
+
+    private final WbsTagRepository tagRepository;
+    private final WbsItemTagRepository itemTagRepository;
+
     /** Only to drop RAID links when a target disappears — the register itself is never
      * rebuilt from here (지시서 6-C). */
     private final RaidService raidService;
@@ -60,13 +88,21 @@ public class WbsService {
                        ChangeLogRepository changeLogRepository,
                        BacklogService backlogService,
                        ProgressService progressService,
-                       RaidService raidService) {
+                       RaidService raidService,
+                       RaciAssignmentRepository raciAssignmentRepository,
+                       ProjectMemberRepository memberRepository,
+                       WbsTagRepository tagRepository,
+                       WbsItemTagRepository itemTagRepository) {
         this.wbsItemRepository = wbsItemRepository;
         this.projectRepository = projectRepository;
         this.changeLogRepository = changeLogRepository;
         this.backlogService = backlogService;
         this.progressService = progressService;
         this.raidService = raidService;
+        this.raciAssignmentRepository = raciAssignmentRepository;
+        this.memberRepository = memberRepository;
+        this.tagRepository = tagRepository;
+        this.itemTagRepository = itemTagRepository;
     }
 
     /**
@@ -102,8 +138,9 @@ public class WbsService {
         List<WbsNode> roots = WbsTreeAssembler.assemble(wbsItemRepository.findByProjectId(projectId));
         // 지시서 5-C: WBS 화면도 공통 집계 결과를 쓴다 — 화면마다 다른 숫자가 나오면 안 된다.
         Map<Long, ProgressResult> computed = progressService.resultsByWbsItem(projectId, roots);
+        Map<Long, RowAnnotations> annotations = annotationsFor(projectId, roots);
         List<WbsNodeResponse> nodes = roots.stream()
-                .map(node -> WbsNodeResponse.from(node, referenceDate, backlog, computed))
+                .map(node -> WbsNodeResponse.from(node, referenceDate, backlog, computed, annotations))
                 .toList();
         return new WbsTreeResponse(referenceDate, nodes);
     }
@@ -121,6 +158,14 @@ public class WbsService {
         // 규칙과 같고, 이 필드를 모르는 클라이언트도 예전과 같은 결과를 얻는다.
         WbsNodeType nodeType = request.nodeType() != null ? request.nodeType() : WbsNodeType.WORK_PACKAGE;
         requireModeAllowedOn(nodeType, request.executionMode());
+        // 분야는 항목이 생긴 뒤에야 붙일 수 있지만, 거부는 삽입 전에 한다 — 거부된 요청이 항목만
+        // 만들어 놓고 끝나면 안 된다. 새 항목에 보관된 값은 없으므로 Summary에는 아무것도 못 붙인다.
+        Set<Long> wantedTags = request.tagIds() == null
+                ? null
+                : requireTagsOfProject(projectId, request.tagIds());
+        if (wantedTags != null && nodeType == WbsNodeType.SUMMARY) {
+            requireTagsUnchangedOnSummary(wantedTags, Set.of());
+        }
 
         int sortOrder = items.stream()
                 .filter(item -> sameParent(item.getParentId(), request.parentId()))
@@ -155,6 +200,9 @@ public class WbsService {
         }
         if (hasBasis || hasActuals) {
             wbsItemRepository.save(saved);
+        }
+        if (wantedTags != null && !wantedTags.isEmpty()) {
+            syncTags(saved.getId(), wantedTags, List.of());
         }
         if (request.executionMode() != null) {
             recordChange(projectId, saved.getId(), "executionMode", null, request.executionMode(),
@@ -250,6 +298,18 @@ public class WbsService {
         }
         // Summary로 전환할 때 값을 지우지 않는다 (설계 §5). 되돌리면 그대로 살아난다.
         ExecutionMode nextMode = nodeType == WbsNodeType.SUMMARY ? previousMode : request.executionMode();
+
+        // tagIds가 null이면 "그대로 두라"는 뜻이다 — 이 필드를 모르는 호출자가 저장해도 분야가
+        // 조용히 지워지면 안 된다. 실행 방식과 같은 이유로 Summary에서는 보관값과 같을 때만 통과한다.
+        if (request.tagIds() != null) {
+            Set<Long> wantedTags = requireTagsOfProject(projectId, request.tagIds());
+            List<WbsItemTag> currentTags = currentLinks(itemId);
+            if (nodeType == WbsNodeType.SUMMARY) {
+                requireTagsUnchangedOnSummary(wantedTags, tagIdsOf(currentTags));
+            } else {
+                syncTags(itemId, wantedTags, currentTags);
+            }
+        }
 
         // 결함 2: 하위가 있는 항목의 일정·진행률은 WbsTreeAssembler가 매번 다시 계산하는 집계값이다
         // (CLAUDE.md "파생 값은 저장하지 않습니다"). 화면이 그 세 칸을 비활성화해 두긴 하지만, 폼
@@ -435,6 +495,176 @@ public class WbsService {
         if (nodeType == WbsNodeType.SUMMARY && executionMode != null) {
             throw new InvalidWbsHierarchyException(
                     "상위(Summary) 항목에는 실행 방식을 지정할 수 없습니다. 실행 방식은 최하위 Work Package에 지정합니다.");
+        }
+    }
+
+    /**
+     * 담당자와 분야, resolved once for the whole project.
+     *
+     * <p>Both are read a project at a time, like the WBS itself: three queries no matter how big
+     * the tree is. Asking per row would be the N+1 the plain-id design exists to avoid.
+     */
+    private Map<Long, RowAnnotations> annotationsFor(Long projectId, List<WbsNode> roots) {
+        Map<Long, String> memberNames = new HashMap<>();
+        for (ProjectMember member : memberRepository.findByProjectId(projectId)) {
+            memberNames.put(member.getId(), member.getName());
+        }
+        List<RaciAssignment> assignments = raciAssignmentRepository.findByProjectId(projectId);
+        // 같은 함수, 같은 답 — RACI 화면이 쓰는 상속 규칙을 그대로 쓴다.
+        Map<Long, Map<RaciRole, EffectiveRole>> effective =
+                RaciInheritance.resolve(roots, assignments);
+
+        // 마스터 순서(sortOrder, id)를 한 번 정해 두고, 행의 칩과 요약 모두 그 순서를 따른다.
+        List<WbsTag> tags = tagRepository.findByProjectId(projectId).stream()
+                .sorted(Comparator.comparingInt(WbsTag::getSortOrder).thenComparing(WbsTag::getId))
+                .toList();
+        Set<Long> itemIds = new LinkedHashSet<>();
+        collectIds(roots, itemIds);
+        Map<Long, List<Long>> tagIdsByItem = new HashMap<>();
+        for (WbsItemTag link : itemTagRepository.findByWbsItemIdIn(itemIds)) {
+            tagIdsByItem.computeIfAbsent(link.getWbsItemId(), key -> new ArrayList<>())
+                    .add(link.getTagId());
+        }
+
+        Map<Long, RowAnnotations> annotations = new HashMap<>();
+        for (WbsNode root : roots) {
+            collectAnnotations(root, effective, memberNames, tags, tagIdsByItem, annotations);
+        }
+        return annotations;
+    }
+
+    /**
+     * Fills {@code annotations} for this node and everything under it, and hands its parent the
+     * set of 분야 in its own subtree — that union is what a summary row displays.
+     *
+     * @return tag ids attached anywhere in this subtree, this node included
+     */
+    private Set<Long> collectAnnotations(WbsNode node,
+                                          Map<Long, Map<RaciRole, EffectiveRole>> effective,
+                                          Map<Long, String> memberNames,
+                                          List<WbsTag> tags,
+                                          Map<Long, List<Long>> tagIdsByItem,
+                                          Map<Long, RowAnnotations> annotations) {
+        Long itemId = node.item().getId();
+
+        Set<Long> below = new LinkedHashSet<>();
+        for (WbsNode child : node.children()) {
+            below.addAll(collectAnnotations(child, effective, memberNames, tags, tagIdsByItem,
+                    annotations));
+        }
+
+        Set<Long> own = new LinkedHashSet<>(tagIdsByItem.getOrDefault(itemId, List.of()));
+        // 자식이 없으면 요약할 것이 없다 — ExecutionModeSummary와 같은 규칙으로 null이다. 자기가
+        // 보관 중인 태그는 요약에 넣지 않는다(상위 자신의 값이지 하위의 사실이 아니다).
+        List<TagRef> summary = node.children().isEmpty() ? null : refsOf(tags, below);
+
+        List<MemberRef> responsible = List.of();
+        List<MemberRef> inherited = List.of();
+        EffectiveRole role = effective.getOrDefault(itemId, Map.of()).get(RaciRole.RESPONSIBLE);
+        if (role != null) {
+            List<MemberRef> members = role.memberIds().stream()
+                    .map(memberId -> new MemberRef(memberId,
+                            memberNames.getOrDefault(memberId, "?")))
+                    .toList();
+            // 역할당 EffectiveRole은 하나다 — 둘이 동시에 차는 일은 없다.
+            if (role.source() == RoleSource.OWN) {
+                responsible = members;
+            } else {
+                inherited = members;
+            }
+        }
+
+        annotations.put(itemId,
+                new RowAnnotations(responsible, inherited, refsOf(tags, own), summary));
+
+        Set<Long> including = new LinkedHashSet<>(own);
+        including.addAll(below);
+        return including;
+    }
+
+    private void collectIds(List<WbsNode> nodes, Set<Long> target) {
+        for (WbsNode node : nodes) {
+            target.add(node.item().getId());
+            collectIds(node.children(), target);
+        }
+    }
+
+    /** The given tags in master order; ids with no tag behind them are simply left out. */
+    private List<TagRef> refsOf(List<WbsTag> tags, Set<Long> ids) {
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        return tags.stream()
+                .filter(tag -> ids.contains(tag.getId()))
+                .map(TagRef::from)
+                .toList();
+    }
+
+    /**
+     * The tag ids a request asks for, checked against this project's list.
+     *
+     * <p>A tag from another project is refused rather than ignored: silently dropping it would
+     * make the save look like it worked while the chip never appears.
+     */
+    private Set<Long> requireTagsOfProject(Long projectId, List<Long> requested) {
+        Set<Long> known = tagRepository.findByProjectId(projectId).stream()
+                .map(WbsTag::getId)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Set<Long> wanted = new LinkedHashSet<>();
+        for (Long tagId : requested) {
+            if (tagId == null || !known.contains(tagId)) {
+                throw new InvalidWbsTagException("이 프로젝트에 없는 분야입니다: id=" + tagId);
+            }
+            wanted.add(tagId);
+        }
+        return wanted;
+    }
+
+    private List<WbsItemTag> currentLinks(Long itemId) {
+        return itemTagRepository.findByWbsItemIdIn(List.of(itemId));
+    }
+
+    private Set<Long> tagIdsOf(List<WbsItemTag> links) {
+        return links.stream()
+                .map(WbsItemTag::getTagId)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    /**
+     * A summary's 분야 may not be changed, but it may be repeated.
+     *
+     * <p>Phrased as "cannot change" rather than "must be empty" for the same reason the execution
+     * mode is (설계 §5): converting a Work Package keeps its tags rather than erasing them, and the
+     * edit form sends those retained values straight back. Refusing them would make every save of a
+     * converted entry an error.
+     */
+    private void requireTagsUnchangedOnSummary(Set<Long> wanted, Set<Long> current) {
+        if (!wanted.equals(current)) {
+            throw new InvalidWbsTagException(
+                    "상위(Summary) 항목에는 분야를 지정할 수 없습니다. 분야는 최하위 Work Package에 지정합니다.");
+        }
+    }
+
+    /**
+     * Applies the requested set by difference only.
+     *
+     * <p>Deleting every link and re-inserting would give the surviving ones new rows — the same
+     * reason RAID links are diffed rather than replaced.
+     */
+    private void syncTags(Long itemId, Set<Long> wanted, List<WbsItemTag> current) {
+        List<WbsItemTag> removed = current.stream()
+                .filter(link -> !wanted.contains(link.getTagId()))
+                .toList();
+        if (!removed.isEmpty()) {
+            itemTagRepository.deleteAll(removed);
+        }
+        Set<Long> kept = tagIdsOf(current);
+        List<WbsItemTag> added = wanted.stream()
+                .filter(tagId -> !kept.contains(tagId))
+                .map(tagId -> new WbsItemTag(itemId, tagId))
+                .toList();
+        if (!added.isEmpty()) {
+            itemTagRepository.saveAll(added);
         }
     }
 

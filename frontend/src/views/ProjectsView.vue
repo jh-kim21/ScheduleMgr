@@ -5,6 +5,7 @@ import type { Project, ProjectInput } from '../api/projectApi'
 import CommitPanel from '../features/commit/CommitPanel.vue'
 import MemberEditor from '../features/members/MemberEditor.vue'
 import { useMembers } from '../features/members/useMembers'
+import WbsTagEditor from '../features/wbs/WbsTagEditor.vue'
 import ProjectForm from '../features/projects/ProjectForm.vue'
 import ProjectList from '../features/projects/ProjectList.vue'
 import { useProjects } from '../features/projects/useProjects'
@@ -56,6 +57,24 @@ function handleUpdateMember(memberId: number, input: MemberInput) {
 
 function handleRemoveMember(memberId: number) {
   if (membersProject.value) removeMember(membersProject.value.id, memberId)
+}
+
+/**
+ * 업무 분야(태그) 관리 대화상자. `membersProject`와 같은 이유로 전역 선택이 아니라 방금 누른 행을
+ * 기억한다. 목록·추가·수정·삭제는 `WbsTagEditor`가 `useWbsTags`로 직접 한다 — 거부됐는지 알아야
+ * "성공했을 때만 닫는다"를 지킬 수 있는데, emit만으로는 결과가 돌아오지 않는다.
+ */
+const tagsProject = ref<Project | null>(null)
+
+function openTags(project: Project) {
+  // ProjectList가 이미 "분야" 버튼을 막지만, 여기서도 한 번 더 막는다 — 태그 추가·수정·삭제는
+  // 커밋 조회 중에 잠겨야 할 쓰기 진입점이다(지시서 5.2).
+  if (readOnly.value) return
+  tagsProject.value = project
+}
+
+function closeTags() {
+  tagsProject.value = null
 }
 
 /**
@@ -232,6 +251,7 @@ async function handleRemove(project: Project) {
       @edit="openForm"
       @remove="handleRemove"
       @members="openMembers"
+      @tags="openTags"
       @commits="openCommits"
     />
 
@@ -245,6 +265,13 @@ async function handleRemove(project: Project) {
       @update="handleUpdateMember"
       @remove="handleRemoveMember"
       @close="closeMembers"
+    />
+
+    <WbsTagEditor
+      v-if="tagsProject"
+      :project-id="tagsProject.id"
+      :project-name="tagsProject.name"
+      @close="closeTags"
     />
 
     <CommitPanel

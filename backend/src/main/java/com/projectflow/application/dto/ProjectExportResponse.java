@@ -52,7 +52,8 @@ public record ProjectExportResponse(
         List<ExportedSprintItem> sprintItems,
         List<ExportedCheckpoint> checkpoints,
         List<ExportedBaseline> baselines,
-        List<ExportedSnapshot> snapshots
+        List<ExportedSnapshot> snapshots,
+        List<ExportedTag> tags
 ) {
     public record ExportedProject(
             Long id,
@@ -75,11 +76,28 @@ public record ProjectExportResponse(
     }
 
     /**
+     * One 업무 분야 in the project's master list (formatVersion 7).
+     *
+     * <p>The list travels as its own section rather than as strings on each WBS row: the name and
+     * colour are the project's, and repeating them per row would let two rows disagree about what
+     * the same tag is called.
+     */
+    public record ExportedTag(
+            Long id,
+            String name,
+            String color,
+            int sortOrder
+    ) {
+    }
+
+    /**
      * @param code          derived from tree position; included for readability, not authoritative
      * @param nodeType      {@code null} in files written before Step 2 (formatVersion 1); an import
      *                      then derives it from child presence, exactly as the migration did
      * @param executionMode {@code null} means 미지정, and is also what every formatVersion 1 file
      *                      implies
+     * @param tagIds        분야 attached to this entry, by {@code tags[].id} (formatVersion 7).
+     *                      Absent in older files, which simply means no tags
      */
     public record ExportedWbsItem(
             Long id,
@@ -98,7 +116,8 @@ public record ProjectExportResponse(
             AcceptanceStatus acceptanceStatus,
             LocalDate actualStartDate,
             LocalDate actualEndDate,
-            LocalDate forecastEndDate
+            LocalDate forecastEndDate,
+            List<Long> tagIds
     ) {
     }
 

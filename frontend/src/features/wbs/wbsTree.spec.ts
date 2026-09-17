@@ -30,6 +30,10 @@ function node(id: number, code: string, level: number, children: WbsNode[] = [])
     expectedProgress: 0,
     progressGap: 0,
     delayDays: 0,
+    responsible: [],
+    responsibleInherited: [],
+    tags: [],
+    tagSummary: children.length > 0 ? [] : null,
     children,
   }
 }

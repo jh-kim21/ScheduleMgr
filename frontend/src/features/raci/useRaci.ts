@@ -9,7 +9,7 @@ export interface CellEntry {
 }
 import { ApiError } from '../../api/http'
 import { raciApi, type RaciAssignmentInput, type RaciMatrix } from '../../api/raciApi'
-import { raciCacheKeyFor } from '../../stores/scheduleCache'
+import { markRaciChanged, raciCacheKeyFor } from '../../stores/scheduleCache'
 import { activeCommit, commitPayload, readOnly } from '../../stores/commitView'
 import type { RaciRole } from '../../shared/raci'
 
@@ -74,11 +74,20 @@ export function useRaci() {
     return promise
   }
 
+  /**
+   * Runs a mutation and applies the matrix it returns, then bumps the RACI revision.
+   *
+   * The bump is not for this screen — the response *is* the fresh matrix, and `apply` re-derives the
+   * cache key after it. It is for the WBS tree, which since Phase C shows each row's 담당자
+   * (the `RESPONSIBLE` letter) and has no other way to learn that a letter moved.
+   */
   async function mutate(projectId: number, action: () => Promise<RaciMatrix>, fallback: string) {
     if (readOnly.value) return
     error.value = null
     try {
-      apply(await action(), projectId)
+      const result = await action()
+      markRaciChanged()
+      apply(result, projectId)
     } catch (e) {
       error.value = describe(e, fallback)
     }

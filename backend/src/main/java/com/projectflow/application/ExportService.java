@@ -14,6 +14,7 @@ import com.projectflow.application.dto.ProjectExportResponse.ExportedRaidLink;
 import com.projectflow.application.dto.ProjectExportResponse.ExportedSprint;
 import com.projectflow.application.dto.ProjectExportResponse.ExportedSnapshot;
 import com.projectflow.application.dto.ProjectExportResponse.ExportedSprintItem;
+import com.projectflow.application.dto.ProjectExportResponse.ExportedTag;
 import com.projectflow.application.dto.ProjectExportResponse.ExportedWbsItem;
 import com.projectflow.domain.AcceptanceCheckpoint;
 import com.projectflow.domain.AcceptanceCheckpointRepository;
@@ -38,6 +39,10 @@ import com.projectflow.domain.SprintRepository;
 import com.projectflow.domain.WbsDependencyRepository;
 import com.projectflow.domain.WbsItem;
 import com.projectflow.domain.WbsItemRepository;
+import com.projectflow.domain.WbsItemTag;
+import com.projectflow.domain.WbsItemTagRepository;
+import com.projectflow.domain.WbsTag;
+import com.projectflow.domain.WbsTagRepository;
 import com.projectflow.domain.WbsNode;
 import com.projectflow.domain.WbsTreeAssembler;
 import org.springframework.stereotype.Service;
@@ -69,8 +74,11 @@ public class ExportService {
      * <p>6 — actual/forecast dates on WBS entries, and RAID links (Step 6). A RAID entry's single
      * {@code wbsItemId} became a list of links, so this file's {@code raidItems[].wbsItemId} is
      * always null and {@code links} carries what it used to say.
+     * <p>7 — 업무 분야 tags: the project's tag list and each WBS entry's {@code tagIds}. Without
+     * these a shared project would arrive with every 분야 chip gone and no list to re-create them
+     * from.
      */
-    private static final int FORMAT_VERSION = 6;
+    private static final int FORMAT_VERSION = 7;
 
     private final ProjectRepository projectRepository;
     private final ProjectMemberRepository memberRepository;
@@ -85,6 +93,8 @@ public class ExportService {
     private final AcceptanceCheckpointRepository checkpointRepository;
     private final BaselineRepository baselineRepository;
     private final ProgressSnapshotRepository snapshotRepository;
+    private final WbsTagRepository tagRepository;
+    private final WbsItemTagRepository itemTagRepository;
 
     public ExportService(ProjectRepository projectRepository,
                           ProjectMemberRepository memberRepository,
@@ -98,7 +108,9 @@ public class ExportService {
                           SprintItemRepository sprintItemRepository,
                           AcceptanceCheckpointRepository checkpointRepository,
                           BaselineRepository baselineRepository,
-                          ProgressSnapshotRepository snapshotRepository) {
+                          ProgressSnapshotRepository snapshotRepository,
+                          WbsTagRepository tagRepository,
+                          WbsItemTagRepository itemTagRepository) {
         this.projectRepository = projectRepository;
         this.memberRepository = memberRepository;
         this.wbsItemRepository = wbsItemRepository;
@@ -112,6 +124,8 @@ public class ExportService {
         this.checkpointRepository = checkpointRepository;
         this.baselineRepository = baselineRepository;
         this.snapshotRepository = snapshotRepository;
+        this.tagRepository = tagRepository;
+        this.itemTagRepository = itemTagRepository;
     }
 
     /**
@@ -159,8 +173,22 @@ public class ExportService {
 
         // Tree order for the WBS so the file reads top to bottom like the screen does; id order
         // elsewhere so two exports of the same data are byte-identical.
+        List<WbsTag> tags = tagRepository.findByProjectId(projectId).stream()
+                .sorted(Comparator.comparingInt(WbsTag::getSortOrder).thenComparing(WbsTag::getId))
+                .toList();
+        Map<Long, List<Long>> tagIdsByItem = new HashMap<>();
+        List<Long> itemIds = items.stream().map(WbsItem::getId).toList();
+        for (WbsItemTag link : itemTagRepository.findByWbsItemIdIn(itemIds)) {
+            tagIdsByItem.computeIfAbsent(link.getWbsItemId(), key -> new ArrayList<>())
+                    .add(link.getTagId());
+        }
+        for (List<Long> ids : tagIdsByItem.values()) {
+            // id 순으로 고정한다 — 같은 데이터의 두 내보내기가 바이트까지 같아야 한다.
+            ids.sort(Comparator.naturalOrder());
+        }
+
         List<ExportedWbsItem> wbsItems = new ArrayList<>();
-        appendWbsInTreeOrder(WbsTreeAssembler.assemble(items), codes, wbsItems);
+        appendWbsInTreeOrder(WbsTreeAssembler.assemble(items), codes, tagIdsByItem, wbsItems);
 
         return new ProjectExportResponse(
                 FORMAT_VERSION,
@@ -284,6 +312,10 @@ public class ExportService {
                                 snapshot.getScopeWeightTotal(),
                                 snapshot.getMetrics(),
                                 snapshot.getNote()))
+                        .toList(),
+                tags.stream()
+                        .map(tag -> new ExportedTag(
+                                tag.getId(), tag.getName(), tag.getColor(), tag.getSortOrder()))
                         .toList()
         );
     }
@@ -314,6 +346,7 @@ public class ExportService {
     }
 
     private void appendWbsInTreeOrder(List<WbsNode> nodes, Map<Long, String> codes,
+                                       Map<Long, List<Long>> tagIdsByItem,
                                        List<ExportedWbsItem> target) {
         for (WbsNode node : nodes) {
             WbsItem item = node.item();
@@ -334,9 +367,10 @@ public class ExportService {
                     item.getAcceptanceStatus(),
                     item.getActualStartDate(),
                     item.getActualEndDate(),
-                    item.getForecastEndDate()
+                    item.getForecastEndDate(),
+                    tagIdsByItem.getOrDefault(item.getId(), List.of())
             ));
-            appendWbsInTreeOrder(node.children(), codes, target);
+            appendWbsInTreeOrder(node.children(), codes, tagIdsByItem, target);
         }
     }
 }

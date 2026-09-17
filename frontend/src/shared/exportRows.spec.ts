@@ -136,6 +136,10 @@ function wbsNode(overrides: Partial<WbsNode> = {}): WbsNode {
     delayDays: 0,
     progress: 50,
     startDate: '2026-03-01',
+    responsible: [],
+    responsibleInherited: [],
+    tags: [],
+    tagSummary: null,
     ...overrides,
   }
 }

@@ -36,6 +36,10 @@ function baseNode(overrides: Partial<WbsNode> = {}): WbsNode {
     expectedProgress: 40,
     progressGap: 0,
     delayDays: 0,
+    responsible: [],
+    responsibleInherited: [],
+    tags: [],
+    tagSummary: null,
     children: [],
     ...overrides,
   }

@@ -30,5 +30,9 @@ export function nodeToFormInput(item: WbsNode): WbsItemInput {
     actualStartDate: item.actualStartDate ?? null,
     actualEndDate: item.actualEndDate ?? null,
     forecastEndDate: item.forecastEndDate ?? null,
+    // 항상 배열이다 — `null`은 "변경 없음"이라 폼이 쓸 값이 아니다. Summary가 보관 중인 태그도
+    // 그대로 담아 되돌려 보낸다: 서버는 Summary의 태그를 *바꾸는* 것을 거부하므로, 비워 보내면
+    // 아무것도 안 고친 저장이 거부된다(실행 방식과 같은 함정).
+    tagIds: (item.tags ?? []).map((tag) => tag.id),
   }
 }

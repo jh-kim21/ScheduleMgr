@@ -8,6 +8,7 @@ import com.projectflow.application.dto.ProjectExportResponse.ExportedProject;
 import com.projectflow.application.dto.ProjectExportResponse.ExportedRaciAssignment;
 import com.projectflow.application.dto.ProjectExportResponse.ExportedRaidItem;
 import com.projectflow.application.dto.ProjectExportResponse.ExportedSprint;
+import com.projectflow.application.dto.ProjectExportResponse.ExportedTag;
 import com.projectflow.application.dto.ProjectExportResponse.ExportedRaidLink;
 import com.projectflow.application.dto.ProjectExportResponse.ExportedWbsItem;
 import com.projectflow.domain.AcceptanceCheckpoint;
@@ -48,6 +49,10 @@ import com.projectflow.domain.WbsDependency;
 import com.projectflow.domain.WbsDependencyRepository;
 import com.projectflow.domain.WbsItem;
 import com.projectflow.domain.WbsItemRepository;
+import com.projectflow.domain.WbsItemTag;
+import com.projectflow.domain.WbsItemTagRepository;
+import com.projectflow.domain.WbsTag;
+import com.projectflow.domain.WbsTagRepository;
 import com.projectflow.domain.WbsNodeType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -58,6 +63,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
@@ -87,6 +93,8 @@ class ImportServiceTest {
     private final List<Baseline> baselines = new ArrayList<>();
     private final List<BaselineItem> baselineItems = new ArrayList<>();
     private final List<ProgressSnapshot> snapshots = new ArrayList<>();
+    private final List<WbsTag> tags = new ArrayList<>();
+    private final List<WbsItemTag> itemTags = new ArrayList<>();
 
     private ImportService service;
 
@@ -97,7 +105,7 @@ class ImportServiceTest {
                 dependencyRepository(), raciAssignmentRepository(), raidItemRepository(),
                 raidLinkRepository(), backlogItemRepository(), sprintRepository(),
                 sprintItemRepository(), checkpointRepository(), baselineRepository(),
-                snapshotRepository());
+                snapshotRepository(), tagRepository(), itemTagRepository());
     }
 
     @Nested
@@ -176,7 +184,7 @@ class ImportServiceTest {
         void toleratesMissingSections() {
             ProjectExportResponse bare = new ProjectExportResponse(
                     1, LocalDateTime.now(), project("맨몸 프로젝트"), null, null, null, null, null, null, null, null,
-                    null, null, null);
+                    null, null, null, null);
 
             service.importProject(bare);
 
@@ -210,7 +218,7 @@ class ImportServiceTest {
             ProjectExportResponse future = new ProjectExportResponse(
                     99, LocalDateTime.now(), project("미래"), List.of(), List.of(), List.of(),
                     List.of(), List.of(), List.of(), List.of(), List.of(),
-                    List.of(), List.of(), List.of());
+                    List.of(), List.of(), List.of(), List.of());
 
             assertThatThrownBy(() -> service.importProject(future))
                     .isInstanceOf(InvalidImportException.class)
@@ -323,7 +331,7 @@ class ImportServiceTest {
                     List.of(new ExportedSprint(60L, "Sprint 1", null,
                             LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 14),
                             SprintStatus.PLANNED, null)), List.of(),
-                    List.of(), List.of(), List.of()));
+                    List.of(), List.of(), List.of(), List.of()));
 
             Long newWbsId = byName("개발").getId();
             assertThat(raidLinks).hasSize(3);
@@ -343,9 +351,65 @@ class ImportServiceTest {
                     List.of(), List.of(wbs(1L, null, "개발")), List.of(), List.of(),
                     List.of(raidWithLinks(1L, "위험", null, List.of(
                             raidLink(1L, RaidLinkTarget.SPRINT, 999L)))),
-                    List.of(), List.of(), List.of(), List.of(), List.of(), List.of())))
+                    List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of())))
                     .isInstanceOf(InvalidImportException.class)
                     .hasMessageContaining("연결 대상");
+            assertThat(projects).isEmpty();
+        }
+    }
+
+    @Nested
+    @DisplayName("분야 (업무 Tag)")
+    class Tags {
+
+        @Test
+        @DisplayName("태그 마스터와 항목별 연결을 모두 새 id로 다시 매긴다")
+        void remapsTagIds() {
+            service.importProject(wbsFile(7,
+                    List.of(wbs(1L, null, "개발", List.of(10L, 11L))),
+                    List.of(tag(10L, "Service", "#336699", 0), tag(11L, "Web", null, 1))));
+
+            assertThat(tags).extracting(WbsTag::getName).containsExactly("Service", "Web");
+            assertThat(tags).extracting(WbsTag::getId).doesNotContain(10L, 11L);
+            assertThat(tags).extracting(WbsTag::getColor).containsExactly("#336699", null);
+
+            Long itemId = byName("개발").getId();
+            assertThat(itemTags).extracting(WbsItemTag::getWbsItemId)
+                    .containsOnly(itemId);
+            assertThat(itemTags).extracting(WbsItemTag::getTagId)
+                    .containsExactlyInAnyOrderElementsOf(
+                            tags.stream().map(WbsTag::getId).toList());
+        }
+
+        @Test
+        @DisplayName("분야 절이 없는 구형 파일은 태그 없이 읽는다 — 거부하지 않는다")
+        void olderFilesSimplyHaveNoTags() {
+            service.importProject(wbsFile(6, List.of(wbs(1L, null, "개발"))));
+
+            assertThat(projects).hasSize(1);
+            assertThat(tags).isEmpty();
+            assertThat(itemTags).isEmpty();
+        }
+
+        @Test
+        @DisplayName("파일에 없는 태그를 가리키는 WBS 항목은 거부한다")
+        void rejectsDanglingTagReference() {
+            assertThatThrownBy(() -> service.importProject(wbsFile(7,
+                    List.of(wbs(1L, null, "개발", List.of(99L))),
+                    List.of(tag(10L, "Service", null, 0)))))
+                    .isInstanceOf(InvalidImportException.class)
+                    .hasMessageContaining("분야");
+            assertThat(projects).isEmpty();
+        }
+
+        @Test
+        @DisplayName("같은 이름의 태그가 두 번 있으면 거부한다 — UNIQUE 위반으로 터지기 전에 잡는다")
+        void rejectsDuplicateTagNames() {
+            assertThatThrownBy(() -> service.importProject(wbsFile(7,
+                    List.of(wbs(1L, null, "개발")),
+                    List.of(tag(10L, "Service", null, 0), tag(11L, "service", null, 1)))))
+                    .isInstanceOf(InvalidImportException.class)
+                    .hasMessageContaining("같은 이름의 분야");
             assertThat(projects).isEmpty();
         }
     }
@@ -357,7 +421,7 @@ class ImportServiceTest {
                                         List<ExportedRaidItem> raid) {
         return new ProjectExportResponse(
                 1, LocalDateTime.now(), project("AEGIS"), members, wbs, deps, raci, raid, List.of(), List.of(), List.of(),
-                List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(), List.of());
     }
 
     @Nested
@@ -524,7 +588,7 @@ class ImportServiceTest {
                                                List<ExportedBacklogItem> backlog) {
         return new ProjectExportResponse(3, LocalDateTime.now(), project("AEGIS"), members, wbs,
                 List.of(), List.of(), List.of(), backlog, List.of(), List.of(),
-                List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(), List.of());
     }
 
     private ExportedBacklogItem backlog(Long id, Long wbsItemId, Long parentId,
@@ -542,9 +606,14 @@ class ImportServiceTest {
     }
 
     private ProjectExportResponse wbsFile(int formatVersion, List<ExportedWbsItem> wbs) {
+        return wbsFile(formatVersion, wbs, List.of());
+    }
+
+    private ProjectExportResponse wbsFile(int formatVersion, List<ExportedWbsItem> wbs,
+                                           List<ExportedTag> tags) {
         return new ProjectExportResponse(formatVersion, LocalDateTime.now(), project("AEGIS"),
                 List.of(), wbs, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(), tags);
     }
 
     private ExportedProject project(String name) {
@@ -558,14 +627,78 @@ class ImportServiceTest {
 
     /** The formatVersion 1 shape: no {@code nodeType}, no {@code executionMode}. */
     private ExportedWbsItem wbs(Long id, Long parentId, String name) {
-        return new ExportedWbsItem(id, parentId, "무시됨", name, null, null, null, 0, 0, null, null,
-                null, null, null, null, null, null);
+        return wbs(id, parentId, name, null, null, List.of());
+    }
+
+    private ExportedWbsItem wbs(Long id, Long parentId, String name, List<Long> tagIds) {
+        return wbs(id, parentId, name, null, null, tagIds);
     }
 
     private ExportedWbsItem wbs(Long id, Long parentId, String name,
                                  WbsNodeType nodeType, ExecutionMode executionMode) {
+        return wbs(id, parentId, name, nodeType, executionMode, List.of());
+    }
+
+    private ExportedWbsItem wbs(Long id, Long parentId, String name, WbsNodeType nodeType,
+                                 ExecutionMode executionMode, List<Long> tagIds) {
         return new ExportedWbsItem(id, parentId, "무시됨", name, null, null, null, 0, 0,
-                nodeType, executionMode, null, null, null, null, null, null);
+                nodeType, executionMode, null, null, null, null, null, null, tagIds);
+    }
+
+    private ExportedTag tag(Long id, String name, String color, int sortOrder) {
+        return new ExportedTag(id, name, color, sortOrder);
+    }
+
+    private WbsTagRepository tagRepository() {
+        return new WbsTagRepository() {
+            @Override
+            public WbsTag save(WbsTag tag) {
+                ReflectionTestUtils.setField(tag, "id", ids.incrementAndGet());
+                tags.add(tag);
+                return tag;
+            }
+
+            @Override
+            public List<WbsTag> findByProjectId(Long projectId) {
+                return tags.stream()
+                        .filter(tag -> tag.getProjectId().equals(projectId))
+                        .toList();
+            }
+
+            @Override
+            public void delete(WbsTag tag) {
+                tags.remove(tag);
+            }
+        };
+    }
+
+    private WbsItemTagRepository itemTagRepository() {
+        return new WbsItemTagRepository() {
+            @Override
+            public List<WbsItemTag> saveAll(List<WbsItemTag> links) {
+                itemTags.addAll(links);
+                return links;
+            }
+
+            @Override
+            public List<WbsItemTag> findByWbsItemIdIn(Collection<Long> wbsItemIds) {
+                return itemTags.stream()
+                        .filter(link -> wbsItemIds.contains(link.getWbsItemId()))
+                        .toList();
+            }
+
+            @Override
+            public List<WbsItemTag> findByTagId(Long tagId) {
+                return itemTags.stream()
+                        .filter(link -> link.getTagId().equals(tagId))
+                        .toList();
+            }
+
+            @Override
+            public void deleteAll(List<WbsItemTag> links) {
+                itemTags.removeAll(links);
+            }
+        };
     }
 
     /** formatVersion 5 이하의 모양 — 단일 {@code wbsItemId}, links 없음. */
