@@ -6,16 +6,12 @@ import type { WbsTag } from '../../api/wbsTagApi'
 import WbsForm from './WbsForm.vue'
 
 /**
- * 최상위 항목에서만 가중치를 묻지 않는다(사용자 결정 — 지시서의 "레벨 무관 삭제"보다 좁은 범위).
- * 이 계약은 두 갈래라 순수 함수로 뺄 수 없다:
- *
- *   1. **렌더링** — 최상위에서만 입력칸이 사라지고 하위 레벨에는 남는다.
- *   2. **제출 payload** — 입력칸을 감췄어도 저장하면 기존 `weight`가 그대로 실려 나간다.
- *
- * 2번이 이 파일의 진짜 이유다. 입력을 없앤 김에 payload에서도 빼면 기존에 가중치가 있던 최상위
- * 항목이 저장하는 순간 `null`로 덮인다 — 커밋 `da96ebe`(실적/예상 종료일이 저장마다 사라지던
- * 결함)와 같은 종류의 사고이고, `nodeToFormInput`만 보는 `wbsFormMapping.spec.ts`로는 드러나지
- * 않는다(그 함수는 값을 폼에 *넣는* 쪽이고, 여기서 확인하려는 것은 감춰진 값이 *나가는지*다).
+ * 가중치 입력은 레벨 무관 전부 삭제됐다(지시서 "요구 1의 범위 해석" — 최상위만이 아니라 WBS 폼
+ * 전체). 그런데도 이 파일이 남아 있는 이유는 **제출 payload** 쪽 계약 때문이다: 입력칸을 없앴다고
+ * `weight`를 payload에서 빼면 기존에 값이 있던 항목이 저장하는 순간 `null`로 덮인다 — 커밋
+ * `da96ebe`(실적/예상 종료일이 저장마다 사라지던 결함)와 같은 종류의 사고이고, `nodeToFormInput`만
+ * 보는 `wbsFormMapping.spec.ts`로는 드러나지 않는다(그 함수는 값을 폼에 *넣는* 쪽이고, 여기서
+ * 확인하려는 것은 감춰진 값이 *나가는지*다).
  *
  * `WbsForm`은 `ModalDialog`로 자기를 감싸고 `ModalDialog`는 `<Teleport to="body">`이므로
  * `wrapper.find(...)`로는 내용을 찾을 수 없다 — `document.body`를 직접 조회한다
@@ -60,11 +56,10 @@ function node(overrides: Partial<WbsNode> = {}): WbsNode {
 function renderForm(props: {
   editing: WbsNode | null
   parent: WbsNode | null
-  siblings?: WbsNode[]
   availableTags?: WbsTag[]
 }) {
   return mount(WbsForm, {
-    props: { siblings: [], availableTags: [], error: null, ...props },
+    props: { availableTags: [], error: null, ...props },
   })
 }
 
@@ -94,22 +89,22 @@ describe('WbsForm — 가중치 입력', () => {
     expect(weightLabel()).toBeNull()
   })
 
-  it('하위 항목 추가에는 가중치 입력이 그대로 있다 — 이번 결정은 최상위만 없앤 것이다', () => {
+  it('하위 항목 추가에도 가중치 입력이 없다 — 레벨 무관으로 삭제됐다', () => {
     wrapper = renderForm({ editing: null, parent: node({ id: 9, nodeType: 'SUMMARY' }) })
 
-    expect(weightLabel()).not.toBeNull()
+    expect(weightLabel()).toBeNull()
   })
 
-  it('최상위 항목 수정에도 가중치 입력이 없다 — parentId가 null인지로 판단한다', () => {
+  it('최상위 항목 수정에도 가중치 입력이 없다', () => {
     wrapper = renderForm({ editing: node({ parentId: null }), parent: null })
 
     expect(weightLabel()).toBeNull()
   })
 
-  it('하위 항목 수정에는 가중치 입력이 있다', () => {
+  it('하위 항목 수정에도 가중치 입력이 없다', () => {
     wrapper = renderForm({ editing: node({ id: 2, parentId: 1, code: '1.1' }), parent: null })
 
-    expect(weightLabel()).not.toBeNull()
+    expect(weightLabel()).toBeNull()
   })
 
   it('입력칸을 감춘 최상위 항목을 저장해도 기존 가중치가 그대로 실려 나간다 — payload에서 빼면 저장하는 순간 null로 덮인다', async () => {
@@ -124,24 +119,59 @@ describe('WbsForm — 가중치 입력', () => {
     expect((emitted![0][0] as { weight: number | null }).weight).toBe(7)
   })
 
-  it('가중치 안내문도 최상위에서는 사라진다 — 입력칸 없이 설명만 남으면 무엇에 대한 말인지 알 수 없다', () => {
-    wrapper = renderForm({ editing: null, parent: null })
+  it('입력칸을 감춘 하위 항목을 저장해도 기존 가중치가 그대로 실려 나간다', async () => {
+    wrapper = renderForm({ editing: node({ id: 2, parentId: 1, code: '1.1', weight: 3 }), parent: null })
 
-    expect(document.body.textContent).not.toContain('가중치를 비워 두면')
+    expect(weightLabel()).toBeNull()
+    submit()
+    await wrapper.vm.$nextTick()
+
+    const emitted = wrapper.emitted('submit')
+    expect(emitted).toHaveLength(1)
+    expect((emitted![0][0] as { weight: number | null }).weight).toBe(3)
   })
 
-  it('하위 레벨의 안내문은 새 폴백을 말한다 — "하위 평균으로 집계"는 형제에 값이 있으면 거짓이었다', () => {
-    wrapper = renderForm({ editing: null, parent: node({ id: 9, nodeType: 'SUMMARY' }) })
+  it('가중치가 없던 항목을 저장하면 null 그대로 나간다 — 새로 채워 넣지 않는다', async () => {
+    wrapper = renderForm({ editing: node({ parentId: null, weight: null }), parent: null })
 
-    const text = document.body.textContent ?? ''
-    expect(text).toContain('가중치를 비워 두면 1로 계산됩니다')
-    expect(text).not.toContain('하위 평균으로 집계')
+    submit()
+    await wrapper.vm.$nextTick()
+
+    const emitted = wrapper.emitted('submit')
+    expect((emitted![0][0] as { weight: number | null }).weight).toBeNull()
   })
 
-  it('최상위 항목에 저장된 가중치가 있으면 보관 중임을 알린다 — 감춘 값이 집계에는 계속 쓰인다', () => {
+  it('저장된 가중치가 있으면 레벨과 무관하게 보관 중임을 알린다 — 감춘 값이 집계에는 계속 쓰인다', () => {
     wrapper = renderForm({ editing: node({ parentId: null, weight: 7 }), parent: null })
 
     expect(document.body.textContent).toContain('저장된 가중치(7)')
+  })
+
+  it('하위 항목도 저장된 가중치가 있으면 같은 안내가 뜬다', () => {
+    wrapper = renderForm({ editing: node({ id: 2, parentId: 1, code: '1.1', weight: 5 }), parent: null })
+
+    expect(document.body.textContent).toContain('저장된 가중치(5)')
+  })
+
+  it('가중치가 없으면 보관 안내도 뜨지 않는다', () => {
+    wrapper = renderForm({ editing: node({ parentId: null, weight: null }), parent: null })
+
+    expect(document.body.textContent).not.toContain('저장된 가중치')
+  })
+
+  /**
+   * `weightSuggestion.ts`(제안 기능)를 통째로 지웠으므로 "제안"이라는 말 자체가 어느 레벨에서도
+   * 다시 나타나면 안 된다 — 입력칸을 지운 뒤 제안 힌트 문단만 죽지 않은 채 남는 회귀를 잡는다.
+   * `'형제'`는 별건이라 못 쓴다 — 보관 안내 문구(위 테스트)가 정당하게 그 단어를 쓴다.
+   */
+  it('가중치 제안 힌트는 최상위·하위 어디에도 남아 있지 않다', () => {
+    const root = renderForm({ editing: null, parent: null })
+    // `ModalDialog`가 `<Teleport to="body">`라 내용은 `wrapper.element`가 아니라 `document.body`에 있다.
+    expect(document.body.textContent).not.toContain('제안')
+    root.unmount()
+
+    wrapper = renderForm({ editing: null, parent: node({ id: 9, nodeType: 'SUMMARY' }) })
+    expect(document.body.textContent).not.toContain('제안')
   })
 })
 

@@ -18,7 +18,7 @@ import {
 
 /**
  * 순수 함수 단위 테스트 — DOM 이 필요 없어 카드 마운트 없이도 판정 규칙을 고정한다
- * (`rowSelection.ts` · `weightSuggestion.ts` 와 같은 관습). 컴포넌트 테스트
+ * (`rowSelection.ts` · `assignFilter.ts` 와 같은 관습). 컴포넌트 테스트
  * (`dashboardCards.spec.ts` · `KpiCard.spec.ts`)와 겹치지 않게, 여기서는 조건 분기 자체의
  * 정확성만 본다.
  */

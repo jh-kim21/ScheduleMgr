@@ -395,9 +395,12 @@ Work Package의 실행 방식에 따라 네 가지 식으로 계산하고, 상�
   자체는 지우지 마세요** — 아무도 적지 않은 가지는 여전히 leaf 개수 가중(`LEGACY_ROLLUP`)이어야
   하고, 지우면 기존 프로젝트의 숫자가 바뀝니다. `ProgressResult.incompleteWeights`는 그 시절의
   신호라 **항상 `false`**이고, 이미 찍힌 커밋 payload와 모양을 맞추려고 필드만 남겨 두었습니다.
-- **그래서 최상위 항목에는 가중치를 묻지 않습니다**(사용자 결정, `WbsForm`의 `isRoot`). 입력만
-  감출 뿐 **값은 payload에 그대로 실어 보냅니다** — 빼면 기존에 값이 있던 항목이 저장하는 순간
-  `null`로 덮입니다(커밋 `da96ebe`와 같은 사고). 하위 레벨에서는 그대로 입력받습니다.
+- **그래서 WBS 폼은 레벨 무관 가중치를 묻지 않습니다**(사용자 결정). `wbs_items.weight`는 형제
+  사이의 상대값인데 원가·공수와 묶이지 않아 적을 근거가 없고(위 두 항목), 크기 차이는 이미
+  `leafCount`가 반영합니다. 입력만 감출 뿐 **값은 payload에 그대로 실어 보냅니다** — 빼면 기존에
+  값이 있던 항목이 저장하는 순간 `null`로 덮입니다(커밋 `da96ebe`와 같은 사고). **체크포인트
+  (Waterfall·Hybrid의 분모) 가중치 입력은 그대로 남아 있습니다** — 사용자 결정으로 이번 삭제
+  범위 밖입니다.
 - **인수(`acceptance_status`)는 진척과 직교**합니다. 실행이 100%여도 인수가 남았으면 완료로 보지
   않습니다(`acceptancePending`).
 - **모든 화면이 이 서비스 하나를 읽습니다.** WBS 트리·간트·대시보드가 각자 계산하면 같은 프로젝트에
@@ -568,8 +571,8 @@ WBS의 이점이 사라지고 같은 업무의 세 일정을 눈으로 잇기 �
 
 `@vue/test-utils` + `happy-dom`으로 Vue 컴포넌트를 마운트해 테스트할 수 있습니다. 그전까지 이
 저장소는 컴포넌트를 마운트할 방법이 없어서, 화면 동작을 검증하려면 판정을 순수 함수로 빼는
-수밖에 없었습니다(`rowSelection.ts`, `weightSuggestion.ts`, `assignFilter.ts`,
-`checkpointForm.ts`가 전부 그렇게 생겼습니다).
+수밖에 없었습니다(`rowSelection.ts`, `assignFilter.ts`, `checkpointForm.ts`가 전부 그렇게
+생겼습니다).
 
 - **기본 테스트 환경은 여전히 `node`입니다.** `vite.config.ts`에 전역 `environment: 'happy-dom'`을
   켜지 않았습니다 — 기존 테스트는 전부 순수 함수라 DOM이 필요 없고, 전부 DOM 환경에서 돌리면
@@ -579,7 +582,7 @@ WBS의 이점이 사라지고 같은 업무의 세 일정을 눈으로 잇기 �
   환경을 정합니다 — `vitest.config`의 `environmentMatchGlobs`는 Vitest 4에는 없습니다). 이렇게
   나누면 "이 테스트가 DOM을 쓴다"는 것이 파일 자체에서 드러납니다.
 - **판정을 순수 함수로 빼는 관습은 그대로 유지합니다.** 마운트가 가능해졌다고 `rowSelection.ts`·
-  `weightSuggestion.ts` 류를 컴포넌트 안으로 되돌리지 마세요 — 순수 함수는 여전히 규칙을 더
+  `assignFilter.ts` 류를 컴포넌트 안으로 되돌리지 마세요 — 순수 함수는 여전히 규칙을 더
   또렷하게 고정하고, 컴포넌트 테스트보다 빠르고 덜 깨집니다. **컴포넌트 테스트는 "렌더링·상호작용"을
   덮고, 순수 함수 테스트는 "판정"을 덮습니다.**
 - **`Teleport to="body"`로 렌더하는 컴포넌트(모든 `ModalDialog` 기반 대화상자)는 `wrapper.find(...)`로

@@ -4,7 +4,7 @@ import type { Tone } from './icons'
 
 /**
  * 대시보드 카드들이 함께 쓰는 순수 함수와 타입. 판정 · 문구를 컴포넌트 밖에 두는 이 저장소의
- * 관습을 그대로 따른다(rowSelection.ts · weightSuggestion.ts 와 같은 이유) — 규칙이 한 곳에
+ * 관습을 그대로 따른다(rowSelection.ts · assignFilter.ts 와 같은 이유) — 규칙이 한 곳에
  * 고정되고 DOM 없이 검증할 수 있다.
  *
  * <p>여기에 산술을 새로 만들지 않는다. 서버가 낸 값을 어떻게 *적을지*만 정한다 — 대시보드가 자기
