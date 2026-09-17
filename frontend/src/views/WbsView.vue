@@ -8,6 +8,7 @@ import WbsImportForm from '../features/wbs/WbsImportForm.vue'
 import WbsTree from '../features/wbs/WbsTree.vue'
 import { useWbs } from '../features/wbs/useWbs'
 import { useWbsTags } from '../features/wbs/useWbsTags'
+import { showsLoadingInsteadOfTree } from '../features/wbs/treeVisibility'
 import { useProgress } from '../features/progress/useProgress'
 import { useProjects } from '../features/projects/useProjects'
 import { ensureSelection, selectedProjectId } from '../stores/projectSelection'
@@ -122,6 +123,9 @@ const delayedCount = computed(
 const atRiskCount = computed(
   () => attention.value.filter((node) => node.delayStatus === 'AT_RISK').length,
 )
+
+/** 판정은 `treeVisibility.ts` 참고 — 갱신 중에 트리를 감추면 펼친 체크포인트와 폼이 사라진다. */
+const showLoading = computed(() => showsLoadingInsteadOfTree(loading.value, tree.value.length))
 
 /** 거부되면 대화상자를 열어 둔 채 사유를 보여 준다 — 입력을 다시 치게 만들면 안 된다. */
 async function handleSubmit(input: WbsItemInput) {
@@ -270,7 +274,7 @@ async function handleMove(itemId: number, input: WbsMoveInput) {
         <RouterLink to="/gantt" class="detail">간트에서 보기</RouterLink>
       </p>
 
-      <p v-if="loading">불러오는 중...</p>
+      <p v-if="showLoading">불러오는 중...</p>
       <WbsTree
         v-else
         :tree="tree"

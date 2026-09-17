@@ -229,6 +229,16 @@ describe('CheckpointList', () => {
       expect(labels).toContain('삭제')
     })
 
+    it('승인 상태 칩(.cp-approved·.cp-pending)은 editable: true에서도 <button>이 아니다 — 상태는 표시이지 동작이 아니다. 클릭해서 바뀌는 것은 아래 [승인]·[승인 취소] 버튼뿐이다', () => {
+      wrapper = renderList(
+        [checkpoint({ id: 1, approved: false }), checkpoint({ id: 2, approved: true, approvedBy: '김재학', approvedAt: '2026-03-02' })],
+        true,
+      )
+
+      expect(wrapper.find('.cp-pending').element.tagName).toBe('SPAN')
+      expect(wrapper.find('.cp-approved').element.tagName).toBe('SPAN')
+    })
+
     it('가중치 null은 1로, 0은 0 그대로 보여준다 — 서버가 미입력을 1로 폴백하므로 "균등"은 형제 중 하나라도 값이 있으면 거짓이었다. 0과 미입력은 여전히 다른 값이다', () => {
       wrapper = renderList(
         [checkpoint({ id: 1, weight: null }), checkpoint({ id: 2, weight: 0 })],

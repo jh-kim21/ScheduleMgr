@@ -398,9 +398,11 @@ Work Package의 실행 방식에 따라 네 가지 식으로 계산하고, 상�
 - **그래서 WBS 폼은 레벨 무관 가중치를 묻지 않습니다**(사용자 결정). `wbs_items.weight`는 형제
   사이의 상대값인데 원가·공수와 묶이지 않아 적을 근거가 없고(위 두 항목), 크기 차이는 이미
   `leafCount`가 반영합니다. 입력만 감출 뿐 **값은 payload에 그대로 실어 보냅니다** — 빼면 기존에
-  값이 있던 항목이 저장하는 순간 `null`로 덮입니다(커밋 `da96ebe`와 같은 사고). **체크포인트
-  (Waterfall·Hybrid의 분모) 가중치 입력은 그대로 남아 있습니다** — 사용자 결정으로 이번 삭제
-  범위 밖입니다.
+  값이 있던 항목이 저장하는 순간 `null`로 덮입니다(커밋 `da96ebe`와 같은 사고). **진척 탭도
+  이제 가중치를 묻지 않습니다** — 인라인 편집기를 지웠고, 그 결과 가중치는 어느 화면에서도
+  입력할 수 없습니다(같은 사유). 저장된 값은 지우지 않고 보관하며 집계에도 계속 쓰입니다.
+  **체크포인트(Waterfall·Hybrid의 분모) 가중치 입력은 그대로 남아 있습니다** — 사용자 결정으로
+  이번 삭제 범위 밖입니다.
 - **인수(`acceptance_status`)는 진척과 직교**합니다. 실행이 100%여도 인수가 남았으면 완료로 보지
   않습니다(`acceptancePending`).
 - **모든 화면이 이 서비스 하나를 읽습니다.** WBS 트리·간트·대시보드가 각자 계산하면 같은 프로젝트에
@@ -410,7 +412,10 @@ Work Package의 실행 방식에 따라 네 가지 식으로 계산하고, 상�
   `description`이 없습니다. 그 화면에서 `PUT /wbs/{itemId}`를 부르면 폼이 모르는 그 필드들이 null로
   덮여 사라집니다 — WBS 편집 폼의 결함(커밋 `da96ebe`)과 같은 종류의 사고입니다. 두 필드만 건드리는
   좁은 경로를 두면 이 화면이 다른 필드의 존재를 몰라도 안전합니다. **합치지 마세요** — 합치는 순간
-  진척 탭이 다시 그 결함을 재현합니다.
+  진척 탭이 다시 그 결함을 재현합니다. **화면에서는 이제 이 엔드포인트를 부르지 않습니다** — 진척
+  탭의 인라인 편집기를 지웠습니다(가중치는 어느 화면에서도 입력할 수 없고, α는 WBS 폼에만
+  남습니다). 엔드포인트와 테스트는 계약으로 남겨 두었습니다 — 나중에 화면을 되살릴 때 이 좁은
+  경로가 그대로 있어야 합니다.
 - **체크포인트(Waterfall·Hybrid의 분모)의 정의·수정·삭제·승인은 WBS 트리에서 합니다** — Work
   Package 행을 펼치면 그 자리에 나타나고, 즉시 저장됩니다. 진척 탭은 같은 목록을 읽기 전용으로만
   보여줍니다(자세한 이유는 아래 "화면 구조"의 진척 탭 항목). WBS 폼(`ModalDialog`)에는 없습니다 —
@@ -973,7 +978,7 @@ Story·Sprint에 걸려도 원본은 하나로 관리해야 하기 때문입니�
 | `GET` `POST` | `/api/projects/{projectId}/progress/checkpoints` | 승인 체크포인트 목록/추가 (Waterfall·Hybrid의 분모) |
 | `PUT` `DELETE` | `/api/projects/{projectId}/progress/checkpoints/{checkpointId}` | 수정 / 삭제 |
 | `PUT` | `/api/projects/{projectId}/progress/checkpoints/{checkpointId}/approval` | 승인·승인 취소 |
-| `PUT` | `/api/projects/{projectId}/progress/work-packages/{wbsItemId}/basis` | 가중치·α만 전체 치환(진척 탭 전용, `null`로 지울 수 있음) |
+| `PUT` | `/api/projects/{projectId}/progress/work-packages/{wbsItemId}/basis` | 가중치·α만 전체 치환(`null`로 지울 수 있음). 계약으로만 남아 있고 화면은 부르지 않음 |
 | `POST` | `/api/projects/{projectId}/progress/baselines` | 기준선 승인 (명시적 행위, 자동 경로 없음) |
 | `GET` `POST` | `/api/projects/{projectId}/progress/snapshots` | 보고 스냅샷 조회 / 저장 |
 | `GET` | `/api/projects/{projectId}/dashboard` | 대시보드 요약 (다른 조회들을 한 기준일로 모은 것, 읽기 전용) |

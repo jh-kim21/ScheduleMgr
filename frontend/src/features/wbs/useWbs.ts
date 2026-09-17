@@ -18,6 +18,20 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 /** Which (project, revision, day) the cached tree belongs to; null when nothing is cached. */
 let cacheKey: string | null = null
+/**
+ * The project `tree` currently belongs to; null when nothing is loaded. Tracked separately from
+ * `cacheKey` (which also changes on a same-project revision bump) because `load()` needs to answer
+ * a narrower question: "is this a *different* project, or just a fresher read of the same one?"
+ *
+ * `showsLoadingInsteadOfTree` keeps the tree on screen while `loading` is true so a checkpoint
+ * save does not blank the tree mid-refetch (지시서 §3). That only holds while the refetch is for
+ * the *same* project — switching projects while a fetch is in flight would otherwise render the
+ * previous project's rows (and its `referenceDate`) under the new selection until the response
+ * lands. The 404 on a stray click is caught server-side (`WbsService.requireItemOfProject`), but
+ * showing another project's data at all is still a lie the screen shouldn't tell. So `load()`
+ * clears the tree immediately when the target project differs from this, before awaiting anything.
+ */
+let loadedProjectId: number | null = null
 /** The request currently in flight, so concurrent callers share one fetch. */
 let inFlight: { key: string; promise: Promise<void> } | null = null
 
@@ -35,9 +49,18 @@ export function useWbs() {
     tree.value = result.nodes
     referenceDate.value = result.referenceDate
     cacheKey = currentCacheKey(projectId)
+    loadedProjectId = projectId
   }
 
   async function load(projectId: number) {
+    // 다른 프로젝트로 전환하는 요청이면 응답이 오기 전에 즉시 비운다 — 그대로 두면
+    // `showsLoadingInsteadOfTree`가 "행이 있으니 갱신 중"으로 읽어 이전 프로젝트의 트리를 새
+    // 선택 아래 계속 그린다(§3 회귀). 같은 프로젝트를 다시 읽는 것이면 비우지 않아야 §3이 고친
+    // 깜빡임이 돌아오지 않는다.
+    if (loadedProjectId !== null && loadedProjectId !== projectId) {
+      tree.value = []
+      referenceDate.value = null
+    }
     loading.value = true
     error.value = null
     try {
@@ -52,6 +75,7 @@ export function useWbs() {
       tree.value = []
       referenceDate.value = null
       cacheKey = null
+      loadedProjectId = null
       error.value = describe(e, 'WBS를 불러오지 못했습니다.')
     } finally {
       loading.value = false

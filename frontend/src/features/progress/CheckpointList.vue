@@ -204,7 +204,7 @@ function remove(cp: CheckpointDetail) {
           <span class="cp-weight">가중치 {{ cp.weight ?? 1 }}</span>
           <span v-if="cp.completionCriteria" class="cp-criteria">{{ cp.completionCriteria }}</span>
           <span v-if="cp.approved" class="cp-approved">
-            승인 · {{ cp.approvedBy }} · {{ cp.approvedAt?.slice(0, 10) }}
+            승인 완료 · {{ cp.approvedBy }} · {{ cp.approvedAt?.slice(0, 10) }}
           </span>
           <span v-else class="cp-pending">미승인</span>
           <span v-if="editable" class="cp-actions">
@@ -216,6 +216,7 @@ function remove(cp: CheckpointDetail) {
             <button
               v-else-if="approvingId !== cp.id"
               type="button"
+              class="primary"
               @click="startApprove(cp)"
             >승인</button>
             <button type="button" @click="startEdit(cp)">수정</button>
@@ -344,14 +345,29 @@ function remove(cp: CheckpointDetail) {
   color: var(--text-faint);
 }
 
+/*
+ * 상태 칩 — 눌러서 바뀌는 것이 아니라 지금 상태를 보여주기만 한다(지시서 "승인 — 상태는 칩,
+ * 동작은 버튼"). 크기·모서리는 이 저장소의 기존 칩(BacklogList `.chip`, ProgressPanel `.chip`)과
+ * 같은 계열이다. `cursor: default`로 눌러도 아무 일도 일어나지 않음을 드러내고, `<span>`이라
+ * hover/focus 스타일 자체가 없다 — 클릭 핸들러를 붙이면 안 된다(테스트가 이를 고정한다).
+ */
+.cp-approved,
+.cp-pending {
+  font-size: 0.68rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  cursor: default;
+}
+
 .cp-approved {
-  font-size: 0.75rem;
-  color: var(--accent);
+  background: var(--success-weak);
+  color: var(--success-text);
 }
 
 .cp-pending {
-  font-size: 0.75rem;
-  color: var(--text-faint);
+  background: var(--badge-neutral-bg);
+  color: var(--badge-neutral-fg);
 }
 
 /* 승인/승인 취소·수정·삭제 — 행 안에 들어가는 작은 버튼이라 화면을 압도하면 안 된다. 다른
@@ -363,6 +379,8 @@ function remove(cp: CheckpointDetail) {
 }
 
 .cp-actions button {
+  position: relative;
+  overflow: hidden;
   padding: 0.2rem 0.5rem;
   border: 1px solid var(--border-input);
   border-radius: 6px;
@@ -372,6 +390,32 @@ function remove(cp: CheckpointDetail) {
   font: inherit;
   font-size: 0.72rem;
   white-space: nowrap;
+}
+
+/* 상태 레이어 — 배경색을 바꾸는 대신 반투명 층을 겹친다(CLAUDE.md "Material 스타일"). 어떤
+ * 버튼 배경(기본·`.primary`·`.danger`) 위에서도 같은 규칙으로 동작한다. */
+.cp-actions button::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  transition: background 120ms ease;
+}
+
+.cp-actions button:hover::before {
+  background: var(--state-hover);
+}
+
+.cp-actions button:active::before {
+  background: var(--state-press);
+}
+
+/* 「승인」만 옅은 강조 채움(filled tonal) — 이 칸의 주 동작임을 한눈에 보여준다. 「승인 취소」·
+ * 「수정」·「삭제」는 기존 테두리 모양을 유지한다. */
+.cp-actions button.primary {
+  background: var(--accent-container);
+  color: var(--accent-container-fg);
+  border-color: transparent;
 }
 
 .cp-actions button.danger {

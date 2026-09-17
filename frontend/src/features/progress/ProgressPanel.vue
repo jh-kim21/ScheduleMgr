@@ -28,7 +28,6 @@ const {
   error,
   ensureLoaded,
   approveBaseline,
-  updateBasis,
   saveSnapshot,
 } = useProgress()
 // 같은 화면의 요약 탭이 이 숫자들을 다시 보여 준다. 여기서 무효화를 따로 부르지 않는 이유는
@@ -37,15 +36,6 @@ const {
 
 /** Which Work Package's checkpoints are open for editing. */
 const expanded = ref<number | null>(null)
-
-/**
- * Which Work Package's weight/α are being edited inline, and the values in progress — only one row
- * at a time. Not a computed off `data.value`: the input needs somewhere to hold a value the server
- * hasn't seen yet (including an in-progress `''` while the user is between digits).
- */
-const editingBasis = ref<{ wbsItemId: number; weight: number | null; agileRatio: number | null } | null>(
-  null,
-)
 
 /**
  * 클릭 선택·방향키 이동은 다른 표와 같은 컴포저블을 쓴다. 이 표에는 행 편집 대화상자가 없으므로
@@ -67,7 +57,6 @@ watch(
   selectedProjectId,
   (id) => {
     expanded.value = null
-    editingBasis.value = null
     if (id !== null) ensureLoaded(id)
   },
   { immediate: true },
@@ -94,41 +83,6 @@ const notEstimable = computed(
 
 function toggle(wp: WorkPackageProgress) {
   expanded.value = expanded.value === wp.wbsItemId ? null : wp.wbsItemId
-}
-
-/** Opens inline editing for `wp`, discarding any other row's unsaved edit. */
-function startEditBasis(wp: WorkPackageProgress) {
-  if (readOnly.value) return
-  editingBasis.value = { wbsItemId: wp.wbsItemId, weight: wp.weight, agileRatio: wp.agileRatio }
-}
-
-function cancelEditBasis() {
-  editingBasis.value = null
-}
-
-/**
- * `v-model.number` leaves an empty box as `''` rather than `null` (and a box mid-edit of "-" or "."
- * as `NaN`) — neither is a value the backend accepts, and both mean the same thing here: "not
- * entered". Only this boundary needs to know that; the rest of the form treats `editingBasis` as
- * `number | null` throughout.
- */
-function normalizeBasisNumber(value: number | string | null): number | null {
-  if (value === '' || value === null || Number.isNaN(value as number)) return null
-  return value as number
-}
-
-async function saveBasis() {
-  if (readOnly.value) return
-  const projectId = selectedProjectId.value
-  const editing = editingBasis.value
-  if (projectId === null || editing === null) return
-  const ok = await updateBasis(projectId, editing.wbsItemId, {
-    weight: normalizeBasisNumber(editing.weight),
-    agileRatio: normalizeBasisNumber(editing.agileRatio),
-  })
-  // Rejected: keep the row open with what the user typed rather than losing it — `error` above the
-  // table already explains why.
-  if (ok) editingBasis.value = null
 }
 
 async function confirmBaseline() {
@@ -265,10 +219,10 @@ function snapshotSummary(metrics: string): string {
 
     <h2>Work Package별 진척</h2>
     <p class="notice subtle">
-      가중치는 같은 상위 아래 형제 Work Package 사이의 비중입니다. 여기서 바꾸면 그 항목이 속한
-      가지의 집계가 즉시 달라집니다. 비워 두면(미입력) 1로 계산되고, 형제 중 누구도 적지 않았다면
-      그 가지는 예전처럼 하위 leaf 개수 가중 평균으로 집계됩니다 —
-      <strong>0과 미입력은 다른 값</strong>입니다.
+      가중치는 같은 상위 아래 형제 Work Package 사이의 비중입니다. <strong>이 화면에서는 입력하지
+      않습니다</strong> — 비워 두면(미입력) 1로 계산되고, 형제 중 누구도 적지 않았다면 그 가지는
+      예전처럼 하위 leaf 개수 가중 평균으로 집계됩니다 — <strong>0과 미입력은 다른 값</strong>입니다.
+      α(Hybrid의 Agile 비율)는 WBS 화면의 항목 수정 폼에서 고칩니다.
     </p>
     <div class="table-scroll">
       <table class="wp">
@@ -291,13 +245,7 @@ function snapshotSummary(metrics: string): string {
               :class="{ open: expanded === wp.wbsItemId, selected: selection.isSelected(wp.wbsItemId) }"
               :aria-selected="selection.isSelected(wp.wbsItemId)"
               @click="selection.select(wp.wbsItemId)"
-              @dblclick="
-                selection.onRowDblClick($event, () => {
-                  // 이 행이 가중치 편집 중이면 더블클릭이 체크포인트 펼치기를 건드리지 않게 한다 —
-                  // 입력칸 위 더블클릭은 isDoubleClickGuarded 를 통과하므로 여기서 따로 막는다.
-                  if (editingBasis?.wbsItemId !== wp.wbsItemId) toggle(wp)
-                })
-              "
+              @dblclick="selection.onRowDblClick($event, () => toggle(wp))"
             >
               <td class="code">{{ wp.code ?? '-' }}</td>
               <td>
@@ -307,39 +255,15 @@ function snapshotSummary(metrics: string): string {
                 </span>
               </td>
               <td class="mode">{{ executionModeLabel(wp.executionMode) }}</td>
+              <td class="num">{{ wp.weight ?? '-' }}</td>
               <td class="num">
-                <input
-                  v-if="editingBasis?.wbsItemId === wp.wbsItemId"
-                  v-model.number="editingBasis!.weight"
-                  type="number"
-                  min="0"
-                  class="basis-input"
-                  @keydown.enter="saveBasis"
-                  @keydown.esc="cancelEditBasis"
-                />
-                <template v-else>{{ wp.weight ?? '-' }}</template>
-              </td>
-              <td class="num">
-                <input
-                  v-if="editingBasis?.wbsItemId === wp.wbsItemId"
-                  v-model.number="editingBasis!.agileRatio"
-                  type="number"
-                  min="0"
-                  max="100"
-                  :disabled="wp.executionMode !== 'HYBRID'"
-                  class="basis-input"
-                  @keydown.enter="saveBasis"
-                  @keydown.esc="cancelEditBasis"
-                />
-                <template v-else>
-                  {{
-                    wp.executionMode !== 'HYBRID'
-                      ? '-'
-                      : wp.agileRatio === null
-                        ? '미정'
-                        : `${wp.agileRatio}%`
-                  }}
-                </template>
+                {{
+                  wp.executionMode !== 'HYBRID'
+                    ? '-'
+                    : wp.agileRatio === null
+                      ? '미정'
+                      : `${wp.agileRatio}%`
+                }}
               </td>
               <td class="basis">
                 <span :title="PROGRESS_BASIS_HINTS[wp.basis]">
@@ -353,22 +277,9 @@ function snapshotSummary(metrics: string): string {
                 <span :class="{ none: wp.percent === null }">{{ progressText(wp.percent) }}</span>
               </td>
               <td class="actions">
-                <template v-if="editingBasis?.wbsItemId === wp.wbsItemId">
-                  <button type="button" @click="saveBasis">저장</button>
-                  <button type="button" class="ghost" @click="cancelEditBasis">취소</button>
-                </template>
-                <template v-else>
-                  <button type="button" @click="toggle(wp)">
-                    체크포인트 {{ wp.checkpointApproved }}/{{ wp.checkpointTotal }}
-                  </button>
-                  <button
-                    type="button"
-                    class="ghost"
-                    :disabled="readOnly"
-                    :title="readOnly ? READONLY_HINT : undefined"
-                    @click="startEditBasis(wp)"
-                  >가중치</button>
-                </template>
+                <button type="button" @click="toggle(wp)">
+                  체크포인트 {{ wp.checkpointApproved }}/{{ wp.checkpointTotal }}
+                </button>
               </td>
             </tr>
             <tr v-if="expanded === wp.wbsItemId" class="detail">
@@ -616,18 +527,6 @@ input {
   color: var(--text-muted);
 }
 
-/* 가중치·α 인라인 편집 입력칸 — 열 폭에 맞춰 좁게, 숫자 칸이므로 오른쪽 정렬. */
-.basis-input {
-  width: 100%;
-  padding: 0.25rem 0.35rem;
-  text-align: right;
-}
-
-.basis-input:disabled {
-  background: var(--disabled-bg);
-  color: var(--disabled-fg);
-}
-
 .wp .basis {
   width: 6.5rem;
   font-size: 0.78rem;
@@ -760,7 +659,7 @@ button:disabled {
   cursor: not-allowed;
 }
 
-/* `.link`은 버튼(가중치 편집 취소 등)과 `RouterLink`("WBS에서 편집" 앵커) 둘 다에 붙는다. */
+/* `.link`은 `RouterLink`("WBS에서 편집" 앵커)에 붙는다. */
 .link {
   border: none;
   background: none;

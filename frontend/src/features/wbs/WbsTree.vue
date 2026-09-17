@@ -1019,6 +1019,8 @@ tbody:focus-visible {
  * affordance.
  */
 .cp-badge {
+  position: relative;
+  overflow: hidden;
   font-size: 0.7rem;
   padding: 0.1rem 0.5rem;
   border-radius: 999px;
@@ -1032,6 +1034,25 @@ tbody:focus-visible {
 .cp-badge.open {
   border-color: var(--accent);
   color: var(--accent);
+}
+
+/* 이건 버튼이다 — pill 모양이라 상태 표시로 오인되기 쉬워, hover로 "누를 수 있다"를 드러낸다.
+ * 배경색을 바꾸지 않고 겹치는 반투명 층을 쓴다(CLAUDE.md "상태 레이어"): 어떤 배경(기본·`.open`)
+ * 위에서도 같은 규칙으로 동작한다. */
+.cp-badge::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  transition: background 120ms ease;
+}
+
+.cp-badge:hover::before {
+  background: var(--state-hover);
+}
+
+.cp-badge:active::before {
+  background: var(--state-press);
 }
 
 /* 펼친 체크포인트 목록. WBS 행과 같은 배경을 쓰지 않아 하위 항목이 아니라 부가 패널임을 보인다. */
