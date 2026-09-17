@@ -24,12 +24,14 @@ vi.mock('../../api/progressApi', async (importOriginal) => {
       ...actual.progressApi,
       addCheckpoint: vi.fn(),
       updateCheckpoint: vi.fn(),
+      setApproval: vi.fn(),
     },
   }
 })
 
 const mockedAddCheckpoint = vi.mocked(progressApi.addCheckpoint)
 const mockedUpdateCheckpoint = vi.mocked(progressApi.updateCheckpoint)
+const mockedSetApproval = vi.mocked(progressApi.setApproval)
 
 function checkpoint(overrides: Partial<CheckpointDetail> = {}): CheckpointDetail {
   return {
@@ -44,9 +46,17 @@ function checkpoint(overrides: Partial<CheckpointDetail> = {}): CheckpointDetail
   }
 }
 
+/**
+ * `attachTo: document.body`가 필요하다 — 기본 마운트는 컴포넌트를 문서에 붙이지 않아
+ * `focus()`가 `document.activeElement`를 바꾸지 않는다. 이 화면은 "추가 후 제목 칸으로 포커스가
+ * 돌아온다"·"승인자 칸이 전체 선택된 채 열린다"가 곧 기능이라 포커스를 검증할 수 있어야 한다.
+ * 문서에 붙인 만큼 `afterEach`의 `unmount()`가 더 중요해진다(안 하면 다음 테스트가 이전
+ * 인스턴스의 입력칸까지 함께 찾는다).
+ */
 function renderList(checkpoints: CheckpointDetail[], editable: boolean) {
   return mount(CheckpointList, {
     props: { projectId: 1, wbsItemId: 10, checkpoints, editable },
+    attachTo: document.body,
   })
 }
 
@@ -74,6 +84,22 @@ function weightInput(wrapper: VueWrapper) {
   return wrapper.find<HTMLInputElement>('.cp-form input[type="number"]')
 }
 
+function criteriaInput(wrapper: VueWrapper) {
+  return wrapper.find<HTMLInputElement>('.cp-criteria-input')
+}
+
+function approveButtons(wrapper: VueWrapper) {
+  return wrapper.findAll('button').filter((b) => b.text() === '승인')
+}
+
+function approverInput(wrapper: VueWrapper) {
+  return wrapper.find<HTMLInputElement>('.approve-row input')
+}
+
+function approveConfirmButton(wrapper: VueWrapper) {
+  return wrapper.find('.approve-row button:not(.ghost)')
+}
+
 describe('CheckpointList', () => {
   let wrapper: VueWrapper | undefined
 
@@ -82,6 +108,7 @@ describe('CheckpointList', () => {
     wrapper = undefined
     mockedAddCheckpoint.mockReset()
     mockedUpdateCheckpoint.mockReset()
+    mockedSetApproval.mockReset()
   })
 
   describe('editable: false (진척 탭 — 조망 전용)', () => {
@@ -202,15 +229,16 @@ describe('CheckpointList', () => {
       expect(labels).toContain('삭제')
     })
 
-    it('가중치 null은 균등으로, 0은 0 그대로 보여준다 — 0과 미입력은 다른 값이다', () => {
+    it('가중치 null은 1로, 0은 0 그대로 보여준다 — 서버가 미입력을 1로 폴백하므로 "균등"은 형제 중 하나라도 값이 있으면 거짓이었다. 0과 미입력은 여전히 다른 값이다', () => {
       wrapper = renderList(
         [checkpoint({ id: 1, weight: null }), checkpoint({ id: 2, weight: 0 })],
         true,
       )
 
       const weights = wrapper.findAll('.cp-weight').map((el) => el.text())
-      expect(weights).toContain('가중치 균등')
+      expect(weights).toContain('가중치 1')
       expect(weights).toContain('가중치 0')
+      expect(weights.join(' ')).not.toContain('균등')
     })
   })
 
@@ -234,6 +262,18 @@ describe('CheckpointList', () => {
       expect(titleInput(wrapper).element.value).toBe('')
       expect(weightInput(wrapper).element.value).toBe('')
       expect(formSubmitButton(wrapper).text()).toBe('추가')
+    })
+
+    it('추가 성공 — 제목 칸으로 포커스가 돌아온다: 폼만 열어 두고 커서가 저장 버튼에 남으면 다음 건을 치려고 마우스를 다시 잡아야 한다', async () => {
+      mockedAddCheckpoint.mockResolvedValueOnce({} as never)
+      wrapper = renderList([checkpoint()], true)
+
+      await addButton(wrapper)!.trigger('click')
+      await titleInput(wrapper).setValue('코드 리뷰')
+      await formSubmitButton(wrapper).trigger('click')
+      await flushPromises()
+
+      expect(document.activeElement).toBe(titleInput(wrapper).element)
     })
 
     it('수정 저장 성공 — 폼이 닫힌다(추가와 반대) — 고칠 항목은 목록에서 다시 골라야 하므로 열어 둘 이유가 없다', async () => {
@@ -276,6 +316,112 @@ describe('CheckpointList', () => {
       expect(wrapper.find('.cp-form').exists()).toBe(true)
       expect(titleInput(wrapper).element.value).toBe('설계 리뷰 v2')
       expect(formSubmitButton(wrapper).text()).toBe('저장')
+    })
+  })
+
+  /**
+   * 폼이 `<form>`이 아니라 `<div>`다 — 트리 행 안에 들어가므로 중첩 폼을 만들 수 없다. 그래서
+   * 브라우저의 기본 Enter-submit이 없고, 이 핸들러가 곧 Enter 저장의 전부다. 승인 입력에만
+   * 달려 있던 비대칭을 없앤 것이라 두 글자 칸 모두에서 고정한다.
+   */
+  describe('editable: true — 키보드', () => {
+    it('제목 칸에서 Enter를 누르면 저장된다', async () => {
+      mockedAddCheckpoint.mockResolvedValueOnce({} as never)
+      wrapper = renderList([checkpoint()], true)
+
+      await addButton(wrapper)!.trigger('click')
+      await titleInput(wrapper).setValue('코드 리뷰')
+      await titleInput(wrapper).trigger('keydown.enter')
+      await flushPromises()
+
+      expect(mockedAddCheckpoint).toHaveBeenCalledTimes(1)
+    })
+
+    it('완료조건 칸에서 Enter를 누르면 저장된다 — 두 칸 어디서든 같아야 한다', async () => {
+      mockedAddCheckpoint.mockResolvedValueOnce({} as never)
+      wrapper = renderList([checkpoint()], true)
+
+      await addButton(wrapper)!.trigger('click')
+      await titleInput(wrapper).setValue('코드 리뷰')
+      await criteriaInput(wrapper).setValue('리뷰어 승인')
+      await criteriaInput(wrapper).trigger('keydown.enter')
+      await flushPromises()
+
+      expect(mockedAddCheckpoint).toHaveBeenCalledTimes(1)
+    })
+
+    it('제목이 비어 있으면 Enter를 눌러도 저장되지 않는다 — 저장 버튼의 disabled와 같은 판정이어야 한다', async () => {
+      wrapper = renderList([checkpoint()], true)
+
+      await addButton(wrapper)!.trigger('click')
+      await titleInput(wrapper).trigger('keydown.enter')
+      await flushPromises()
+
+      expect(mockedAddCheckpoint).not.toHaveBeenCalled()
+      expect(wrapper.find('.cp-form').exists()).toBe(true)
+    })
+
+    it('제목 칸에서 Esc를 누르면 폼이 닫힌다', async () => {
+      wrapper = renderList([checkpoint()], true)
+
+      await addButton(wrapper)!.trigger('click')
+      await titleInput(wrapper).setValue('코드 리뷰')
+      await titleInput(wrapper).trigger('keydown.esc')
+
+      expect(wrapper.find('.cp-form').exists()).toBe(false)
+      expect(addButton(wrapper)).toBeTruthy()
+    })
+  })
+
+  /**
+   * 승인자는 **모듈 스코프**에 기억되므로 이 파일 안에서 테스트끼리 값이 이어진다. 그래서 각
+   * 테스트가 자기 안에서 먼저 한 번 승인해 기준값을 만들고, 그 뒤를 검증한다 — "처음에는 비어
+   * 있다"를 단독으로 고정하면 실행 순서에 묶여 깨지기 쉽다.
+   */
+  describe('editable: true — 승인자 기억', () => {
+    it('두 번째 승인부터 직전 승인자가 미리 채워지고, 전체 선택 상태라 바로 덮어쓸 수 있다', async () => {
+      mockedSetApproval.mockResolvedValueOnce({} as never)
+      wrapper = renderList([checkpoint({ id: 1 }), checkpoint({ id: 2 })], true)
+
+      await approveButtons(wrapper)[0].trigger('click')
+      await approverInput(wrapper).setValue('김재학')
+      await approveConfirmButton(wrapper).trigger('click')
+      await flushPromises()
+
+      await approveButtons(wrapper)[1].trigger('click')
+      await flushPromises()
+
+      const input = approverInput(wrapper).element
+      expect(input.value).toBe('김재학')
+      expect(document.activeElement).toBe(input)
+      expect(input.selectionStart).toBe(0)
+      expect(input.selectionEnd).toBe('김재학'.length)
+    })
+
+    it('거부된 이름은 기억하지 않는다 — 실패한 입력을 다음 승인에 미리 채워 주면 같은 실패를 되풀이하게 된다', async () => {
+      mockedSetApproval.mockResolvedValueOnce({} as never)
+      wrapper = renderList([checkpoint({ id: 1 }), checkpoint({ id: 2 })], true)
+
+      // 기준값을 만든다 — 성공한 승인 하나.
+      await approveButtons(wrapper)[0].trigger('click')
+      await approverInput(wrapper).setValue('이승하')
+      await approveConfirmButton(wrapper).trigger('click')
+      await flushPromises()
+
+      // 다른 이름으로 시도했다가 거부된다.
+      mockedSetApproval.mockRejectedValueOnce(new Error('네트워크 오류'))
+      await approveButtons(wrapper)[1].trigger('click')
+      await approverInput(wrapper).setValue('오타친이름')
+      await approveConfirmButton(wrapper).trigger('click')
+      await flushPromises()
+
+      // 거부됐으므로 승인 입력은 열린 채 남고, 다시 열면 기억된 이름은 직전 성공값이다.
+      expect(approverInput(wrapper).exists()).toBe(true)
+      await wrapper.findAll('button').filter((b) => b.text() === '취소')[0].trigger('click')
+      await approveButtons(wrapper)[1].trigger('click')
+      await flushPromises()
+
+      expect(approverInput(wrapper).element.value).toBe('이승하')
     })
   })
 })

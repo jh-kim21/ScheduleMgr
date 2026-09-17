@@ -38,7 +38,7 @@ describe('draftFrom', () => {
     expect(draft.criteria).toBe('리뷰어 승인')
   })
 
-  it('weight: null 은 균등을 뜻하므로 null 그대로 옮긴다 — 0으로 바뀌면 화면이 "가중치 0"으로 잘못 읽는다', () => {
+  it('weight: null 은 미입력(서버가 1로 계산)이므로 null 그대로 옮긴다 — 0으로 바뀌면 화면이 "가중치 0"으로 잘못 읽는다', () => {
     const draft = draftFrom(baseCheckpoint({ weight: null }))
 
     expect(draft.weight).toBeNull()
@@ -50,7 +50,7 @@ describe('draftFrom', () => {
     expect(draft.criteria).toBe('')
   })
 
-  it('weight: 0 은 null 로 뭉개지 않고 0 그대로 옮긴다 — 0과 미입력(균등)은 다른 값이다', () => {
+  it('weight: 0 은 null 로 뭉개지 않고 0 그대로 옮긴다 — 0과 미입력(서버가 1로 계산)은 다른 값이다', () => {
     const draft = draftFrom(baseCheckpoint({ weight: 0 }))
 
     expect(draft.weight).toBe(0)
@@ -58,7 +58,7 @@ describe('draftFrom', () => {
 })
 
 describe('emptyDraft', () => {
-  it('빈 입력값을 준다 — 제목·완료조건은 빈 문자열, 가중치는 null(균등)이지 0이 아니다', () => {
+  it('빈 입력값을 준다 — 제목·완료조건은 빈 문자열, 가중치는 null(미입력)이지 0이 아니다', () => {
     const draft = emptyDraft()
 
     expect(draft.title).toBe('')
@@ -85,7 +85,7 @@ describe('toCheckpointInput', () => {
     expect(input.completionCriteria).toBe('리뷰어 승인')
   })
 
-  it('가중치 null은 0으로 바뀌지 않는다 — null(균등)이 0이 되면 모든 가중치가 0인 것과 같아져 분모가 0이 되고 진척이 산정 전이 된다', () => {
+  it('가중치 null은 0으로 바뀌지 않는다 — null(미입력)이 0이 되면 모든 가중치가 0인 것과 같아져 분모가 0이 되고 진척이 산정 전이 된다', () => {
     const input = toCheckpointInput(10, { title: '설계 리뷰', weight: null, criteria: '' })
 
     expect(input.weight).toBeNull()

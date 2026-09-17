@@ -26,8 +26,9 @@ export function draftFrom(checkpoint: CheckpointDetail): CheckpointDraft {
 }
 
 /**
- * 서버로 보낼 형태. 제목은 trim, 완료조건은 비면 null. 가중치는 그대로 보존한다 — `null`(균등)과
- * `0`(진척에 기여하지 않음)은 다른 뜻이라 여기서 하나를 다른 것으로 바꾸면 안 된다.
+ * 서버로 보낼 형태. 제목은 trim, 완료조건은 비면 null. 가중치는 그대로 보존한다 — `null`(미입력,
+ * 서버가 1로 계산)과 `0`(진척에 기여하지 않음)은 다른 뜻이라 여기서 하나를 다른 것으로 바꾸면
+ * 안 된다.
  */
 export function toCheckpointInput(wbsItemId: number, draft: CheckpointDraft): CheckpointInput {
   return {

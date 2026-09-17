@@ -1,5 +1,21 @@
+<script lang="ts">
+import { ref as moduleRef } from 'vue'
+
+/**
+ * 마지막으로 입력한 승인자. **모듈 스코프**라 이 컴포넌트의 모든 인스턴스(WBS 트리에서 펼친
+ * Work Package마다 하나씩 생긴다)가 같은 값을 본다 — 한 사람이 한 자리에서 여러 체크포인트를
+ * 연달아 승인하는 것이 이 화면의 주 사용 패턴인데, 인스턴스마다 따로 기억하면 행을 옮길 때마다
+ * 이름을 다시 쳐야 해서 고친 것이 무의미해진다. `useProgress`가 모듈 스코프 상태를 쓰는 것과
+ * 같은 방식이고, `<script setup>`의 최상위는 인스턴스마다 다시 실행되므로 여기 둬야 한다.
+ *
+ * 한 세션까지만 기억한다 — `localStorage`에 남기지 않는다(지시서 6-6). 새로 고치면 지워지는
+ * 편이 "다른 사람이 같은 브라우저를 쓴다"는 경우에 안전하다.
+ */
+const lastApprover = moduleRef('')
+</script>
+
 <script setup lang="ts">
-import { nextTick, ref } from 'vue'
+import { nextTick, ref, type ComponentPublicInstance } from 'vue'
 import type { CheckpointDetail } from '../../api/progressApi'
 import { useProgress } from './useProgress'
 import {
@@ -63,6 +79,17 @@ const approvingId = ref<number | null>(null)
 const approver = ref('')
 
 /**
+ * 지금 펼쳐진 승인 입력칸. `v-for` 안에 있으므로 문자열 ref를 쓰면 Vue가 배열로 모아 "지금 열린
+ * 하나"를 집기 번거롭다 — 함수 ref로 받아 항상 하나만 들고 있는다(`v-if` 덕분에 한 번에 하나만
+ * 렌더링된다).
+ */
+const approverInput = ref<HTMLInputElement | null>(null)
+
+function setApproverInput(el: Element | ComponentPublicInstance | null) {
+  approverInput.value = el instanceof HTMLInputElement ? el : null
+}
+
+/**
  * `v-model.number`는 빈 칸을 `null`이 아니라 빈 문자열로, 편집 중인 "-"·"."는 `NaN`으로 남긴다.
  * 서버는 둘 다 받지 못하므로 여기서 걸러 `null`로 바꾼다 — `0`은 그대로 통과시킨다(0과 미입력은
  * 다른 값이다).
@@ -121,9 +148,17 @@ async function submit() {
   }
 }
 
-function startApprove(cp: CheckpointDetail) {
+/**
+ * 승인 입력을 편다. 마지막 승인자를 미리 채우되 **전체 선택 상태로 포커스**한다 — 대부분은 같은
+ * 사람이 연달아 승인하므로 그대로 Enter를 치면 되고, 다른 사람이면 첫 글자를 치는 순간 통째로
+ * 덮인다. 커서만 끝에 두면 매번 지우는 손이 한 번 더 든다.
+ */
+async function startApprove(cp: CheckpointDetail) {
   approvingId.value = cp.id
-  approver.value = ''
+  approver.value = lastApprover.value
+  await nextTick()
+  approverInput.value?.focus()
+  approverInput.value?.select()
 }
 
 function cancelApprove() {
@@ -133,8 +168,13 @@ function cancelApprove() {
 
 async function confirmApprove() {
   if (!approver.value.trim() || approvingId.value === null) return
-  const ok = await setApproval(props.projectId, approvingId.value, true, approver.value.trim())
-  if (ok) cancelApprove()
+  const name = approver.value.trim()
+  const ok = await setApproval(props.projectId, approvingId.value, true, name)
+  // 성공한 이름만 기억한다 — 거부된 입력을 다음 승인에 미리 채워 주면 같은 실패를 되풀이하게 된다.
+  if (ok) {
+    lastApprover.value = name
+    cancelApprove()
+  }
 }
 
 function revoke(cp: CheckpointDetail) {
@@ -156,7 +196,12 @@ function remove(cp: CheckpointDetail) {
       <li v-for="cp in checkpoints" :key="cp.id">
         <div class="row">
           <span class="cp-title">{{ cp.title }}</span>
-          <span class="cp-weight">가중치 {{ cp.weight ?? '균등' }}</span>
+          <!--
+            미입력(`null`)은 "균등"이 아니라 **1**이다 — `ProgressCalculator.weightOf`가 1로
+            폴백하므로 `[30, 30, 40, null]`에서 마지막 하나는 1/101을 갖는다. 예전 "균등" 표시는
+            형제 중 하나라도 값이 있으면 거짓이었다.
+          -->
+          <span class="cp-weight">가중치 {{ cp.weight ?? 1 }}</span>
           <span v-if="cp.completionCriteria" class="cp-criteria">{{ cp.completionCriteria }}</span>
           <span v-if="cp.approved" class="cp-approved">
             승인 · {{ cp.approvedBy }} · {{ cp.approvedAt?.slice(0, 10) }}
@@ -181,6 +226,7 @@ function remove(cp: CheckpointDetail) {
              레이어가 겹친다. -->
         <div v-if="editable && approvingId === cp.id" class="approve-row">
           <input
+            :ref="setApproverInput"
             v-model="approver"
             type="text"
             placeholder="승인자 (예: 김재학)"
@@ -209,10 +255,39 @@ function remove(cp: CheckpointDetail) {
       @click="openAddForm"
     >＋ 체크포인트 추가</button>
 
+    <!--
+      두 글자 칸 어디서든 Enter로 저장되고 Esc로 닫힌다 — 승인 입력(위)에만 있던 핸들러라
+      비대칭이었다. `<form>`이 아니라 `<div>`라서(트리 행 안에 들어가므로 중첩 폼을 만들 수 없다)
+      브라우저의 기본 submit이 없고, 그래서 이 핸들러가 곧 Enter 저장의 전부다. 가중치 칸은
+      `type="number"`라 Enter를 눌러도 브라우저 동작이 없어 같은 핸들러를 달아 둔다.
+    -->
     <div v-if="editable && formOpen" class="cp-form">
-      <input ref="titleInput" v-model="draft.title" type="text" placeholder="체크포인트 제목" />
-      <input v-model.number="draft.weight" type="number" min="0" placeholder="가중치" />
-      <input v-model="draft.criteria" type="text" placeholder="완료 조건 (선택)" />
+      <input
+        ref="titleInput"
+        v-model="draft.title"
+        type="text"
+        class="cp-title-input"
+        placeholder="체크포인트 제목"
+        @keydown.enter="isSubmittable(draft) && submit()"
+        @keydown.esc="closeForm"
+      />
+      <input
+        v-model.number="draft.weight"
+        type="number"
+        min="0"
+        class="cp-weight-input"
+        placeholder="가중치"
+        @keydown.enter="isSubmittable(draft) && submit()"
+        @keydown.esc="closeForm"
+      />
+      <input
+        v-model="draft.criteria"
+        type="text"
+        class="cp-criteria-input"
+        placeholder="완료 조건 (선택)"
+        @keydown.enter="isSubmittable(draft) && submit()"
+        @keydown.esc="closeForm"
+      />
       <button type="button" :disabled="!isSubmittable(draft)" @click="submit">
         {{ editingId === null ? '추가' : '저장' }}
       </button>
@@ -341,9 +416,18 @@ function remove(cp: CheckpointDetail) {
   font-size: 0.82rem;
 }
 
-.cp-form input:first-child {
+/* 폼은 [제목][가중치][완료조건][추가][취소] 다섯 칸이다. 글자 칸 둘이 남는 폭을 나눠 갖고,
+ * 가중치는 숫자 한두 자리라 좁게 고정한다. 위치(`:first-child`)가 아니라 이름으로 잡는다 —
+ * 칸 순서가 바뀌어도 폭이 엉키지 않는다. */
+.cp-form .cp-title-input,
+.cp-form .cp-criteria-input {
   flex: 1;
   min-width: 8rem;
+}
+
+.cp-form .cp-weight-input {
+  flex: 0 0 auto;
+  width: 5.5rem;
 }
 
 /* 컨테이너(.checkpoint-list)가 flex-column이라 align-items 기본값(stretch)을 그대로 두면 이
