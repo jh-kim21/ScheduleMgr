@@ -4,6 +4,8 @@ import {
   applyFilters,
   DEFAULT_FILTERS,
   filterItems,
+  filtersFromQuery,
+  filtersToQuery,
   isFiltered,
   sortItems,
   typeCounts,
@@ -170,5 +172,54 @@ describe('보조 함수', () => {
       { type: 'ISSUE', count: 0 },
       { type: 'DEPENDENCY', count: 1 },
     ])
+  })
+})
+
+/**
+ * 필터↔주소 변환 — RaidView가 이 값으로 뒤로가기·북마크·공유를 지원한다(CLAUDE.md "URL에 화면
+ * 상태" 요구, DashboardView의 `?tab=`과 같은 패턴). 서버로는 여전히 아무것도 보내지 않는다 —
+ * 이건 화면 상태를 주소창 문자열로 바꾸는 순수 변환일 뿐이다.
+ */
+describe('filtersToQuery / filtersFromQuery', () => {
+  it('기본 필터는 빈 쿼리가 된다 — 아무것도 안 걸었을 때 주소가 깨끗해야 한다', () => {
+    expect(filtersToQuery(DEFAULT_FILTERS)).toEqual({})
+  })
+
+  it('기본값과 다른 항목만 쿼리에 담는다', () => {
+    expect(filtersToQuery(filters({ status: 'OPEN_ONLY' }))).toEqual({ status: 'OPEN_ONLY' })
+    expect(filtersToQuery(filters({ type: 'RISK', sort: 'DUE' }))).toEqual({
+      type: 'RISK',
+      sort: 'DUE',
+    })
+  })
+
+  it('검색어는 앞뒤 공백만 있으면 쿼리에 넣지 않는다', () => {
+    expect(filtersToQuery(filters({ query: '  ' }))).toEqual({})
+    expect(filtersToQuery(filters({ query: '서버' }))).toEqual({ q: '서버' })
+  })
+
+  it('빈 쿼리에서는 기본 필터로 돌아온다', () => {
+    expect(filtersFromQuery({})).toEqual(DEFAULT_FILTERS)
+  })
+
+  it('알려진 값은 그대로 복원한다', () => {
+    expect(filtersFromQuery({ type: 'RISK', status: 'OPEN_ONLY', sort: 'DUE', q: '서버' })).toEqual(
+      filters({ type: 'RISK', status: 'OPEN_ONLY', sort: 'DUE', query: '서버' }),
+    )
+  })
+
+  it('모르는 값(직접 주소를 편집했거나 예전 값)은 조용히 기본값으로 떨어진다', () => {
+    expect(filtersFromQuery({ type: 'NO_SUCH_TYPE', status: 'NO_SUCH_STATUS', sort: 'NO_SUCH_SORT' })).toEqual(
+      DEFAULT_FILTERS,
+    )
+  })
+
+  it('배열 값(같은 키를 여러 번 준 주소)은 문자열이 아니므로 기본값으로 떨어진다', () => {
+    expect(filtersFromQuery({ type: ['RISK', 'ISSUE'] })).toEqual(DEFAULT_FILTERS)
+  })
+
+  it('왕복해도 값이 그대로다', () => {
+    const original = filters({ type: 'ISSUE', status: 'CLOSED', sort: 'EXPOSURE', query: '지연' })
+    expect(filtersFromQuery(filtersToQuery(original))).toEqual(original)
   })
 })

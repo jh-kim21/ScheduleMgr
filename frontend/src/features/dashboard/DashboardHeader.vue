@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { nextTick } from 'vue'
 import type { Project } from '../../api/projectApi'
 import { selectedProjectId } from '../../stores/projectSelection'
 
@@ -11,7 +12,7 @@ import { selectedProjectId } from '../../stores/projectSelection'
  * <p>기준일은 언제나 서버가 정한 값(`referenceDate`)이다 — 클라이언트 시계를 쓰면 오래 열어둔
  * 탭에서 카드의 판정과 화면에 적힌 날짜가 어긋난다.
  */
-defineProps<{
+const props = defineProps<{
   projects: Project[]
   tab: 'summary' | 'progress'
   referenceDate: string | null
@@ -22,6 +23,22 @@ const emit = defineEmits<{
   'update:tab': ['summary' | 'progress']
   refresh: []
 }>()
+
+/**
+ * ARIA Tabs의 방향키 이동(WAI-ARIA APG) — 탭이 둘뿐이라 어느 방향이든 서로를 오간다. 선택과
+ * 포커스를 함께 옮기는 "automatic activation"을 쓴다: 탭이 둘뿐이라 골라만 두고 다른 키(Enter
+ * 등)로 다시 확정하게 하면 손이 하나 더 간다. 패널은 `DashboardView`가 그리므로 `id`만 여기서
+ * 정해 그 쪽의 `aria-labelledby`/`id`와 맞춘다.
+ */
+function onTabsKeydown(event: KeyboardEvent) {
+  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+  event.preventDefault()
+  const next = props.tab === 'summary' ? 'progress' : 'summary'
+  emit('update:tab', next)
+  nextTick(() => {
+    document.getElementById(`dashboard-tab-${next}`)?.focus()
+  })
+}
 </script>
 
 <template>
@@ -51,18 +68,24 @@ const emit = defineEmits<{
     </div>
 
     <!-- 탭은 링크가 아니라 같은 화면의 두 면이라 버튼으로 둔다. -->
-    <div class="tabs" role="tablist">
+    <div class="tabs" role="tablist" @keydown="onTabsKeydown">
       <button
+        id="dashboard-tab-summary"
         type="button"
         role="tab"
         :aria-selected="tab === 'summary'"
+        :tabindex="tab === 'summary' ? 0 : -1"
+        aria-controls="dashboard-panel-summary"
         :class="{ active: tab === 'summary' }"
         @click="emit('update:tab', 'summary')"
       >요약</button>
       <button
+        id="dashboard-tab-progress"
         type="button"
         role="tab"
         :aria-selected="tab === 'progress'"
+        :tabindex="tab === 'progress' ? 0 : -1"
+        aria-controls="dashboard-panel-progress"
         :class="{ active: tab === 'progress' }"
         @click="emit('update:tab', 'progress')"
       >진척</button>

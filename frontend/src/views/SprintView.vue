@@ -184,7 +184,7 @@ async function confirmCancelStart() {
   <section>
     <h1>Sprint</h1>
 
-    <p v-if="projectsError" class="error">{{ projectsError }}</p>
+    <p v-if="projectsError" class="error" role="alert">{{ projectsError }}</p>
 
     <p v-else-if="projects.length === 0" class="notice">
       먼저 프로젝트를 등록해야 Sprint를 운영할 수 있습니다.
@@ -204,7 +204,7 @@ async function confirmCancelStart() {
         <span class="team-note" title="한 프로젝트에 한 팀을 전제합니다. 실행 중인 Sprint는 하나뿐입니다.">
           단일 팀
         </span>
-        <span v-if="loading" class="loading">불러오는 중…</span>
+        <span v-if="loading" class="loading" aria-live="polite">불러오는 중…</span>
         <button
           type="button"
           class="primary add"
@@ -214,7 +214,7 @@ async function confirmCancelStart() {
         >＋ Sprint 추가</button>
       </div>
 
-      <p v-if="error" class="error">{{ error }}</p>
+      <p v-if="error" class="error" role="alert">{{ error }}</p>
 
       <SprintForm
         v-if="formOpen"
@@ -337,7 +337,7 @@ async function confirmCancelStart() {
               :read-only="readOnly"
               @assign="handleAssignMany"
             />
-            <p v-if="assignMessage" class="assign-result">{{ assignMessage }}</p>
+            <p v-if="assignMessage" class="assign-result" aria-live="polite">{{ assignMessage }}</p>
             <span class="assign-note">
               완료 가능한 Story·Bug만, 그리고 다른 Sprint에 들어 있지 않은 것만 고를 수 있습니다.
             </span>
@@ -419,10 +419,13 @@ h1 {
   margin: 0 0 1rem;
 }
 
+/* flex-wrap — 프로젝트 선택 select는 이름 길이에 따라 폭이 정해지므로 상한이 없다. 단일 팀
+   배지·로딩 표시·추가 버튼까지 한 줄에 네 항목이라 좁은 화면에서 넘치지 않게 wrap을 둔다. */
 .toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 1rem;
+  gap: 0.5rem 1rem;
   margin-bottom: 1rem;
 }
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import ModalDialog from '../../components/ModalDialog.vue'
 import type { BacklogItem, BacklogItemInput } from '../../api/backlogApi'
 import type { ProjectMember } from '../../api/memberApi'
@@ -27,6 +27,8 @@ const props = defineProps<{
   defaultWbsItemId: number | null
   /** 저장이 거부된 이유. 대화상자 안에 보여야 사용자가 볼 수 있다. */
   error?: string | null
+  /** 부모(BacklogView)가 create/update 요청 중일 때 true — 응답이 올 때까지 다시 제출을 막는다. */
+  submitting?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -109,6 +111,14 @@ const needsAcceptance = computed(
   () => form.status === 'DONE' && props.editing?.status !== 'DONE',
 )
 
+/**
+ * 열렸을 때의 값을 찍어 두고 지금 값과 비교한다 — Escape·배경 클릭으로 닫을 때 입력을 잃을
+ * 수 있는 경우에만 `ModalDialog`가 한 번 확인하게 한다(`dirty` prop, opt-in). 이 폼은 추가
+ * 성공 후에도 열어 두므로(연달아 입력하는 것이 흔한 사용이라), 방금 저장한 값 그대로 닫으려
+ * 해도 한 번은 물어본다 — 데이터를 잃을 위험은 없는 쪽으로 치우친 선택이다.
+ */
+const initialSnapshot = ref('')
+
 watch(
   () => props.editing,
   (item) => {
@@ -131,9 +141,12 @@ watch(
       // 보기) 가리키는 항목이 이미 사라졌으면 defaultWbsItemId는 null이라 미연결로 시작한다.
       Object.assign(form, empty, { wbsItemId: props.defaultWbsItemId })
     }
+    initialSnapshot.value = JSON.stringify(form)
   },
   { immediate: true },
 )
+
+const dirty = computed(() => JSON.stringify(form) !== initialSnapshot.value)
 
 /** Switching to Task requires a parent; switching away from it may invalidate the current one. */
 watch(
@@ -151,14 +164,14 @@ watch(parent, (value) => {
 })
 
 function onSubmit() {
-  if (!form.title.trim()) return
+  if (!form.title.trim() || props.submitting) return
   if (needsAcceptance.value && !form.acceptanceConfirmed) return
   emit('submit', { ...form })
 }
 </script>
 
 <template>
-  <ModalDialog :title="title" size="lg" :error="props.error" @close="emit('cancel')">
+  <ModalDialog :title="title" size="lg" :error="props.error" :dirty="dirty" @close="emit('cancel')">
     <form class="backlog-form" @submit.prevent="onSubmit">
 
       <div class="row">
@@ -279,9 +292,9 @@ function onSubmit() {
       <div class="actions">
         <button
           type="submit"
-          :disabled="needsAcceptance && !form.acceptanceConfirmed"
-        >{{ editing ? '저장' : '추가' }}</button>
-        <button type="button" class="ghost" @click="emit('cancel')">취소</button>
+          :disabled="(needsAcceptance && !form.acceptanceConfirmed) || submitting"
+        >{{ submitting ? (editing ? '저장 중…' : '추가 중…') : editing ? '저장' : '추가' }}</button>
+        <button type="button" class="ghost" :disabled="submitting" @click="emit('cancel')">취소</button>
       </div>
     </form>
   </ModalDialog>

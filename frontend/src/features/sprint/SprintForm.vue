@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import ModalDialog from '../../components/ModalDialog.vue'
 import type { Sprint, SprintInput } from '../../api/sprintApi'
 
@@ -32,6 +32,12 @@ const backwards = computed(
   () => !!form.startDate && !!form.endDate && form.endDate < form.startDate,
 )
 
+/**
+ * 열렸을 때의 값을 찍어 두고 지금 값과 비교한다 — Escape·배경 클릭으로 닫을 때 입력을 잃을
+ * 수 있는 경우에만 `ModalDialog`가 한 번 확인하게 한다(`dirty` prop, opt-in).
+ */
+const initialSnapshot = ref('')
+
 watch(
   () => props.editing,
   (sprint) => {
@@ -43,9 +49,12 @@ watch(
     } else {
       Object.assign(form, empty)
     }
+    initialSnapshot.value = JSON.stringify(form)
   },
   { immediate: true },
 )
+
+const dirty = computed(() => JSON.stringify(form) !== initialSnapshot.value)
 
 function onSubmit() {
   if (!form.name.trim() || !form.startDate || !form.endDate || backwards.value) return
@@ -54,7 +63,7 @@ function onSubmit() {
 </script>
 
 <template>
-  <ModalDialog :title="title" :error="props.error" @close="emit('cancel')">
+  <ModalDialog :title="title" :error="props.error" :dirty="dirty" @close="emit('cancel')">
     <form class="sprint-form" @submit.prevent="onSubmit">
 
       <div class="row">

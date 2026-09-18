@@ -49,6 +49,8 @@ export const STATUS_FILTER_ORDER: RaidStatusFilter[] = [
   'CLOSED',
 ]
 
+export const SORT_ORDER: RaidSort[] = ['REGISTERED', 'EXPOSURE', 'DUE']
+
 function matchesQuery(item: RaidItem, query: string): boolean {
   const needle = query.trim().toLowerCase()
   if (needle.length === 0) return true
@@ -118,4 +120,47 @@ export function typeCounts(items: RaidItem[]): { type: RaidType; count: number }
     type,
     count: items.filter((item) => item.type === type).length,
   }))
+}
+
+/**
+ * 필터·정렬·검색을 주소(쿼리 문자열)에 반영한다 — 북마크·공유·뒤로가기가 가능해야 한다
+ * (`DashboardView`의 `?tab=`과 같은 패턴, CLAUDE.md "URL에 화면 상태" 요구). 기본값과 같은
+ * 항목은 아예 넣지 않는다 — 필터를 하나도 안 걸었을 때 주소가 깨끗해야 한다.
+ *
+ * <p>여기 있는 것은 화면 상태를 주소로 바꾸는 순수 변환일 뿐이다 — RAID 필터 자체는 여전히
+ * 클라이언트 순수 함수(위 `filterItems`/`sortItems`)이고 서버로 보내지 않는다.
+ */
+export function filtersToQuery(filters: RaidFilters): Record<string, string> {
+  const query: Record<string, string> = {}
+  if (filters.type !== DEFAULT_FILTERS.type) query.type = filters.type
+  if (filters.status !== DEFAULT_FILTERS.status) query.status = filters.status
+  if (filters.sort !== DEFAULT_FILTERS.sort) query.sort = filters.sort
+  if (filters.query.trim().length > 0) query.q = filters.query
+  return query
+}
+
+/**
+ * 주소에서 필터를 복원한다. 모르는 값(직접 주소를 편집했거나 예전 버전의 값)은 조용히 기본값으로
+ * 떨어진다 — 잘못된 쿼리로 화면이 깨지면 안 된다.
+ */
+export function filtersFromQuery(query: Record<string, unknown>): RaidFilters {
+  const type = query.type
+  const status = query.status
+  const sort = query.sort
+  const q = query.q
+  return {
+    type:
+      typeof type === 'string' && (RAID_TYPE_ORDER as string[]).includes(type)
+        ? (type as RaidType)
+        : DEFAULT_FILTERS.type,
+    status:
+      typeof status === 'string' && (STATUS_FILTER_ORDER as string[]).includes(status)
+        ? (status as RaidStatusFilter)
+        : DEFAULT_FILTERS.status,
+    sort:
+      typeof sort === 'string' && (SORT_ORDER as string[]).includes(sort)
+        ? (sort as RaidSort)
+        : DEFAULT_FILTERS.sort,
+    query: typeof q === 'string' ? q : DEFAULT_FILTERS.query,
+  }
 }

@@ -121,8 +121,8 @@ function snapshotSummary(metrics: string): string {
 
 <template>
   <div class="progress-panel">
-  <p v-if="loading" class="loading">불러오는 중…</p>
-  <p v-if="error" class="error">{{ error }}</p>
+  <p v-if="loading" class="loading" aria-live="polite">불러오는 중…</p>
+  <p v-if="error" class="error" role="alert">{{ error }}</p>
 
   <template v-if="project">
     <div class="summary">
@@ -163,17 +163,17 @@ function snapshotSummary(metrics: string): string {
       사유가 하나뿐이라 "또는"을 뺐다 — 가중치 미입력은 이제 1로 폴백하므로(정직한 값) 불완전의
       사유가 아니고, `incompleteWeights`는 더 이상 참이 되지 않는다.
     -->
-    <p v-if="project.incomplete" class="attention">
+    <p v-if="project.incomplete" class="attention" aria-live="polite">
       일부 하위가 아직 산정 전이라 <strong>집계가 불완전</strong>합니다. 위 숫자는 셀 수 있는
       부분만을 말합니다.
     </p>
 
-    <p v-if="project.acceptancePending > 0" class="attention">
+    <p v-if="project.acceptancePending > 0" class="attention" aria-live="polite">
       <strong>인수 대기 {{ project.acceptancePending }}건</strong> — 진척 100%이지만 최종 인수가
       남았습니다.
     </p>
 
-    <p v-if="notEstimable.length > 0" class="notice subtle">
+    <p v-if="notEstimable.length > 0" class="notice subtle" aria-live="polite">
       산정 전: {{ notEstimable.map((wp) => `${wp.code ?? ''} ${wp.name}`.trim()).join(', ') }}
     </p>
 
@@ -230,14 +230,14 @@ function snapshotSummary(metrics: string): string {
       <table class="wp">
         <thead>
           <tr>
-            <th class="code">WBS</th>
-            <th>이름</th>
-            <th class="mode">실행 방식</th>
-            <th class="num">가중치</th>
-            <th class="num">α</th>
-            <th class="basis">기준</th>
-            <th class="pct">진척</th>
-            <th></th>
+            <th class="code" scope="col">WBS</th>
+            <th scope="col">이름</th>
+            <th class="mode" scope="col">실행 방식</th>
+            <th class="num" scope="col">가중치</th>
+            <th class="num" scope="col">α</th>
+            <th class="basis" scope="col">기준</th>
+            <th class="pct" scope="col">진척</th>
+            <th scope="col"></th>
           </tr>
         </thead>
         <tbody ref="body" class="row-selectable" tabindex="0" @keydown="selection.onKeydown">

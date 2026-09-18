@@ -48,6 +48,16 @@ const editingId = ref<number | null>(null)
 const formTitle = computed(() => (editingId.value === null ? '구성원 추가' : '구성원 수정'))
 const submittable = computed(() => draft.value.name.trim().length > 0)
 
+/** onSubmitAdd/onSubmitUpdate 요청 중일 때 true — 응답이 올 때까지 다시 제출을 막는다. */
+const submitting = ref(false)
+
+/**
+ * 열렸을 때의 값을 찍어 두고 지금 값과 비교한다 — Escape·배경 클릭으로 닫을 때 입력을 잃을
+ * 수 있는 경우에만 `ModalDialog`가 한 번 확인하게 한다(`dirty` prop, opt-in).
+ */
+const initialSnapshot = ref('')
+const dirty = computed(() => JSON.stringify(draft.value) !== initialSnapshot.value)
+
 function normalise(value: string | null): string | null {
   const trimmed = value?.trim() ?? ''
   return trimmed.length > 0 ? trimmed : null
@@ -64,12 +74,14 @@ function payload(input: MemberInput): MemberInput {
 function openAdd() {
   editingId.value = null
   draft.value = blank()
+  initialSnapshot.value = JSON.stringify(draft.value)
   formOpen.value = true
 }
 
 function startEdit(member: ProjectMember) {
   editingId.value = member.id
   draft.value = { name: member.name, email: member.email, position: member.position }
+  initialSnapshot.value = JSON.stringify(draft.value)
   formOpen.value = true
 }
 
@@ -77,15 +89,18 @@ function closeForm() {
   formOpen.value = false
   editingId.value = null
   draft.value = blank()
+  submitting.value = false
 }
 
 /** 성공했을 때만(prop 함수가 `true`를 돌려줄 때만) 닫는다 — 거부되면 입력값과 오류가 그대로 남는다. */
 async function onSubmit() {
-  if (!submittable.value) return
+  if (!submittable.value || submitting.value) return
+  submitting.value = true
   const ok =
     editingId.value === null
       ? await props.onSubmitAdd(payload(draft.value))
       : await props.onSubmitUpdate(editingId.value, payload(draft.value))
+  submitting.value = false
   if (ok) closeForm()
 }
 
@@ -113,6 +128,7 @@ function onRemove(member: ProjectMember) {
         v-if="formOpen"
         :title="formTitle"
         :error="props.error"
+        :dirty="dirty"
         @close="closeForm"
       >
         <form class="member-form" @submit.prevent="onSubmit">
@@ -132,10 +148,10 @@ function onRemove(member: ProjectMember) {
           </label>
 
           <div class="dialog-actions">
-            <button type="submit" class="primary" :disabled="!submittable">
-              {{ editingId === null ? '추가' : '저장' }}
+            <button type="submit" class="primary" :disabled="!submittable || submitting">
+              {{ submitting ? (editingId === null ? '추가 중…' : '저장 중…') : editingId === null ? '추가' : '저장' }}
             </button>
-            <button type="button" @click="closeForm">취소</button>
+            <button type="button" :disabled="submitting" @click="closeForm">취소</button>
           </div>
         </form>
       </ModalDialog>

@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import type { RaidItem } from '../../api/raidApi'
 import type { BoardMoveInput, Sprint, SprintItem } from '../../api/sprintApi'
 import ModalDialog from '../../components/ModalDialog.vue'
+import { adjacentStatus, moveTargets } from './boardMove'
 import { RAID_TYPE_LABELS } from '../../shared/raid'
 import {
   BACKLOG_STATUS_LABELS,
@@ -101,6 +102,17 @@ function onDrop(status: BacklogStatus) {
   requestMove(item, status)
 }
 
+/**
+ * 카드를 옮겼을 때의 음성 피드백(지시서 5장) — 드래그는 드롭 위치라는 시각 신호가 있지만,
+ * 키보드로 옮기면(아래 `onMoveSelect`·`onCardKeydown`) 화면이 다시 그려지는 것 말고는 알 방법이
+ * 없다. `aria-live="polite"`인 숨김 영역이 이 텍스트를 읽는다.
+ */
+const liveMessage = ref('')
+
+function announceMove(item: SprintItem, status: BacklogStatus) {
+  liveMessage.value = `'${item.title}'을(를) ${BACKLOG_STATUS_LABELS[status]}(으)로 이동했습니다.`
+}
+
 /** 완료로 가는 이동만 확인을 거친다. 나머지는 그대로 보낸다. */
 function requestMove(item: SprintItem, status: BacklogStatus) {
   if (status === 'DONE') {
@@ -108,6 +120,7 @@ function requestMove(item: SprintItem, status: BacklogStatus) {
     return
   }
   emit('move', item.backlogItemId, { status })
+  announceMove(item, status)
 }
 
 function confirmDone() {
@@ -115,6 +128,30 @@ function confirmDone() {
   confirming.value = null
   if (!item) return
   emit('move', item.backlogItemId, { status: 'DONE', acceptanceConfirmed: true })
+  announceMove(item, 'DONE')
+}
+
+/**
+ * 드래그 앤 드롭의 키보드·터치 대안(WCAG 2.5.7·2.1.1, `boardMove.ts`) — 칸을 골라 이동하는
+ * `<select>`다. `frozen`이면 아예 렌더링하지 않는다(아래 template) — 기존 드래그·차단·완료
+ * 버튼과 같은 게이팅이다. 완료로 가는 이동은 `requestMove`를 그대로 타므로 확인 절차
+ * (`CompletionCheck`)가 드래그 경로와 똑같이 적용된다.
+ */
+function onMoveSelect(event: Event, item: SprintItem) {
+  const select = event.target as HTMLSelectElement
+  const status = select.value as BacklogStatus | ''
+  select.value = ''
+  if (!status) return
+  requestMove(item, status)
+}
+
+/** Alt+←/→ — 이전/다음 칸으로. 양 끝에서는 조용히 아무 일도 하지 않는다(순환하지 않는다). */
+function onCardKeydown(event: KeyboardEvent, item: SprintItem) {
+  if (frozen.value || !event.altKey) return
+  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+  event.preventDefault()
+  const status = adjacentStatus(item.status, event.key === 'ArrowRight' ? 1 : -1)
+  if (status) requestMove(item, status)
 }
 
 function openBlock(item: SprintItem) {
@@ -172,8 +209,12 @@ function requestUnassign(item: SprintItem) {
         class="card"
         :class="{ blocked: item.blocked, dragging: dragging?.assignmentId === item.assignmentId }"
         :draggable="!frozen"
+        tabindex="0"
+        role="group"
+        :aria-label="`${item.title} — ${BACKLOG_STATUS_LABELS[item.status]}`"
         @dragstart="onDragStart(item)"
         @dragend="onDragEnd"
+        @keydown="onCardKeydown($event, item)"
       >
         <header>
           <span class="type">{{ BACKLOG_TYPE_LABELS[item.itemType] }}</span>
@@ -206,6 +247,20 @@ function requestUnassign(item: SprintItem) {
             {{ SPRINT_OUTCOME_LABELS[item.outcome] }}
           </span>
           <template v-if="!frozen">
+            <!--
+              드래그 앤 드롭의 키보드·터치 대안(WCAG 2.5.7·2.1.1) — 목표 칸을 고르는
+              `<select>`다. 완료로 가는 선택도 `onMoveSelect` → `requestMove`를 그대로 타므로
+              드래그와 같은 확인 절차를 거친다.
+            -->
+            <label class="move-select">
+              <span class="visually-hidden">다른 칸으로 이동</span>
+              <select @change="onMoveSelect($event, item)">
+                <option value="">이동…</option>
+                <option v-for="status in moveTargets(item.status)" :key="status" :value="status">
+                  {{ BACKLOG_STATUS_LABELS[status] }}로 이동
+                </option>
+              </select>
+            </label>
             <button
               v-if="item.blocked"
               type="button"
@@ -219,6 +274,9 @@ function requestUnassign(item: SprintItem) {
       </article>
     </div>
   </div>
+
+  <!-- 카드 이동 결과를 알리는 숨김 영역(지시서 5장) — 키보드로 옮기면 시각 변화만으로는 알 수 없다. -->
+  <p class="visually-hidden" role="status" aria-live="polite">{{ liveMessage }}</p>
 
   <!-- 종료된 Sprint는 제거된 배정까지 보여준다 — 왜 빠졌는지가 이력이다. -->
   <p v-if="removedItems.length > 0" class="removed">
@@ -310,6 +368,37 @@ function requestUnassign(item: SprintItem) {
 
 .card.dragging {
   opacity: 0.4;
+}
+
+/*
+ * 드래그 앤 드롭의 키보드 대안(WCAG 2.5.7·2.1.1) — 카드 자체를 Tab으로 포커스할 수 있게 하고
+ * (Alt+←/→가 이 포커스를 전제한다), WbsTree.vue의 tbody와 같은 규칙으로 포커스 링을 그린다.
+ */
+.card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/*
+ * 화면 밖으로 밀어 숨기되 스크린리더에는 읽히게 한다 — `aria-live` 영역과 `<select>`의 라벨이
+ * 이 클래스를 쓴다. 표준 "visually hidden" 패턴이다.
+ */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* 폭이 좁은 카드 footer에 맞춘 크기 — 전역 select의 min-height(24px)는 그대로 둔다. */
+.move-select select {
+  padding: 0.1rem 0.35rem;
+  font-size: 0.72rem;
 }
 
 /* 차단은 상태와 별개다 — 칸은 그대로 두고 테두리로만 알린다. */
@@ -411,7 +500,22 @@ function requestUnassign(item: SprintItem) {
  * 깨지지 않게 한다.
  */
 .link {
+  position: relative;
   font-size: 0.72rem;
+}
+
+/*
+ * 24×24 최소 타깃(WCAG 2.5.5) — 전역 `.link`는 링크처럼 보이려고 `min-height: auto`로
+ * 패딩을 없앤다(글자 그대로의 크기). 시각적 크기는 유지하되 보이지 않는 `::after`로 클릭
+ * 가능 영역만 24×24로 넓힌다. 이웃 버튼과 살짝 겹칠 수 있지만(간격 0.4rem), 0보다는 낫다.
+ */
+.link::after {
+  content: '';
+  position: absolute;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  width: 24px;
+  height: 24px;
 }
 
 .removed {

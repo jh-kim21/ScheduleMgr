@@ -123,7 +123,7 @@ async function handleRecalculate() {
   <section>
     <h1>간트 차트</h1>
 
-    <p v-if="projectsError" class="error">{{ projectsError }}</p>
+    <p v-if="projectsError" class="error" role="alert">{{ projectsError }}</p>
 
     <p v-else-if="projects.length === 0" class="notice">
       먼저 프로젝트를 등록해야 간트 차트를 볼 수 있습니다.
@@ -159,9 +159,15 @@ async function handleRecalculate() {
         </div>
       </div>
 
-      <p v-if="error" class="error">{{ error }}</p>
+      <p v-if="error" class="error" role="alert">{{ error }}</p>
 
-      <p v-if="lastRecalculation !== null" class="result">
+      <!--
+        재계산 결과·지연·초과·위반·임계경로 배너는 버튼 클릭·데이터 갱신에 따라 나타나거나
+        문구가 바뀐다. 시각으로만 보이면 스크린리더 사용자는 "일정 재계산"을 눌러도 결과를
+        들을 수 없다 — `aria-live="polite"`로 알린다(즉각 주의가 필요한 오류가 아니라
+        assertive는 쓰지 않는다).
+      -->
+      <p v-if="lastRecalculation !== null" class="result" aria-live="polite">
         {{
           lastRecalculation === 0
             ? '모든 선후행 관계가 이미 충족되어 변경된 일정이 없습니다.'
@@ -169,7 +175,7 @@ async function handleRecalculate() {
         }}
       </p>
 
-      <p v-if="delayed.length > 0 || atRisk.length > 0" class="delay">
+      <p v-if="delayed.length > 0 || atRisk.length > 0" class="delay" aria-live="polite">
         <template v-if="delayed.length > 0">
           <strong>지연 {{ delayed.length }}건</strong>
           (최대 {{ worstDelayDays }}일) —
@@ -191,7 +197,7 @@ async function handleRecalculate() {
         </RouterLink>
       </p>
 
-      <p v-if="exceeded.length > 0" class="violation">
+      <p v-if="exceeded.length > 0" class="violation" aria-live="polite">
         <strong>기준 종료일 초과 {{ exceeded.length }}건</strong> — 예상 종료가 승인된 기준 일정을
         넘겼습니다.
         <span v-for="task in exceeded" :key="task.id" class="exceeded-item">
@@ -207,13 +213,13 @@ async function handleRecalculate() {
         {{ acceptancePending.map((task) => `${task.code} ${task.name}`).join(', ') }}.
       </p>
 
-      <p v-if="violations.length > 0" class="violation">
+      <p v-if="violations.length > 0" class="violation" aria-live="polite">
         선행 업무보다 먼저 시작하는 업무가 {{ violations.length }}개 있습니다 —
         {{ violations.map((task) => `${task.code} ${task.name}`).join(', ') }}.
         <strong>일정 재계산</strong>으로 자동 조정할 수 있습니다.
       </p>
 
-      <p v-if="criticalSpan && criticalTasks.length > 0" class="critical">
+      <p v-if="criticalSpan && criticalTasks.length > 0" class="critical" aria-live="polite">
         <strong>임계 경로 {{ criticalTasks.length }}개 업무</strong>
         · {{ criticalSpan.start }} ~ {{ criticalSpan.end }} ({{ criticalSpan.days }}일) —
         {{ criticalTasks.map((task) => `${task.code} ${task.name}`).join(' → ') }}.

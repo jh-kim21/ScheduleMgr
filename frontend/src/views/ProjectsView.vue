@@ -166,9 +166,13 @@ function closeForm() {
   saveError.value = null
 }
 
+/** ProjectForm의 제출 버튼을 잠그는 데 쓴다 — 느린 네트워크에서 두 번 눌러 두 프로젝트가 생기는 것을 막는다. */
+const submitting = ref(false)
+
 /** 거부되면 대화상자를 열어 둔 채 사유를 보여 준다 — 입력을 다시 치게 만들면 안 된다. */
 async function handleSubmit(input: ProjectInput) {
   saveError.value = null
+  submitting.value = true
   try {
     if (editing.value) {
       await update(editing.value.id, input)
@@ -178,6 +182,8 @@ async function handleSubmit(input: ProjectInput) {
     closeForm()
   } catch (e) {
     saveError.value = e instanceof ApiError ? e.message : '저장하지 못했습니다.'
+  } finally {
+    submitting.value = false
   }
 }
 
@@ -252,11 +258,12 @@ async function handleRemove(project: Project) {
       v-if="formOpen"
       :editing="editing"
       :error="saveError"
+      :submitting="submitting"
       @submit="handleSubmit"
       @cancel="closeForm"
     />
 
-    <p v-if="error" class="error">{{ error }}</p>
+    <p v-if="error" class="error" role="alert">{{ error }}</p>
     <p v-else-if="loading">불러오는 중…</p>
     <ProjectList
       v-else
@@ -297,10 +304,12 @@ async function handleRemove(project: Project) {
 </template>
 
 <style scoped>
+/* flex-wrap — 제목·추가·가져오기 세 항목이 좁은 화면에서 겹치지 않고 다음 줄로 접힌다. */
 .head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 1rem;
+  gap: 0.5rem 1rem;
   margin-bottom: 1rem;
 }
 

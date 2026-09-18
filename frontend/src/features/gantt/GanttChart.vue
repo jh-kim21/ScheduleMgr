@@ -28,8 +28,11 @@ const props = defineProps<{
 const MONTH_BAND_HEIGHT = 20
 const DAY_ROW_HEIGHT = 22
 const AXIS_HEIGHT = MONTH_BAND_HEIGHT + DAY_ROW_HEIGHT
-/** Sprint lanes sit above the task rows in a strip of their own. */
-const SPRINT_ROW_HEIGHT = 22
+/**
+ * Sprint lanes sit above the task rows in a strip of their own. 24px, not 22 — the lane button
+ * (`.sprint-label`) is exactly this tall, and 22 falls short of the 24px minimum target (WCAG 2.5.5).
+ */
+const SPRINT_ROW_HEIGHT = 24
 
 /** UNSCHEDULED is left out: those rows have no bar to colour. */
 const LEGEND_STATUSES: DelayStatus[] = ['COMPLETED', 'ON_TRACK', 'AT_RISK', 'DELAYED', 'NOT_STARTED']
@@ -201,6 +204,42 @@ function floatLabel(task: GanttTask) {
 }
 
 /**
+ * 막대 상세를 한 문장으로 엮는다 — 마우스 툴팁(아래 template)과 `.task-row`의 `aria-label`이
+ * 함께 쓴다. Tab만 쓰는 사용자는 SVG의 `rect.bar`에 닿을 수 없으므로(수백 개를 전부 tab
+ * stop으로 만들면 그것대로 문제다), 이미 tabindex가 있는 과업 패널 행 쪽에 같은 정보를
+ * 옮겨 둔다 — "정보에 도달할 수 있으면 된다"(지시서 3장)는 요구를 이 경로로 만족시킨다.
+ */
+function taskDetailText(task: GanttTask): string {
+  const parts = [
+    `${task.code} ${task.name}`,
+    `${task.startDate ?? '미정'} ~ ${task.endDate ?? '미정'}`,
+    `${DELAY_LABELS[task.delayStatus]} · ${delayDescription(task)}`,
+  ]
+  if (props.data.hasBaseline) {
+    parts.push(
+      task.baselineStart ? `기준 일정 ${task.baselineStart} ~ ${task.baselineEnd}` : '기준선에 없는 항목',
+    )
+  }
+  if (task.actualStart) {
+    parts.push(`실적 ${task.actualStart} ~ ${task.actualEnd ?? '진행 중'}`)
+  }
+  if (task.forecastEnd) {
+    parts.push(
+      `예상 종료 ${task.forecastEnd}` +
+        (task.baselineExceeded ? ` (기준 대비 ${task.baselineSlipDays}일 초과)` : ''),
+    )
+  }
+  if (task.acceptancePending) {
+    parts.push('실행 100% · 인수 대기')
+  }
+  parts.push(floatLabel(task))
+  if (task.scheduleViolation && task.earliestStart) {
+    parts.push(`가장 이른 시작 ${task.earliestStart}`)
+  }
+  return parts.join(' · ')
+}
+
+/**
  * Elbow connector from the predecessor's right edge to the successor's left edge. When the
  * successor starts too early the path runs backwards, which is exactly the shape that makes a
  * violated dependency obvious.
@@ -305,6 +344,29 @@ function onTimelineMove(event: MouseEvent) {
   }
 }
 
+/**
+ * 키보드로 막대 상세에 닿는 경로(과업 3, WCAG 2.1.1) — `.task-row`는 이미 tabindex가 있어
+ * (선택해 Sprint를 강조하는 용도) 새 tab stop을 늘리지 않고 그 포커스에 얹는다. 좌표는
+ * `getBoundingClientRect`를 이벤트 핸들러 안에서만 읽는다(레이아웃 스래싱을 피하려고
+ * computed에서 부르지 않는 것과 같은 이유) — 행 자체의 오른쪽 위 모서리를 기준으로 삼아,
+ * 타임라인이 옆으로 스크롤돼 막대가 화면 밖에 있어도 툴팁이 항상 보이는 자리에 뜬다.
+ * 막대가 없는 행(일정 미입력)은 보여줄 상세가 없어 건드리지 않는다.
+ */
+function onTaskFocus(event: FocusEvent, row: Row) {
+  if (!row.bar || !row.task.startDate) return
+  const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  hover.value = {
+    date: row.task.startDate,
+    clientX: bounds.right,
+    clientY: bounds.top,
+    task: row.task,
+  }
+}
+
+function onTaskBlur() {
+  hover.value = null
+}
+
 const hoverX = computed(() =>
   scale.value && hover.value ? xFor(scale.value, hover.value.date) : null,
 )
@@ -386,9 +448,12 @@ const chartVars = computed(() => ({
         }"
         role="button"
         tabindex="0"
+        :aria-label="taskDetailText(row.task)"
         @click="selectTask(row.task.id)"
         @keydown.enter.prevent="selectTask(row.task.id)"
         @keydown.space.prevent="selectTask(row.task.id)"
+        @focus="onTaskFocus($event, row)"
+        @blur="onTaskBlur"
       >
         <span class="code">{{ row.task.code }}</span>
         <span
@@ -776,6 +841,9 @@ const chartVars = computed(() => ({
 }
 
 .sprint-label .sprint-name {
+  /* flex 자식의 기본 최소폭은 콘텐츠 크기라, min-width가 없으면 긴 이름이 ellipsis 없이
+     패널 밖으로 흘러넘친다. */
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -899,6 +967,9 @@ const chartVars = computed(() => ({
 }
 
 .task-row .name {
+  /* flex 자식의 기본 최소폭은 콘텐츠 크기라, min-width가 없으면 긴 업무명이 ellipsis 없이
+     패널 밖으로 흘러넘친다. */
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1018,7 +1089,9 @@ const chartVars = computed(() => ({
   border-radius: 6px;
   background: var(--surface);
   color: var(--text);
-  box-shadow: 0 4px 14px rgb(0 0 0 / 18%);
+  /* 저장소에 남은 마지막 하드코딩 그림자였다 — 다크 모드에서 그림자가 배경에 묻히던 문제를
+     --elevation-* 토큰이 이미 해결해 둔 팔레트를 그대로 쓴다. */
+  box-shadow: var(--elevation-3);
   font-size: 0.78rem;
   line-height: 1.45;
   pointer-events: none;

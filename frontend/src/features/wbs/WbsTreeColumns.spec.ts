@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
 import { mount, type VueWrapper } from '@vue/test-utils'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import type { TagRef, WbsNode } from '../../api/wbsApi'
+import { resetColumnPrefs, setColumnPrefs } from './wbsColumnPrefs'
 import WbsTree from './WbsTree.vue'
 
 /**
@@ -174,5 +175,96 @@ describe('WbsTree — 담당자·분야 열', () => {
     for (const chip of wrapper.findAll('td.tags .tag-chip')) {
       expect(chip.attributes('style')).toBeUndefined()
     }
+  })
+})
+
+/**
+ * `wbs-tree-columns` 지시서 3-5 — 열 표시/숨김·고정이 실제 표에 반영되는지 본다. 판정 자체
+ * (`visibleColumns`·`pinOffsets`)는 `wbsColumns.spec.ts`가 순수 함수로 덮으므로, 여기서는 그
+ * 판정을 받은 `WbsTree`가 옳은 DOM을 그리는지만 본다.
+ *
+ * `columnPrefs`는 모듈 스코프라 테스트끼리 상태가 샌다 — 매 테스트 앞에 `resetColumnPrefs()`를
+ * 부른다.
+ */
+describe('WbsTree — 열 표시/숨김·고정', () => {
+  let wrapper: VueWrapper | undefined
+
+  beforeEach(() => {
+    resetColumnPrefs()
+  })
+
+  afterEach(() => {
+    wrapper?.unmount()
+    wrapper = undefined
+    resetColumnPrefs()
+  })
+
+  it('열을 숨기면 thead th 수와 체크포인트 서랍의 colspan이 함께 줄어든다', async () => {
+    setColumnPrefs({ hidden: ['owner', 'tags'], pin: 'none' })
+    wrapper = render([node({ executionMode: 'WATERFALL' })])
+
+    await wrapper.get('.cp-badge').trigger('click')
+
+    const columns = wrapper.findAll('thead th').length
+    expect(columns).toBe(8)
+    const drawer = wrapper.get('tr.checkpoint-row td')
+    expect(drawer.attributes('colspan')).toBe(String(columns))
+  })
+
+  it('숨긴 열의 td가 사라진다 — 담당자를 숨기면 td.owner도 RACI 링크도 없다', () => {
+    setColumnPrefs({ hidden: ['owner'], pin: 'none' })
+    wrapper = render([node({ responsible: [{ memberId: 2, name: '이승하' }] })])
+
+    expect(wrapper.find('td.owner').exists()).toBe(false)
+    expect(wrapper.find('td.owner a').exists()).toBe(false)
+    expect(wrapper.get('thead').text()).not.toContain('담당자')
+  })
+
+  it('업무명은 hidden에 넣어도 남는다', () => {
+    setColumnPrefs({ hidden: ['name'], pin: 'none' })
+    wrapper = render([node({ name: '요구사항 정의' })])
+
+    const cell = wrapper.get('td.col-name')
+    expect(cell.text()).toContain('요구사항 정의')
+  })
+
+  it('pin: "code" → th.code/td.code에 sticky가 붙고, 고정하지 않은 열(.mode)에는 없다', () => {
+    setColumnPrefs({ hidden: [], pin: 'code' })
+    wrapper = render([node()])
+
+    expect(wrapper.get<HTMLElement>('th.code').element.style.position).toBe('sticky')
+    expect(wrapper.get<HTMLElement>('td.code').element.style.position).toBe('sticky')
+    expect(wrapper.get<HTMLElement>('th.mode').element.style.position).not.toBe('sticky')
+    expect(wrapper.get<HTMLElement>('td.mode').element.style.position).not.toBe('sticky')
+  })
+
+  it('pin: "name" → .code와 .col-name 둘 다 sticky이고 left가 0/5.5rem 계열이다', () => {
+    setColumnPrefs({ hidden: [], pin: 'name' })
+    wrapper = render([node()])
+
+    const code = wrapper.get<HTMLElement>('td.code').element
+    const name = wrapper.get<HTMLElement>('td.col-name').element
+    expect(code.style.position).toBe('sticky')
+    expect(name.style.position).toBe('sticky')
+    expect(parseFloat(code.style.left)).toBe(0)
+    expect(parseFloat(name.style.left)).toBeCloseTo(5.5, 1)
+  })
+
+  it('WBS 코드를 숨긴 채 pin: "name" → .col-name의 left가 0이다 (숨긴 열이 오프셋을 밀면 안 된다)', () => {
+    setColumnPrefs({ hidden: ['code'], pin: 'name' })
+    wrapper = render([node()])
+
+    expect(wrapper.find('td.code').exists()).toBe(false)
+    const name = wrapper.get<HTMLElement>('td.col-name').element
+    expect(name.style.position).toBe('sticky')
+    expect(parseFloat(name.style.left)).toBe(0)
+  })
+
+  it('툴바에 [열 설정] 버튼이 있고, readOnly에서도 disabled가 아니다', () => {
+    wrapper = render([node()], { readOnly: true })
+
+    const button = wrapper.get('[data-action="columns"]')
+    expect(button.text()).toBe('열 설정')
+    expect(button.attributes('disabled')).toBeUndefined()
   })
 })

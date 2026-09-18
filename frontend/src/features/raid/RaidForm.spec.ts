@@ -156,6 +156,102 @@ describe('RaidForm — 여러 줄 입력', () => {
 })
 
 /**
+ * 제출 중 잠금 — 느린 네트워크에서 저장 버튼을 두 번 눌러 두 건이 생기는 사고를 막는다.
+ * `submitting`은 부모(RaidView)가 create/update 요청 동안 true로 넘기는 prop이다.
+ */
+describe('RaidForm — 제출 중 상태', () => {
+  let wrapper: VueWrapper | undefined
+
+  afterEach(() => {
+    wrapper?.unmount()
+    wrapper = undefined
+  })
+
+  function submitButton() {
+    return document.body.querySelector<HTMLButtonElement>('.actions button[type="submit"]')!
+  }
+
+  function cancelButton() {
+    return document.body.querySelector<HTMLButtonElement>('.actions button[type="button"]')!
+  }
+
+  function titleInput() {
+    return document.body.querySelector<HTMLInputElement>('.raid-form input[type="text"]')!
+  }
+
+  it('submitting이 true면 저장 버튼이 비활성화되고 문구가 진행형으로 바뀐다(추가)', async () => {
+    wrapper = mount(RaidForm, {
+      props: { editing: null, members: [], wbsTasks: [], sprints: [], backlogItems: [], submitting: true },
+    })
+    titleInput().value = '제목'
+    titleInput().dispatchEvent(new Event('input'))
+    await wrapper.vm.$nextTick()
+
+    expect(submitButton().disabled).toBe(true)
+    expect(submitButton().textContent?.trim()).toBe('추가 중…')
+  })
+
+  it('submitting이 true이고 제목이 있으면 취소 버튼도 비활성화된다', async () => {
+    wrapper = mount(RaidForm, {
+      props: { editing: null, members: [], wbsTasks: [], sprints: [], backlogItems: [], submitting: true },
+    })
+
+    expect(cancelButton().disabled).toBe(true)
+  })
+
+  it('submitting 중에는 폼을 제출해도 다시 emit하지 않는다', async () => {
+    wrapper = mount(RaidForm, {
+      props: { editing: null, members: [], wbsTasks: [], sprints: [], backlogItems: [], submitting: true },
+    })
+    titleInput().value = '제목'
+    titleInput().dispatchEvent(new Event('input'))
+    await wrapper.vm.$nextTick()
+
+    document.body.querySelector('form')!.dispatchEvent(new Event('submit'))
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.emitted('submit')).toBeUndefined()
+  })
+
+  function fieldHints() {
+    return [...document.body.querySelectorAll('.field-hint')].map((el) => el.textContent?.trim())
+  }
+
+  it('제목이 비어 있으면 저장 버튼이 비활성화된 이유를 문구로 보여준다', () => {
+    // members에 값을 채워, "소유자로 지정할 구성원이 없습니다" 힌트와 섞이지 않게 한다.
+    wrapper = mount(RaidForm, {
+      props: {
+        editing: null,
+        members: [{ id: 1, name: '김재학', email: null, position: null, createdAt: '', updatedAt: '' }],
+        wbsTasks: [],
+        sprints: [],
+        backlogItems: [],
+      },
+    })
+
+    expect(fieldHints()).toContain('제목을 입력해야 저장할 수 있습니다.')
+  })
+
+  it('제목을 입력하면 그 문구가 사라진다', async () => {
+    wrapper = mount(RaidForm, {
+      props: {
+        editing: null,
+        members: [{ id: 1, name: '김재학', email: null, position: null, createdAt: '', updatedAt: '' }],
+        wbsTasks: [],
+        sprints: [],
+        backlogItems: [],
+      },
+    })
+
+    titleInput().value = '제목'
+    titleInput().dispatchEvent(new Event('input'))
+    await wrapper.vm.$nextTick()
+
+    expect(fieldHints()).not.toContain('제목을 입력해야 저장할 수 있습니다.')
+  })
+})
+
+/**
  * 한글 IME 조합 중 Ctrl+Enter — 한때 실제로 있었던 결함의 회귀 테스트다.
  *
  * Vue 의 `v-model`은 조합 중에는 모델을 갱신하지 않는다. `runtime-dom` 의 `vModelText` 가

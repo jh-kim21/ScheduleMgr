@@ -91,14 +91,14 @@ function archiveTitle(item: BacklogItem): string {
     <table class="backlog">
       <thead>
         <tr>
-          <th class="type">유형</th>
-          <th>제목</th>
-          <th class="wbs">귀속 Work Package</th>
-          <th class="who">담당</th>
-          <th class="num">SP</th>
-          <th class="num">가중치</th>
-          <th class="status">상태</th>
-          <th></th>
+          <th class="type" scope="col">유형</th>
+          <th scope="col">제목</th>
+          <th class="wbs" scope="col">귀속 Work Package</th>
+          <th class="who" scope="col">담당</th>
+          <th class="num" scope="col">SP</th>
+          <th class="num" scope="col">가중치</th>
+          <th class="status" scope="col">상태</th>
+          <th scope="col"></th>
         </tr>
       </thead>
       <tbody ref="body" class="row-selectable" tabindex="0" @keydown="selection.onKeydown">

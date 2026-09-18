@@ -228,7 +228,7 @@ async function handleMove(itemId: number, input: WbsMoveInput) {
       </div>
     </div>
 
-    <p v-if="projectsError" class="error">{{ projectsError }}</p>
+    <p v-if="projectsError" class="error" role="alert">{{ projectsError }}</p>
 
     <p v-else-if="projects.length === 0" class="notice">
       먼저 프로젝트를 등록해야 WBS를 작성할 수 있습니다.
@@ -263,7 +263,7 @@ async function handleMove(itemId: number, input: WbsMoveInput) {
         @cancel="closeImportForm"
       />
 
-      <p v-if="error" class="error">{{ error }}</p>
+      <p v-if="error" class="error" role="alert">{{ error }}</p>
 
       <p v-if="attention.length > 0" class="attention">
         <!-- "업무"를 붙여, Summary 행에도 배지가 달리는 것과 달리 이 숫자는 leaf 기준임을 드러낸다. -->

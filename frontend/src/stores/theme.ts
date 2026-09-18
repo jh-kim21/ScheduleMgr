@@ -57,10 +57,21 @@ if (typeof matchMedia === 'function') {
   })
 }
 
+/**
+ * 브라우저 UI(주소창 등)의 색. index.html의 `<meta name="theme-color">`와 같은 값을 쓴다 —
+ * meta 태그는 CSS 커스텀 프로퍼티를 읽지 못하므로 style.css의 --bg와 리터럴로 맞춰 둔다.
+ * --bg가 바뀌면 이 값과 index.html의 부트스트랩 스크립트도 함께 고쳐야 한다.
+ */
+const THEME_COLOR: Record<ResolvedTheme, string> = {
+  light: '#ffffff',
+  dark: '#14161a',
+}
+
 watch(
   resolvedTheme,
   (theme) => {
     document.documentElement.dataset.theme = theme
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLOR[theme])
   },
   { immediate: true },
 )

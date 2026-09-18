@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import type { CommitInput } from '../../api/commitApi'
 import ModalDialog from '../../components/ModalDialog.vue'
 
 const props = defineProps<{
   /** 저장 거부 사유. 용량 초과(409)는 별도의 대화상자로 처리되므로 여기 오지 않는다. */
   error?: string | null
+  /** 부모(CommitPanel)가 커밋 요청 중일 때 true — 응답이 올 때까지 다시 제출을 막는다. */
+  submitting?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -16,7 +18,15 @@ const emit = defineEmits<{
 const message = ref('')
 const committedBy = ref('')
 
+/**
+ * 이 폼은 `editing` 개념이 없다 — 열 때마다(`v-if="formOpen"`) 새로 마운트되어 두 칸 다 빈
+ * 값으로 시작하므로, "바뀌었는가"는 그냥 "뭔가 적었는가"와 같다(`ModalDialog`의 `dirty` prop,
+ * opt-in — Escape·배경 클릭으로 닫을 때 한 번 확인한다).
+ */
+const dirty = computed(() => message.value.trim().length > 0 || committedBy.value.trim().length > 0)
+
 function onSubmit() {
+  if (props.submitting) return
   emit('submit', {
     message: message.value.trim() || null,
     committedBy: committedBy.value.trim() || null,
@@ -25,7 +35,7 @@ function onSubmit() {
 </script>
 
 <template>
-  <ModalDialog title="현재 시점 커밋" :error="props.error" @close="emit('cancel')">
+  <ModalDialog title="현재 시점 커밋" :error="props.error" :dirty="dirty" @close="emit('cancel')">
     <form class="commit-form" @submit.prevent="onSubmit">
       <p class="hint">
         지금 이 순간의 WBS·간트·RACI·RAID·Backlog·Sprint·진척·대시보드를 판정값까지 그대로
@@ -44,8 +54,8 @@ function onSubmit() {
       </label>
 
       <div class="actions">
-        <button type="submit">커밋</button>
-        <button type="button" class="ghost" @click="emit('cancel')">취소</button>
+        <button type="submit" :disabled="submitting">{{ submitting ? '커밋하는 중…' : '커밋' }}</button>
+        <button type="button" class="ghost" :disabled="submitting" @click="emit('cancel')">취소</button>
       </div>
     </form>
   </ModalDialog>

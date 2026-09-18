@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { WbsNode } from '../../api/wbsApi'
-import { containsDescendant, findParent, flattenTree, resolveDropPosition } from './wbsTree'
+import { containsDescendant, findNode, findParent, flattenTree, resolveDropPosition } from './wbsTree'
 
 function node(id: number, code: string, level: number, children: WbsNode[] = []): WbsNode {
   return {
@@ -138,5 +138,25 @@ describe('findParent', () => {
 
   it('트리에 없는 id는 null이다', () => {
     expect(findParent(tree, 99)).toBeNull()
+  })
+})
+
+describe('findNode', () => {
+  // findParent와 같은 트리 — 최상위(1)와 손자(3)를 함께 확인한다.
+  const tree = [
+    node(1, '1', 1, [node(2, '1.1', 2, [node(3, '1.1.1', 3)]), node(5, '1.2', 2)]),
+    node(4, '2', 1),
+  ]
+
+  it('최상위 노드를 찾는다', () => {
+    expect(findNode(tree, 1)?.code).toBe('1')
+  })
+
+  it('손자까지 깊이 상관없이 찾는다', () => {
+    expect(findNode(tree, 3)?.code).toBe('1.1.1')
+  })
+
+  it('트리에 없는 id는 null이다', () => {
+    expect(findNode(tree, 99)).toBeNull()
   })
 })

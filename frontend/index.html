@@ -4,6 +4,12 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      브라우저 UI(주소창 등)의 색. 값은 src/style.css의 --bg(라이트 #fff / 다크 #14161a)와
+      맞춰 둔다 — meta 태그는 CSS 커스텀 프로퍼티를 읽지 못해 리터럴 색을 둘 수밖에 없다.
+      아래 스크립트가 첫 페인트 전에, stores/theme.ts가 테마를 바꿀 때마다 갱신한다.
+    -->
+    <meta name="theme-color" content="#ffffff" />
     <title>일정관리</title>
     <!--
       첫 페인트 전에 테마를 확정해 흰 화면이 번쩍이는 것을 막는다. 저장 키는
@@ -17,6 +23,8 @@
             stored === 'dark' ||
             (stored === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
           document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+          var meta = document.querySelector('meta[name="theme-color"]')
+          if (meta) meta.setAttribute('content', dark ? '#14161a' : '#ffffff')
         } catch (e) {
           document.documentElement.dataset.theme = 'light'
         }

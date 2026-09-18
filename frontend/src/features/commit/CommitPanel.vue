@@ -82,13 +82,19 @@ async function submitCommit(input: CommitInput): Promise<boolean> {
   }
 }
 
+/** CommitForm의 제출 버튼을 잠그는 데 쓴다 — 느린 네트워크에서 두 번 눌러 커밋이 두 개 생기는 것을 막는다. */
+const submitting = ref(false)
+
 async function handleSubmit(input: CommitInput) {
   saveError.value = null
+  submitting.value = true
   try {
     const ok = await submitCommit(input)
     if (ok) closeForm()
   } catch (e) {
     saveError.value = e instanceof ApiError ? e.message : '커밋을 저장하지 못했습니다.'
+  } finally {
+    submitting.value = false
   }
 }
 
@@ -207,7 +213,13 @@ async function handleRemove(commit: CommitMeta) {
         {{ gaugeLabel }}
       </p>
 
-      <CommitForm v-if="formOpen" :error="saveError" @submit="handleSubmit" @cancel="closeForm" />
+      <CommitForm
+        v-if="formOpen"
+        :error="saveError"
+        :submitting="submitting"
+        @submit="handleSubmit"
+        @cancel="closeForm"
+      />
 
       <CommitCapacityDialog
         v-if="capacityDialog"
@@ -221,23 +233,23 @@ async function handleRemove(commit: CommitMeta) {
         @close="closeCapacityDialog"
       />
 
-      <p v-if="actionError" class="error">{{ actionError }}</p>
-      <p v-if="restoredName" class="ok">
+      <p v-if="actionError" class="error" role="alert">{{ actionError }}</p>
+      <p v-if="restoredName" class="ok" aria-live="polite">
         <strong>{{ restoredName }}</strong> 프로젝트를 만들었습니다. 프로젝트 목록에서 확인하세요.
       </p>
 
-      <p v-if="loading">불러오는 중…</p>
+      <p v-if="loading" aria-live="polite">불러오는 중…</p>
       <template v-else>
         <div class="table-scroll">
           <table>
             <thead>
               <tr>
-                <th>버전</th>
-                <th>시점</th>
-                <th>메시지</th>
-                <th>작성자</th>
-                <th>용량</th>
-                <th></th>
+                <th scope="col">버전</th>
+                <th scope="col">시점</th>
+                <th scope="col">메시지</th>
+                <th scope="col">작성자</th>
+                <th scope="col">용량</th>
+                <th scope="col"></th>
               </tr>
             </thead>
             <tbody>

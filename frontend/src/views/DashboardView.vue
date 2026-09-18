@@ -83,7 +83,7 @@ function refresh() {
 
 <template>
   <section class="dashboard">
-    <p v-if="projectsError" class="error">{{ projectsError }}</p>
+    <p v-if="projectsError" class="error" role="alert">{{ projectsError }}</p>
 
     <p v-else-if="projects.length === 0" class="notice">
       먼저 프로젝트를 등록해야 Dashboard 를 볼 수 있습니다.
@@ -100,11 +100,23 @@ function refresh() {
         @refresh="refresh"
       />
 
-      <ProgressPanel v-if="tab === 'progress'" />
+      <ProgressPanel
+        v-if="tab === 'progress'"
+        id="dashboard-panel-progress"
+        role="tabpanel"
+        aria-labelledby="dashboard-tab-progress"
+        tabindex="0"
+      />
 
-      <template v-else>
-        <p v-if="error" class="error">{{ error }}</p>
-        <p v-if="loading" class="loading">불러오는 중…</p>
+      <div
+        v-else
+        id="dashboard-panel-summary"
+        role="tabpanel"
+        aria-labelledby="dashboard-tab-summary"
+        tabindex="0"
+      >
+        <p v-if="error" class="error" role="alert">{{ error }}</p>
+        <p v-if="loading" class="loading" aria-live="polite">불러오는 중…</p>
 
         <template v-else-if="data">
           <p v-if="data.workPackages.total === 0" class="notice">
@@ -126,7 +138,7 @@ function refresh() {
             <GapsCard v-if="data.gaps.length > 0" class="span-12" :data="data" />
           </div>
         </template>
-      </template>
+      </div>
     </template>
   </section>
 </template>

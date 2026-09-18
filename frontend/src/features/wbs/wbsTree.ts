@@ -65,3 +65,18 @@ export function findParent(nodes: WbsNode[], targetId: number): WbsNode | null {
   }
   return null
 }
+
+/**
+ * The node with `id`, searched depth-first through the whole tree — not just `rows` (flattened,
+ * collapsed-aware). A selection kept under a collapsed ancestor is still a valid selection
+ * (지시서 3-2-a); looking it up here rather than in `rows` is what keeps the toolbar pointed at
+ * it after the row disappears from view.
+ */
+export function findNode(nodes: WbsNode[], id: number): WbsNode | null {
+  for (const node of nodes) {
+    if (node.id === id) return node
+    const found = findNode(node.children, id)
+    if (found) return found
+  }
+  return null
+}

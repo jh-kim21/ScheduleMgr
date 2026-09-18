@@ -67,7 +67,7 @@ async function handleUnassign(item: SprintItem) {
   <section>
     <h1>Board</h1>
 
-    <p v-if="projectsError" class="error">{{ projectsError }}</p>
+    <p v-if="projectsError" class="error" role="alert">{{ projectsError }}</p>
 
     <p v-else-if="projects.length === 0" class="notice">
       먼저 프로젝트를 등록해야 Board 를 볼 수 있습니다.
@@ -95,7 +95,7 @@ async function handleUnassign(item: SprintItem) {
         </label>
       </div>
 
-      <p v-if="error" class="error">{{ error }}</p>
+      <p v-if="error" class="error" role="alert">{{ error }}</p>
       <p v-if="loading" class="loading">불러오는 중…</p>
 
       <template v-else-if="selected">

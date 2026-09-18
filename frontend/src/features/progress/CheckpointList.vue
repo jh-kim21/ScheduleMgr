@@ -199,7 +199,7 @@ function remove(cp: CheckpointDetail) {
 
 <template>
   <div class="checkpoint-list">
-    <p v-if="error" class="error">{{ error }}</p>
+    <p v-if="error" class="error" role="alert">{{ error }}</p>
 
     <ul v-if="checkpoints.length > 0" class="checkpoints">
       <li v-for="cp in checkpoints" :key="cp.id">

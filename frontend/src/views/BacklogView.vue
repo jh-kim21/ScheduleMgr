@@ -122,19 +122,27 @@ const notSprintReady = computed(() =>
   data.value.items.filter((item) => item.aggregated && !item.archived && !item.readyForSprint),
 )
 
+/** BacklogForm의 제출 버튼을 잠그는 데 쓴다 — 느린 네트워크에서 두 번 눌러 두 건이 생기는 것을 막는다. */
+const submitting = ref(false)
+
 async function handleSubmit(input: BacklogItemInput) {
   if (readOnly.value) return
   const projectId = selectedProjectId.value
   if (projectId === null) return
 
-  if (editing.value) {
-    const ok = await update(projectId, editing.value.id, input)
-    // A rejected save keeps the form open with the draft, next to the message.
-    if (ok) closeForm()
-  } else {
-    // Left open after a create: entering several items in one sitting is the common case, and the
-    // new row appearing below is already the confirmation.
-    await create(projectId, input)
+  submitting.value = true
+  try {
+    if (editing.value) {
+      const ok = await update(projectId, editing.value.id, input)
+      // A rejected save keeps the form open with the draft, next to the message.
+      if (ok) closeForm()
+    } else {
+      // Left open after a create: entering several items in one sitting is the common case, and the
+      // new row appearing below is already the confirmation.
+      await create(projectId, input)
+    }
+  } finally {
+    submitting.value = false
   }
 }
 
@@ -162,7 +170,7 @@ async function handleRemove(item: BacklogItem) {
   <section>
     <h1>Backlog</h1>
 
-    <p v-if="projectsError" class="error">{{ projectsError }}</p>
+    <p v-if="projectsError" class="error" role="alert">{{ projectsError }}</p>
 
     <p v-else-if="projects.length === 0" class="notice">
       먼저 프로젝트를 등록해야 Backlog를 작성할 수 있습니다.
@@ -179,10 +187,10 @@ async function handleRemove(item: BacklogItem) {
             </option>
           </select>
         </label>
-        <span v-if="loading" class="loading">불러오는 중…</span>
+        <span v-if="loading" class="loading" aria-live="polite">불러오는 중…</span>
       </div>
 
-      <p v-if="error" class="error">{{ error }}</p>
+      <p v-if="error" class="error" role="alert">{{ error }}</p>
 
       <p v-if="workPackages.length === 0 && !loading" class="notice">
         실행 방식을 지정할 Work Package가 없습니다. Backlog는 최하위 Work Package에 귀속되므로,
@@ -190,18 +198,18 @@ async function handleRemove(item: BacklogItem) {
         <RouterLink to="/wbs">WBS 화면으로 이동</RouterLink>
       </p>
 
-      <p v-if="data.unlinkedCount > 0" class="attention">
+      <p v-if="data.unlinkedCount > 0" class="attention" aria-live="polite">
         <strong>미연결 {{ data.unlinkedCount }}건</strong> — 초안으로 둘 수는 있지만 Sprint에 넣기
         전에 Work Package에 귀속시켜야 합니다.
       </p>
 
-      <p v-if="needsAttention.length > 0" class="attention">
+      <p v-if="needsAttention.length > 0" class="attention" aria-live="polite">
         <strong>연결을 고쳐야 하는 항목 {{ needsAttention.length }}건</strong> —
         {{ needsAttention.map((item) => item.title).join(', ') }}.
         귀속 대상이 Summary로 바뀌었거나 사라졌습니다.
       </p>
 
-      <p v-if="notSprintReady.length > 0" class="notice subtle">
+      <p v-if="notSprintReady.length > 0" class="notice subtle" aria-live="polite">
         Sprint에 넣을 수 없는 Story·Bug가 {{ notSprintReady.length }}건 있습니다 (미연결 또는 연결 오류).
       </p>
 
@@ -264,7 +272,7 @@ async function handleRemove(item: BacklogItem) {
         >＋ 항목 추가</button>
       </div>
 
-      <p v-if="focusedPackage" class="focused">
+      <p v-if="focusedPackage" class="focused" aria-live="polite">
         <strong>{{ focusedPackage.code }} {{ focusedPackage.name }}</strong>에 귀속된 항목만 보고 있습니다.
       </p>
 
@@ -276,6 +284,7 @@ async function handleRemove(item: BacklogItem) {
         :parent-options="parentOptions"
         :default-wbs-item-id="defaultWbsItemId"
         :error="error"
+        :submitting="submitting"
         @submit="handleSubmit"
         @cancel="closeForm"
       />
@@ -298,10 +307,13 @@ h1 {
   margin: 0 0 1rem;
 }
 
+/* flex-wrap — 프로젝트 선택 select는 이름 길이에 따라 폭이 정해지므로 상한이 없다. 좁은
+   화면이나 긴 프로젝트 이름에서 로딩 표시가 밀려 화면 밖으로 넘치지 않게 wrap을 둔다. */
 .toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 1rem;
+  gap: 0.5rem 1rem;
   margin-bottom: 1rem;
 }
 

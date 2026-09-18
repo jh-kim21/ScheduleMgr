@@ -87,7 +87,7 @@ function handleUnassign(assignmentId: number) {
       지정하면 그것이 우선합니다(상위 글자는 취소선). 규칙 위반은 저장을 막지 않고 표시만 합니다.
     </p>
 
-    <p v-if="projectsError" class="error">{{ projectsError }}</p>
+    <p v-if="projectsError" class="error" role="alert">{{ projectsError }}</p>
 
     <p v-else-if="projects.length === 0" class="notice">
       먼저 프로젝트를 등록해야 RACI를 작성할 수 있습니다.
@@ -106,9 +106,9 @@ function handleUnassign(assignmentId: number) {
         </label>
       </div>
 
-      <p v-if="error" class="error">{{ error }}</p>
+      <p v-if="error" class="error" role="alert">{{ error }}</p>
 
-      <p v-if="issueGroups.length > 0" class="issues">
+      <p v-if="issueGroups.length > 0" class="issues" aria-live="polite">
         <span v-for="group in issueGroups" :key="group.type" class="issue-group">
           <strong>{{ issueSummary(group.type) }} {{ group.issues.length }}건</strong>
           —
@@ -128,11 +128,11 @@ function handleUnassign(assignmentId: number) {
         </span>
       </p>
 
-      <p v-else-if="leafCount > 0 && data.members.length > 0" class="ok">
+      <p v-else-if="leafCount > 0 && data.members.length > 0" class="ok" aria-live="polite">
         업무 {{ leafCount }}건 모두 최종 책임자 한 명과 실무 담당자가 지정되어 있습니다.
       </p>
 
-      <p v-if="loading">불러오는 중…</p>
+      <p v-if="loading" aria-live="polite">불러오는 중…</p>
       <p v-else-if="data.members.length === 0" class="notice">
         구성원이 없어 매트릭스를 만들 수 없습니다. 프로젝트 화면에서 먼저 등록하세요.
         <RouterLink to="/projects">프로젝트 화면으로 이동</RouterLink>
@@ -187,10 +187,13 @@ h1 {
   content: ' · ';
 }
 
+/* flex-wrap — 프로젝트 선택 select는 이름 길이에 따라 폭이 정해지므로 상한이 없다. 좁은
+   화면이나 긴 프로젝트 이름에서 화면 밖으로 넘치지 않게 wrap을 둔다. */
 .toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 1rem;
+  gap: 0.5rem 1rem;
   margin-bottom: 1rem;
 }
 

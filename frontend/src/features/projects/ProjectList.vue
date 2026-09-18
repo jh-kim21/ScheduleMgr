@@ -28,11 +28,11 @@ const selection = useRowSelection(() => props.projects.map((project) => project.
     <table class="project-list">
       <thead>
         <tr>
-          <th>이름</th>
-          <th>상태</th>
-          <th>시작일</th>
-          <th>종료일</th>
-          <th></th>
+          <th scope="col">이름</th>
+          <th scope="col">상태</th>
+          <th scope="col">시작일</th>
+          <th scope="col">종료일</th>
+          <th scope="col"></th>
         </tr>
       </thead>
       <tbody ref="body" class="row-selectable" tabindex="0" @keydown="selection.onKeydown">

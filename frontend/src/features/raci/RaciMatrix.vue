@@ -120,8 +120,8 @@ function overriddenRoles(task: RaciTask): RaciRole[] {
     <table class="matrix">
       <thead>
         <tr>
-          <th class="task-col">업무</th>
-          <th v-for="member in data.members" :key="member.id" class="member-col">
+          <th class="task-col" scope="col">업무</th>
+          <th v-for="member in data.members" :key="member.id" class="member-col" scope="col">
             <span class="member-name">{{ member.name }}</span>
             <span v-if="member.position" class="member-position">{{ member.position }}</span>
           </th>
@@ -184,6 +184,7 @@ function overriddenRoles(task: RaciTask): RaciRole[] {
                     inheritedRole(task, member.id, role)?.overridden === true,
                 }"
                 :title="cellTitle(task, member, role)"
+                :aria-label="cellTitle(task, member, role)"
                 :aria-pressed="assignmentIdFor(task, member.id, role) !== null"
                 @click="toggle(task, member.id, role)"
               >{{ RACI_LETTERS[role] }}</button>
@@ -366,6 +367,17 @@ tr.summary .name {
   font-size: 0.7rem;
   font-weight: 600;
   line-height: 1;
+}
+
+/*
+ * 히트 영역만 24×24px로 키운다(WCAG 2.5.8) — 시각 크기(1.35rem ≈ 21.6px)는 조밀한 격자를 위해
+ * 그대로 둔다. 투명한 `::after`를 버튼 밖으로 살짝 넘치게 그려 클릭·탭 판정 영역만 넓힌다
+ * (전역 상태 레이어는 `::before`를 쓰므로 겹치지 않는다).
+ */
+.letter::after {
+  content: '';
+  position: absolute;
+  inset: -0.075rem;
 }
 
 .letter:hover:not(:disabled) {

@@ -111,6 +111,7 @@ function handleAssign() {
         v-model="query"
         type="search"
         class="search"
+        aria-label="검색"
         placeholder="제목 또는 유형으로 검색"
         :disabled="locked"
       />
@@ -130,13 +131,13 @@ function handleAssign() {
       </div>
     </div>
 
-    <p v-if="candidates.length === 0" class="empty">배정할 수 있는 항목이 없습니다</p>
-    <p v-else-if="filtered.length === 0" class="empty">검색 결과가 없습니다</p>
+    <p v-if="candidates.length === 0" class="empty" aria-live="polite">배정할 수 있는 항목이 없습니다</p>
+    <p v-else-if="filtered.length === 0" class="empty" aria-live="polite">검색 결과가 없습니다</p>
     <div v-else class="table-scroll rows">
       <table>
         <thead>
           <tr>
-            <th class="check">
+            <th class="check" scope="col">
               <input
                 ref="selectAllCheckbox"
                 type="checkbox"
@@ -146,9 +147,9 @@ function handleAssign() {
                 @change="toggleAllVisible"
               />
             </th>
-            <th class="type">유형</th>
-            <th>제목</th>
-            <th class="num">SP</th>
+            <th class="type" scope="col">유형</th>
+            <th scope="col">제목</th>
+            <th class="num" scope="col">SP</th>
           </tr>
         </thead>
         <tbody ref="body" class="row-selectable" tabindex="0" @keydown="selection.onKeydown">

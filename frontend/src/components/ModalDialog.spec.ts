@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { mount, type VueWrapper } from '@vue/test-utils'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import ModalDialog from './ModalDialog.vue'
 
 /**
@@ -78,6 +78,72 @@ describe('ModalDialog', () => {
     backdrop?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
     await wrapper.vm.$nextTick()
     expect(wrapper.emitted('close')).toHaveLength(1)
+  })
+
+  /**
+   * `dirty`는 opt-in이다 — 기본값(`undefined`)에서는 위 테스트들처럼 확인 없이 바로 닫힌다.
+   * `true`일 때만 Escape·배경 클릭·✕ 버튼 셋 다 확인을 거친다. happy-dom은 `window.confirm`을
+   * 구현하지 않으므로 `vi.stubGlobal`로 대신하고 `vi.unstubAllGlobals()`로 정리한다(CLAUDE.md
+   * 컴포넌트 테스트 절 — `vi.restoreAllMocks`는 `stubGlobal`을 되돌리지 못한다).
+   */
+  describe('dirty — 미저장 변경 확인', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals()
+    })
+
+    it('dirty가 아니면 확인 없이 바로 닫힌다(기본값)', async () => {
+      const confirmSpy = vi.fn()
+      vi.stubGlobal('confirm', confirmSpy)
+      wrapper = mount(ModalDialog, { props: { title: '항목 추가' } })
+
+      document.body.querySelector<HTMLButtonElement>('.close')?.click()
+      await wrapper.vm.$nextTick()
+
+      expect(confirmSpy).not.toHaveBeenCalled()
+      expect(wrapper.emitted('close')).toHaveLength(1)
+    })
+
+    it('dirty일 때 ✕ 버튼에서 확인을 거부하면 닫히지 않는다', async () => {
+      vi.stubGlobal('confirm', vi.fn().mockReturnValue(false))
+      wrapper = mount(ModalDialog, { props: { title: '항목 추가', dirty: true } })
+
+      document.body.querySelector<HTMLButtonElement>('.close')?.click()
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.emitted('close')).toBeUndefined()
+    })
+
+    it('dirty일 때 확인하면 닫힌다', async () => {
+      vi.stubGlobal('confirm', vi.fn().mockReturnValue(true))
+      wrapper = mount(ModalDialog, { props: { title: '항목 추가', dirty: true } })
+
+      document.body.querySelector<HTMLButtonElement>('.close')?.click()
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.emitted('close')).toHaveLength(1)
+    })
+
+    it('dirty일 때 Escape도 같은 확인을 거친다', async () => {
+      vi.stubGlobal('confirm', vi.fn().mockReturnValue(false))
+      wrapper = mount(ModalDialog, { props: { title: '항목 추가', dirty: true } })
+
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.emitted('close')).toBeUndefined()
+    })
+
+    it('dirty일 때 배경 클릭도 같은 확인을 거친다', async () => {
+      vi.stubGlobal('confirm', vi.fn().mockReturnValue(false))
+      wrapper = mount(ModalDialog, { props: { title: '항목 추가', dirty: true } })
+
+      document.body
+        .querySelector<HTMLElement>('.backdrop')
+        ?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.emitted('close')).toBeUndefined()
+    })
   })
 
   /**

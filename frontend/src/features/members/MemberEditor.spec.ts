@@ -66,6 +66,7 @@ describe('MemberEditor — 추가·수정 통합 대화상자', () => {
   afterEach(() => {
     wrapper?.unmount()
     wrapper = undefined
+    vi.unstubAllGlobals()
   })
 
   function renderEditor(
@@ -184,6 +185,27 @@ describe('MemberEditor — 추가·수정 통합 대화상자', () => {
     expect(nameInput().value).toBe('네트워크 오류로 안 먹힘')
   })
 
+  it('제출 중에는 저장 버튼이 비활성화되고 문구가 진행형으로 바뀐다 — 응답이 올 때까지 다시 제출을 막는다', async () => {
+    let resolvePending!: (ok: boolean) => void
+    const onSubmitAdd = vi.fn(() => new Promise<boolean>((resolve) => { resolvePending = resolve }))
+    wrapper = renderEditor([member()], { onSubmitAdd })
+
+    await addButton().click()
+    await setName('박서준')
+    await wrapper.vm.$nextTick()
+    submitButton().click()
+    await wrapper.vm.$nextTick()
+
+    expect(submitButton().disabled).toBe(true)
+    expect(submitButton().textContent?.trim()).toBe('추가 중…')
+    expect(cancelButton().disabled).toBe(true)
+
+    resolvePending(true)
+    await flushPromises()
+
+    expect(panels()).toHaveLength(1)
+  })
+
   it('취소를 누르면 onSubmitAdd/onSubmitUpdate를 부르지 않고 대화상자만 닫힌다', async () => {
     const onSubmitAdd = vi.fn().mockResolvedValue(true)
     const onSubmitUpdate = vi.fn().mockResolvedValue(true)
@@ -198,5 +220,68 @@ describe('MemberEditor — 추가·수정 통합 대화상자', () => {
     expect(panels()).toHaveLength(1)
     expect(onSubmitAdd).not.toHaveBeenCalled()
     expect(onSubmitUpdate).not.toHaveBeenCalled()
+  })
+
+  /**
+   * `ModalDialog`의 `dirty` prop(opt-in) 실전 배선 — 이름을 입력한 채 Escape를 누르면 한 번
+   * 확인을 거친다. happy-dom이 `window.confirm`을 구현하지 않으므로 `vi.stubGlobal`로 대신한다
+   * (CLAUDE.md 컴포넌트 테스트 절).
+   */
+  describe('dirty — 미저장 변경 확인', () => {
+    it('이름을 입력하지 않은 채 Escape를 누르면 확인 없이 바로 닫힌다', async () => {
+      const confirmSpy = vi.fn()
+      vi.stubGlobal('confirm', confirmSpy)
+      wrapper = renderEditor([member()])
+
+      await addButton().click()
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      await wrapper.vm.$nextTick()
+
+      expect(confirmSpy).not.toHaveBeenCalled()
+      expect(panels()).toHaveLength(1)
+    })
+
+    it('이름을 입력한 채 Escape를 누르면 확인을 거치고, 거부하면 열린 채 남는다', async () => {
+      vi.stubGlobal('confirm', vi.fn().mockReturnValue(false))
+      wrapper = renderEditor([member()])
+
+      await addButton().click()
+      await setName('쓰다 만 이름')
+      await wrapper.vm.$nextTick()
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      await wrapper.vm.$nextTick()
+
+      expect(panels()).toHaveLength(2)
+      expect(nameInput().value).toBe('쓰다 만 이름')
+    })
+
+    it('확인하면 닫힌다', async () => {
+      vi.stubGlobal('confirm', vi.fn().mockReturnValue(true))
+      wrapper = renderEditor([member()])
+
+      await addButton().click()
+      await setName('쓰다 만 이름')
+      await wrapper.vm.$nextTick()
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      await wrapper.vm.$nextTick()
+
+      expect(panels()).toHaveLength(1)
+    })
+
+    it('수정 모드에서 값을 바꾸지 않았으면 Escape에 확인이 없다', async () => {
+      const confirmSpy = vi.fn()
+      vi.stubGlobal('confirm', confirmSpy)
+      wrapper = renderEditor([member({ name: '이승하' })])
+
+      const editButton = [...document.body.querySelectorAll<HTMLButtonElement>('.list button')].find(
+        (b) => b.textContent === '수정',
+      )!
+      await editButton.click()
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      await wrapper.vm.$nextTick()
+
+      expect(confirmSpy).not.toHaveBeenCalled()
+      expect(panels()).toHaveLength(1)
+    })
   })
 })

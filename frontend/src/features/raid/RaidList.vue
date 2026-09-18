@@ -82,24 +82,24 @@ const selection = useRowSelection(
     @keydown="selection.onKeydown"
   >
     <section v-for="section in sections" :key="section.type">
-      <h3>
+      <h2>
         <span class="type-badge" :data-type="section.type">
           {{ RAID_TYPE_LABELS[section.type] }}
         </span>
         {{ section.items.length }}건
-      </h3>
+      </h2>
 
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th class="title-col">제목</th>
-              <th>상태</th>
-              <th>노출도</th>
-              <th>소유자</th>
-              <th>연결 대상</th>
-              <th>기한</th>
-              <th class="actions-col"></th>
+              <th class="title-col" scope="col">제목</th>
+              <th scope="col">상태</th>
+              <th scope="col">노출도</th>
+              <th scope="col">소유자</th>
+              <th scope="col">연결 대상</th>
+              <th scope="col">기한</th>
+              <th class="actions-col" scope="col"></th>
             </tr>
           </thead>
           <tbody>
@@ -203,7 +203,8 @@ const selection = useRowSelection(
   gap: 1.25rem;
 }
 
-h3 {
+/* 페이지 h1(RaidView) 바로 아래 종류별 구획 제목이라 h2다 — 예전에 h3이라 단계를 건너뛰었다. */
+h2 {
   display: flex;
   align-items: center;
   gap: 0.4rem;

@@ -19,7 +19,7 @@ defineProps<{
   <article class="dash-card" :class="{ warn: tone === 'warn' }">
     <header>
       <div class="heading">
-        <h3>{{ title }}</h3>
+        <h2>{{ title }}</h2>
         <p v-if="subtitle" class="subtitle">{{ subtitle }}</p>
       </div>
       <div v-if="$slots.action" class="action"><slot name="action" /></div>
@@ -55,7 +55,8 @@ header {
   min-width: 0;
 }
 
-h3 {
+/* 페이지 h1(DashboardHeader) 바로 아래 카드 제목이라 h2다 — 예전에 h3이라 단계를 건너뛰었다. */
+h2 {
   margin: 0;
   font-size: 0.95rem;
   font-weight: 600;

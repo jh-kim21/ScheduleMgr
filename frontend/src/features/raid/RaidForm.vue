@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import ModalDialog from '../../components/ModalDialog.vue'
 import type { ProjectMember } from '../../api/memberApi'
 import type { RaidItem, RaidItemInput, RaidLinkInput } from '../../api/raidApi'
@@ -27,6 +27,8 @@ const props = defineProps<{
   backlogItems: RaidLinkOption[]
   /** 저장이 거부된 이유. 대화상자 안에 보여야 사용자가 볼 수 있다. */
   error?: string | null
+  /** 부모(RaidView)가 create/update 요청 중일 때 true — 응답이 올 때까지 다시 제출을 막는다. */
+  submitting?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -48,6 +50,13 @@ const empty: RaidItemInput = {
 }
 
 const form = reactive<RaidItemInput>({ ...empty, links: [] })
+
+/**
+ * 열렸을 때의 값을 찍어 두고 지금 값과 비교한다 — Escape·배경 클릭으로 닫을 때 입력을 잃을
+ * 수 있는 경우에만 `ModalDialog`가 한 번 확인하게 한다(`dirty` prop, opt-in). 연결 대상을
+ * 고르는 중인 `draftLink`는 아직 폼에 커밋되지 않은 값이라 여기 포함하지 않는다.
+ */
+const initialSnapshot = ref('')
 
 /**
  * The link being composed. Two selects rather than one flat list of everything in the project:
@@ -136,9 +145,12 @@ watch(
       form.links = []
     }
     draftLink.targetId = null
+    initialSnapshot.value = JSON.stringify(form)
   },
   { immediate: true },
 )
+
+const dirty = computed(() => JSON.stringify(form) !== initialSnapshot.value)
 
 const title = computed(() =>
   props.editing ? `항목 수정 — ${props.editing.title}` : 'RAID 항목 추가',
@@ -170,7 +182,7 @@ const responseLabel = computed(() => {
 const dueLabel = computed(() => (form.type === 'ASSUMPTION' ? '확인 기한' : '대응 기한'))
 
 function onSubmit() {
-  if (!submittable.value) return
+  if (!submittable.value || props.submitting) return
   emit('submit', { ...form, links: [...form.links] })
   if (!props.editing) {
     Object.assign(form, empty)
@@ -199,7 +211,7 @@ function onShortcutSave(event: KeyboardEvent) {
 </script>
 
 <template>
-  <ModalDialog :title="title" size="lg" :error="props.error" @close="emit('cancel')">
+  <ModalDialog :title="title" size="lg" :error="props.error" :dirty="dirty" @close="emit('cancel')">
     <form class="raid-form" @submit.prevent="onSubmit">
 
       <div class="row">
@@ -328,15 +340,18 @@ function onShortcutSave(event: KeyboardEvent) {
         </label>
       </div>
 
-      <p v-if="members.length === 0" class="owner-hint">
+      <p v-if="members.length === 0" class="field-hint">
         소유자로 지정할 구성원이 없습니다. RACI 화면에서 구성원을 먼저 등록하면 선택할 수 있습니다.
       </p>
 
+      <!-- 저장 버튼이 비활성인 이유 — 제목 없이는 눌러도 왜 안 되는지 알 수 없었다. -->
+      <p v-if="!submittable" class="field-hint">제목을 입력해야 저장할 수 있습니다.</p>
+
       <div class="actions">
-        <button type="submit" class="primary" :disabled="!submittable">
-          {{ editing ? '저장' : '추가' }}
+        <button type="submit" class="primary" :disabled="!submittable || submitting">
+          {{ submitting ? (editing ? '저장 중…' : '추가 중…') : editing ? '저장' : '추가' }}
         </button>
-        <button type="button" @click="emit('cancel')">취소</button>
+        <button type="button" :disabled="submitting" @click="emit('cancel')">취소</button>
       </div>
     </form>
   </ModalDialog>
@@ -484,7 +499,7 @@ textarea {
   color: var(--text-faint);
 }
 
-.owner-hint {
+.field-hint {
   margin: 0 0 0.6rem;
   font-size: 0.76rem;
   color: var(--warn-badge-fg);

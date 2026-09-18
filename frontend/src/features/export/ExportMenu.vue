@@ -270,6 +270,8 @@ async function run(format: Format) {
       v-if="error"
       type="button"
       class="error"
+      role="alert"
+      :aria-label="error"
       :title="error"
       @click="error = null"
     >!</button>

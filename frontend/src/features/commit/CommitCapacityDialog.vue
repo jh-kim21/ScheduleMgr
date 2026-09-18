@@ -39,12 +39,12 @@ const emit = defineEmits<{
       <table>
         <thead>
           <tr>
-            <th>버전</th>
-            <th>시점</th>
-            <th>메시지</th>
-            <th>작성자</th>
-            <th>용량</th>
-            <th></th>
+            <th scope="col">버전</th>
+            <th scope="col">시점</th>
+            <th scope="col">메시지</th>
+            <th scope="col">작성자</th>
+            <th scope="col">용량</th>
+            <th scope="col"></th>
           </tr>
         </thead>
         <tbody>

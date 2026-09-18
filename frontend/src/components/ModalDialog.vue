@@ -74,6 +74,13 @@ const props = defineProps<{
    * 보고 있는 곳에 다시 보여 준다 — 안 그러면 저장이 조용히 실패한 것처럼 보인다.
    */
   error?: string | null
+  /**
+   * opt-in — 입력 중인 내용이 있으면 폼이 `true`로 넘긴다. Escape·배경 클릭·닫기(✕) 버튼으로
+   * 닫으려 할 때 한 번 확인을 거친다. 기본은 `false`(모든 대화상자에 강제하면 입력이 없는
+   * 확인 대화상자까지 물어보게 된다). "실제로 값이 바뀐 폼만" 이 prop을 넘겨야 한다 —
+   * 판정(무엇이 "바뀐 것"인가)은 폼마다 다르므로 여기서 대신 계산하지 않는다.
+   */
+  dirty?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -112,6 +119,16 @@ function setInert(inert: boolean) {
   }
 }
 
+/**
+ * `dirty`가 아니면 그냥 닫는다. `dirty`면 되돌릴 수 없는 삭제와 같은 결의 확인을 한 번 거친다
+ * (CLAUDE.md "되돌릴 수 없는 동작에는 예외 없이 confirm()을 거칩니다"와 같은 어투) — Escape·
+ * 배경 클릭·✕ 버튼 셋 다 이 함수를 거치므로 한 곳만 맞으면 셋 다 맞는다.
+ */
+function requestClose() {
+  if (props.dirty && !confirm('저장하지 않은 내용이 있습니다. 닫을까요?')) return
+  emit('close')
+}
+
 function onKeydown(event: KeyboardEvent) {
   // 스택 최상단이 아니면 이 인스턴스는 조용히 있는다 — 안쪽 대화상자가 열려 있는데 바깥이
   // Escape로 같이 닫히거나, 안쪽 패널에 있는 포커스를 보고 자기 Tab 트랩을 오작동시키던
@@ -120,7 +137,7 @@ function onKeydown(event: KeyboardEvent) {
 
   if (event.key === 'Escape') {
     event.preventDefault()
-    emit('close')
+    requestClose()
     return
   }
   if (event.key !== 'Tab') return
@@ -181,7 +198,7 @@ onBeforeUnmount(() => {
 
 /** 배경을 눌렀을 때만 닫는다 — 패널 안에서 올라온 클릭은 무시한다. */
 function onBackdropPointerDown(event: MouseEvent) {
-  if (event.target === event.currentTarget) emit('close')
+  if (event.target === event.currentTarget) requestClose()
 }
 </script>
 
@@ -198,7 +215,7 @@ function onBackdropPointerDown(event: MouseEvent) {
       >
         <header class="head">
           <h2>{{ title }}</h2>
-          <button type="button" class="close" aria-label="닫기" @click="emit('close')">✕</button>
+          <button type="button" class="close" aria-label="닫기" @click="requestClose">✕</button>
         </header>
         <div class="body">
           <p v-if="props.error" class="error" role="alert">{{ props.error }}</p>
