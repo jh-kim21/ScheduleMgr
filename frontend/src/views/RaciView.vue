@@ -132,7 +132,7 @@ function handleUnassign(assignmentId: number) {
         업무 {{ leafCount }}건 모두 최종 책임자 한 명과 실무 담당자가 지정되어 있습니다.
       </p>
 
-      <p v-if="loading">불러오는 중...</p>
+      <p v-if="loading">불러오는 중…</p>
       <p v-else-if="data.members.length === 0" class="notice">
         구성원이 없어 매트릭스를 만들 수 없습니다. 프로젝트 화면에서 먼저 등록하세요.
         <RouterLink to="/projects">프로젝트 화면으로 이동</RouterLink>
@@ -200,13 +200,6 @@ h1 {
   gap: 0.5rem;
   font-size: 0.85rem;
   color: var(--text-muted);
-}
-
-.project-picker select {
-  padding: 0.4rem 0.6rem;
-  border: 1px solid var(--border-input);
-  border-radius: 6px;
-  font: inherit;
 }
 
 .error {

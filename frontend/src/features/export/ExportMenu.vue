@@ -288,56 +288,35 @@ async function run(format: Format) {
  * 상태 레이어를 배경색 교체가 아니라 겹치는 층으로 두는 이유는, 어떤 배경 위에서도 같은
  * 규칙으로 동작하고 다크 모드에서 색을 한 벌 더 정의하지 않아도 되기 때문이다.
  */
+/*
+ * 전역 버튼이 이미 `position: relative`·`display: inline-flex`·`font: inherit`·`cursor: pointer`·
+ * 상태 레이어(::before)·`:focus-visible`를 준다. border 두께·모양은 기본값과 같아 지웠다
+ * (`.ghost`와 같은 배색이지만 템플릿에 클래스를 붙이는 건 이번 작업 범위가 아니라 로컬에 남긴다).
+ * `:hover`/`:active`의 상태 레이어 재선언과 `[disabled]`는 전역과 값이 완전히 같아
+ * 지웠다(전역 선택자의 특이도가 더 높아 사실 이미 죽어 있던 코드였다).
+ */
 .md-button {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
   gap: 0.3rem;
   padding: 0.3rem 0.6rem 0.3rem 0.55rem;
-  border: 1px solid var(--border-input);
   border-radius: 999px;
   background: transparent;
   color: var(--text-muted);
-  font: inherit;
   font-size: 0.76rem;
   font-weight: 500;
   letter-spacing: 0.01em;
   line-height: 1.4;
-  cursor: pointer;
   overflow: hidden;
   transition: border-color 120ms ease, color 120ms ease;
 }
 
+/* 전역 ::before가 content·position·배경을 이미 주므로, 이 버튼만의 트랜지션만 얹는다. */
 .md-button::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: transparent;
   transition: background 120ms ease;
 }
 
 .md-button:hover {
   border-color: var(--accent-border);
   color: var(--text-h);
-}
-
-.md-button:hover::before {
-  background: var(--state-hover);
-}
-
-.md-button:active::before {
-  background: var(--state-press);
-}
-
-.md-button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.md-button[disabled] {
-  color: var(--disabled-fg);
-  border-color: var(--disabled-border);
-  cursor: default;
 }
 
 .icon {
@@ -395,21 +374,18 @@ async function run(format: Format) {
   }
 }
 
+/* position·color·font·cursor는 전역 기본과 같아 지웠다. radius(7px)도 전역 기본(6px)과 사실상
+   같은 값이라 지웠다. */
 .md-menu-item {
-  position: relative;
   display: flex;
   align-items: flex-start;
   gap: 0.5rem;
   width: 100%;
   padding: 0.45rem 0.55rem;
   border: none;
-  border-radius: 7px;
   background: transparent;
-  color: var(--text);
-  font: inherit;
   font-size: 0.8rem;
   text-align: left;
-  cursor: pointer;
 }
 
 /* hover 와 키보드 이동이 같은 표시를 쓰도록 .active 하나로 모은다. */
@@ -453,9 +429,7 @@ async function run(format: Format) {
   border-radius: 999px;
   background: var(--danger);
   color: var(--status-fg);
-  font: inherit;
   font-size: 0.72rem;
   font-weight: 700;
-  cursor: pointer;
 }
 </style>

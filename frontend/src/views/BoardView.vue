@@ -96,7 +96,7 @@ async function handleUnassign(item: SprintItem) {
       </div>
 
       <p v-if="error" class="error">{{ error }}</p>
-      <p v-if="loading" class="loading">불러오는 중...</p>
+      <p v-if="loading" class="loading">불러오는 중…</p>
 
       <template v-else-if="selected">
         <div class="head">
@@ -160,14 +160,6 @@ h1 {
   gap: 0.5rem;
   font-size: 0.85rem;
   color: var(--text-muted);
-}
-
-.project-picker select,
-.sprint-picker select {
-  padding: 0.4rem 0.6rem;
-  border: 1px solid var(--border-input);
-  border-radius: 6px;
-  font: inherit;
 }
 
 .head {

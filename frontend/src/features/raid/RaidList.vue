@@ -401,20 +401,12 @@ td.overdue {
   gap: 0.35rem;
 }
 
+/* border·배경·font·cursor는 전역 기본과 같아 지웠다. `.danger`는 전역 계약과 완전히 같아
+   통째로 지웠다. */
 .actions button {
   padding: 0.25rem 0.55rem;
-  border: 1px solid var(--border-input);
-  border-radius: 6px;
-  background: var(--surface);
   color: var(--text-muted);
-  cursor: pointer;
-  font: inherit;
   font-size: 0.75rem;
-}
-
-.actions button.danger {
-  color: var(--danger);
-  border-color: var(--danger-border);
 }
 
 .empty {

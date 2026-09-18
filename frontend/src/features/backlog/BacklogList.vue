@@ -352,26 +352,19 @@ tbody tr.archived .title > span:first-child {
   text-align: right;
 }
 
+/* radius(5px→전역 6px)·배경·cursor는 전역 기본과 같거나 아주 가까워 지웠다 — 옅은 점선 계열
+   테두리색만 이 표만의 것으로 남긴다. `.danger`는 전역 계약과 완전히 같아 통째로 지웠다. */
 .actions button {
   padding: 0.25rem 0.5rem;
   margin-left: 0.25rem;
-  border-radius: 5px;
-  border: 1px solid var(--border-dashed);
-  background: var(--surface);
-  cursor: pointer;
+  border-color: var(--border-dashed);
   font-size: 0.75rem;
 }
 
-.actions button.danger {
-  color: var(--danger);
-  border-color: var(--danger-border);
-}
-
+/* :disabled의 border-color만 이 표 고유 값(옅은 --border-soft)이다 — 배경·글자색·cursor는
+   전역과 특이도가 동점이라 실제로도 전역과 같은 값을 그대로 쓰고 있어 지웠다. */
 .actions button:disabled {
-  background: var(--disabled-bg);
-  color: var(--disabled-fg);
   border-color: var(--border-soft);
-  cursor: not-allowed;
 }
 
 .empty {

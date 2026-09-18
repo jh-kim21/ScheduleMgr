@@ -250,7 +250,7 @@ async function handleRemove(project: Project) {
     />
 
     <p v-if="error" class="error">{{ error }}</p>
-    <p v-else-if="loading">불러오는 중...</p>
+    <p v-else-if="loading">불러오는 중…</p>
     <ProjectList
       v-else
       :projects="projects"
@@ -301,17 +301,16 @@ async function handleRemove(project: Project) {
   margin-bottom: 0;
 }
 
+/* 전역 버튼 기본과 겹치는 선언(패딩·`font: inherit`·`cursor`·border의 두께·모양)은 지웠다 —
+   `border-color`만 남겨 강조색만 얹는다. 패딩은 전역 기본(0.45em 0.9em)으로 아주 살짝 커진다. */
 .add {
   margin-left: auto;
-  padding: 0.4rem 0.85rem;
-  border: 1px solid var(--accent);
+  border-color: var(--accent);
   border-radius: 999px;
   background: var(--accent);
   color: var(--accent-fg);
-  font: inherit;
   font-size: 0.8rem;
   font-weight: 500;
-  cursor: pointer;
   white-space: nowrap;
 }
 
@@ -319,32 +318,30 @@ async function handleRemove(project: Project) {
   box-shadow: var(--elevation-1);
 }
 
+/*
+ * 전역 버튼이 이미 `position: relative`·`display: inline-flex`·`font: inherit`·`cursor: pointer`·
+ * 상태 레이어(::before)·`:focus-visible`·`:disabled` 배경/글자색을 준다 — 여기 남기는 것은
+ * 전역이 모르는 것뿐이다: 알약 모양, 톤 색, 그리고 이 버튼만의 고도(elevation) 변화.
+ * `:hover`/`:active`/`:focus-visible`의 상태 레이어·배경·글자색 재선언은 전역과 값이 완전히
+ * 같아 지웠다(전역 선택자의 특이도가 더 높아 사실 이미 죽어 있던 코드였다).
+ */
 .md-tonal {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
   gap: 0.35rem;
   padding: 0.4rem 0.9rem 0.4rem 0.75rem;
   border: none;
   border-radius: 999px;
   background: var(--accent-container);
   color: var(--accent-container-fg);
-  font: inherit;
   font-size: 0.8rem;
   font-weight: 500;
   letter-spacing: 0.01em;
-  cursor: pointer;
   overflow: hidden;
   box-shadow: var(--elevation-1);
   transition: box-shadow 140ms ease;
 }
 
-/* 상태 레이어를 겹치는 층으로 둔다 — 배경색을 갈아치우지 않으므로 다크 모드에 색을 더 정의할 필요가 없다. */
+/* 전역 ::before가 content·position·배경을 이미 주므로, 이 버튼만의 트랜지션만 얹는다. */
 .md-tonal::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: transparent;
   transition: background 120ms ease;
 }
 
@@ -352,28 +349,13 @@ async function handleRemove(project: Project) {
   box-shadow: var(--elevation-2);
 }
 
-.md-tonal:hover::before {
-  background: var(--state-hover);
-}
-
 .md-tonal:active {
   box-shadow: var(--elevation-1);
 }
 
-.md-tonal:active::before {
-  background: var(--state-press);
-}
-
-.md-tonal:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
+/* box-shadow만 이 버튼 고유 — 배경·글자색·cursor는 전역 :disabled가 더 높은 특이도로 이미 맡는다. */
 .md-tonal:disabled {
-  background: var(--disabled-bg);
-  color: var(--disabled-fg);
   box-shadow: none;
-  cursor: default;
 }
 
 .md-tonal .icon {
@@ -424,14 +406,12 @@ async function handleRemove(project: Project) {
   background: transparent;
   color: inherit;
   opacity: 0.65;
-  font: inherit;
   font-size: 0.75rem;
-  cursor: pointer;
 }
 
+/* 배경 틴트는 전역 hover 상태 레이어(::before)가 이미 준다 — 여기서는 아이콘 자체의 흐림만 푼다. */
 .md-banner .dismiss:hover {
   opacity: 1;
-  background: var(--state-hover);
 }
 
 h1 {
@@ -441,5 +421,14 @@ h1 {
 
 .error {
   color: var(--danger);
+}
+
+/* 이 파일이 직접 들여오는 transition(box-shadow·상태 레이어 배경)만 끈다 — 전역 컨트롤 층의
+   transition은 style.css가 이미 막는다. */
+@media (prefers-reduced-motion: reduce) {
+  .md-tonal,
+  .md-tonal::before {
+    transition: none;
+  }
 }
 </style>

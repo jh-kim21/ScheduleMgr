@@ -132,19 +132,15 @@ nav a.group-active {
   font-weight: 600;
 }
 
+/* 전역 버튼 기본(패딩·테두리·배경·`font: inherit`·`cursor`)과 겹치는 선언은 지웠다 — 여기 남은
+   것은 이 토글만의 것(알약 모양, 작은 크기, 오른쪽 밀기)이다. */
 .theme-toggle {
   margin-left: auto;
-  display: inline-flex;
-  align-items: center;
   gap: 0.35rem;
   padding: 0.3rem 0.6rem;
-  border: 1px solid var(--border-input);
   border-radius: 999px;
-  background: var(--surface);
   color: var(--text-muted);
-  font: inherit;
   font-size: 0.75rem;
-  cursor: pointer;
   white-space: nowrap;
 }
 

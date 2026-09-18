@@ -104,7 +104,7 @@ function refresh() {
 
       <template v-else>
         <p v-if="error" class="error">{{ error }}</p>
-        <p v-if="loading" class="loading">불러오는 중...</p>
+        <p v-if="loading" class="loading">불러오는 중…</p>
 
         <template v-else-if="data">
           <p v-if="data.workPackages.total === 0" class="notice">

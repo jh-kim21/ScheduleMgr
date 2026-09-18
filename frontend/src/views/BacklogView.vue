@@ -313,11 +313,8 @@ h1 {
   color: var(--text-muted);
 }
 
+/* 패딩·border·radius·font는 전역 기본과 같아(패딩은 아주 살짝만 다름) 지웠다 — font-size만 남긴다. */
 select {
-  padding: 0.4rem 0.6rem;
-  border: 1px solid var(--border-input);
-  border-radius: 6px;
-  font: inherit;
   font-size: 0.85rem;
 }
 
@@ -382,21 +379,14 @@ select {
   margin: 0 0 0.5rem;
 }
 
+/* radius·font·cursor는 전역 기본과 같아 지웠다 — 취소(.ghost)는 전역 계약과 완전히 같아
+   통째로 지웠다. */
 button {
   padding: 0.4rem 0.8rem;
-  border-radius: 6px;
-  border: 1px solid var(--accent);
+  border-color: var(--accent);
   background: var(--accent);
   color: var(--accent-fg);
-  cursor: pointer;
-  font: inherit;
   font-size: 0.82rem;
   white-space: nowrap;
-}
-
-button.ghost {
-  background: transparent;
-  color: var(--text-muted);
-  border-color: var(--border-input);
 }
 </style>

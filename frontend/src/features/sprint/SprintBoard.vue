@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import type { RaidItem } from '../../api/raidApi'
 import type { BoardMoveInput, Sprint, SprintItem } from '../../api/sprintApi'
+import ModalDialog from '../../components/ModalDialog.vue'
 import { RAID_TYPE_LABELS } from '../../shared/raid'
 import {
   BACKLOG_STATUS_LABELS,
@@ -135,6 +136,16 @@ function submitBlock() {
 function unblock(item: SprintItem) {
   emit('move', item.backlogItemId, { status: item.status, blocked: false, blockedReason: null })
 }
+
+/**
+ * 이 항목을 Sprint에서 빼는 것은 배정 이력에 `removed_at`을 찍는 조작이라 되돌리려면 다시
+ * 배정해야 한다 — 앱의 다른 삭제·제거 동작(WbsView·MemberEditor 등 8곳)과 같은 `confirm()`을
+ * 거친다. 지금까지는 카드의 "제거" 링크가 확인 없이 바로 실행됐다.
+ */
+function requestUnassign(item: SprintItem) {
+  if (!confirm(`'${item.title}'을(를) 이 Sprint에서 뺄까요?`)) return
+  emit('unassign', item)
+}
 </script>
 
 <template>
@@ -202,7 +213,7 @@ function unblock(item: SprintItem) {
               @click="unblock(item)"
             >차단 해제</button>
             <button v-else type="button" class="link" @click="openBlock(item)">차단</button>
-            <button type="button" class="link danger" @click="emit('unassign', item)">제거</button>
+            <button type="button" class="link danger" @click="requestUnassign(item)">제거</button>
           </template>
         </footer>
       </article>
@@ -215,39 +226,35 @@ function unblock(item: SprintItem) {
     {{ removedItems.map((item) => item.title).join(', ') }}.
   </p>
 
-  <div v-if="confirming" class="dialog" role="dialog" aria-modal="true">
-    <div class="dialog-body">
-      <h4>완료 처리</h4>
-      <p class="subject">{{ confirming.title }}</p>
-      <p v-if="confirming.acceptanceCriteria" class="criteria">
-        수용 조건: {{ confirming.acceptanceCriteria }}
-      </p>
-      <p v-else class="criteria muted">등록된 수용 조건이 없습니다.</p>
-      <p v-if="confirming.openChildCount > 0" class="child-note">
-        완료되지 않은 하위가 {{ confirming.openChildCount }}건 있습니다. 그래도 완료로 처리할 수 있습니다.
-      </p>
-      <p class="ask">수용 조건과 완료 기준(Definition of Done)을 확인했습니까?</p>
-      <div class="dialog-actions">
-        <button type="button" @click="confirmDone">확인하고 완료</button>
-        <button type="button" class="ghost" @click="confirming = null">취소</button>
-      </div>
+  <ModalDialog v-if="confirming" title="완료 처리" @close="confirming = null">
+    <p class="subject">{{ confirming.title }}</p>
+    <p v-if="confirming.acceptanceCriteria" class="criteria">
+      수용 조건: {{ confirming.acceptanceCriteria }}
+    </p>
+    <p v-else class="criteria muted">등록된 수용 조건이 없습니다.</p>
+    <p v-if="confirming.openChildCount > 0" class="child-note">
+      완료되지 않은 하위가 {{ confirming.openChildCount }}건 있습니다. 그래도 완료로 처리할 수 있습니다.
+    </p>
+    <p class="ask">수용 조건과 완료 기준(Definition of Done)을 확인했습니까?</p>
+    <div class="dialog-actions">
+      <button type="button" class="primary" @click="confirmDone">확인하고 완료</button>
+      <!-- autofocus: 열자마자 Enter를 눌러 확인 버튼이 그대로 실행되는 사고를 막는다 —
+           파괴적까지는 아니어도 실행 취소 절차가 없는 확인이라 취소 쪽이 안전하다. -->
+      <button type="button" class="ghost" autofocus @click="confirming = null">취소</button>
     </div>
-  </div>
+  </ModalDialog>
 
-  <div v-if="blocking" class="dialog" role="dialog" aria-modal="true">
-    <div class="dialog-body">
-      <h4>차단 표시</h4>
-      <p class="subject">{{ blocking.title }}</p>
-      <label>
-        차단 사유
-        <input v-model="blockReason" type="text" placeholder="예: 외부 API 응답 대기" />
-      </label>
-      <div class="dialog-actions">
-        <button type="button" @click="submitBlock">차단</button>
-        <button type="button" class="ghost" @click="blocking = null">취소</button>
-      </div>
+  <ModalDialog v-if="blocking" title="차단 표시" @close="blocking = null">
+    <p class="subject">{{ blocking.title }}</p>
+    <label>
+      차단 사유
+      <input v-model="blockReason" type="text" placeholder="예: 외부 API 응답 대기" />
+    </label>
+    <div class="dialog-actions">
+      <button type="button" class="primary" @click="submitBlock">차단</button>
+      <button type="button" class="ghost" @click="blocking = null">취소</button>
     </div>
-  </div>
+  </ModalDialog>
 </template>
 
 <style scoped>
@@ -397,18 +404,14 @@ function unblock(item: SprintItem) {
   background: var(--surface-sunken);
 }
 
-button.link {
-  border: none;
-  background: none;
-  padding: 0;
-  font: inherit;
+/*
+ * 전역 `.link`/`.link.danger`(Step 1)가 테두리·배경·패딩·색·cursor를 이미 준다 — 이 화면
+ * 고유의 폰트 크기만 남긴다. 카드 footer가 이미 0.72rem을 상속시키므로(`.card footer`) 사실
+ * 이 규칙 자체가 없어도 크기는 같지만, 명시적으로 남겨 다른 곳에서 footer 밖에 두더라도
+ * 깨지지 않게 한다.
+ */
+.link {
   font-size: 0.72rem;
-  color: var(--accent);
-  cursor: pointer;
-}
-
-button.link.danger {
-  color: var(--danger);
 }
 
 .removed {
@@ -417,52 +420,29 @@ button.link.danger {
   color: var(--text-faint);
 }
 
-.dialog {
-  position: fixed;
-  inset: 0;
-  background: rgb(0 0 0 / 45%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 50;
-}
-
-.dialog-body {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1.1rem 1.25rem;
-  max-width: 26rem;
-  box-shadow: var(--elevation-3, 0 10px 30px rgb(0 0 0 / 25%));
-}
-
-.dialog-body h4 {
-  margin: 0 0 0.5rem;
-  font-size: 0.95rem;
-}
-
-.dialog-body .subject {
+/* 아래 넷은 ModalDialog 슬롯 안(완료 처리 · 차단 표시)에서 쓰는, 이 화면 고유의 문구 스타일이다. */
+.subject {
   margin: 0 0 0.4rem;
   font-weight: 600;
   font-size: 0.9rem;
 }
 
-.dialog-body .criteria {
+.criteria {
   margin: 0 0 0.4rem;
   font-size: 0.82rem;
   color: var(--text-muted);
 }
 
-.dialog-body .criteria.muted {
+.criteria.muted {
   color: var(--text-faint);
 }
 
-.dialog-body .ask {
+.ask {
   margin: 0.6rem 0;
   font-size: 0.85rem;
 }
 
-.dialog-body label {
+label {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
@@ -470,34 +450,10 @@ button.link.danger {
   color: var(--text-muted);
 }
 
-.dialog-body input {
-  padding: 0.45rem 0.6rem;
-  border: 1px solid var(--border-input);
-  border-radius: 6px;
-  font: inherit;
-}
-
 .dialog-actions {
   display: flex;
   gap: 0.5rem;
   margin-top: 0.9rem;
-}
-
-.dialog-actions button {
-  padding: 0.45rem 0.9rem;
-  border-radius: 6px;
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: var(--accent-fg);
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.82rem;
-}
-
-.dialog-actions button.ghost {
-  background: transparent;
-  color: var(--text-muted);
-  border-color: var(--border-input);
 }
 
 @media (max-width: 860px) {

@@ -355,28 +355,22 @@ tr.summary .name {
   gap: 0.15rem;
 }
 
+/* border·배경·font·cursor는 전역 기본과 같아 지웠다 — 아주 작은 정사각형(1.35rem)이라
+   radius는 전역 --radius-md보다 작은 4px을 그대로 남긴다. */
 .letter {
   width: 1.35rem;
   height: 1.35rem;
   padding: 0;
-  border: 1px solid var(--border-input);
   border-radius: 4px;
-  background: var(--surface);
   color: var(--text-faint);
-  font: inherit;
   font-size: 0.7rem;
   font-weight: 600;
   line-height: 1;
-  cursor: pointer;
 }
 
 .letter:hover:not(:disabled) {
   border-color: var(--accent-border);
   color: var(--text-h);
-}
-
-.letter:disabled {
-  cursor: not-allowed;
 }
 
 .letter.held {

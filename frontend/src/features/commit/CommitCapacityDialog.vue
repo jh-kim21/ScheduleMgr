@@ -122,38 +122,14 @@ td {
   padding: 1.5rem 0;
 }
 
+/* border-radius·border·배경·cursor는 전역 기본과 같아 지웠다. `.danger`·`.primary`와 그 :disabled
+   변형은 전역 계약과 완전히 같은 값이라 통째로 지웠다 — 다만 :disabled의 cursor는 이 파일의 로컬
+   규칙이 특이도 동점에서 소스 순서로 이겨 `default`로 보였던 것이라, 지우면 전역의 `not-allowed`로
+   바뀐다(다른 화면과 같아지는 쪽). */
 button {
   padding: 0.4rem 0.8rem;
-  border-radius: 6px;
-  border: 1px solid var(--border-input);
-  background: var(--surface);
   color: var(--text-muted);
-  cursor: pointer;
   font-size: 0.8rem;
-}
-
-button.danger {
-  color: var(--danger);
-  border-color: var(--danger-border);
-}
-
-button.danger:disabled {
-  color: var(--disabled-fg);
-  border-color: var(--disabled-border);
-  cursor: default;
-}
-
-button.primary {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--accent-fg);
-}
-
-button.primary:disabled {
-  background: var(--disabled-bg);
-  border-color: var(--disabled-border);
-  color: var(--disabled-fg);
-  cursor: default;
 }
 
 .dialog-actions {

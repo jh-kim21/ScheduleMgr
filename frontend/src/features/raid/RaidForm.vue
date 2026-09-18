@@ -386,9 +386,7 @@ function onShortcutSave(event: KeyboardEvent) {
   border: none;
   background: none;
   color: var(--text-muted);
-  font: inherit;
   line-height: 1;
-  cursor: pointer;
   padding: 0 0.15rem;
 }
 
@@ -407,9 +405,6 @@ function onShortcutSave(event: KeyboardEvent) {
 
 .link-add select {
   padding: 0.3rem 0.5rem;
-  border: 1px solid var(--border-input);
-  border-radius: 6px;
-  font: inherit;
   font-size: 0.8rem;
 }
 
@@ -418,22 +413,12 @@ function onShortcutSave(event: KeyboardEvent) {
   min-width: 0;
 }
 
+/* border·배경·font·cursor는 전역 기본과 같아 지웠다. :disabled도 전역과 값이 같아(특이도
+   동점이라 실제로 이 규칙이 이겨 왔지만) 지웠다. */
 .link-add button {
   padding: 0.3rem 0.7rem;
-  border: 1px solid var(--border-input);
-  border-radius: 6px;
-  background: var(--surface);
   color: var(--text-muted);
-  font: inherit;
   font-size: 0.8rem;
-  cursor: pointer;
-}
-
-.link-add button:disabled {
-  background: var(--disabled-bg);
-  border-color: var(--disabled-border);
-  color: var(--disabled-fg);
-  cursor: not-allowed;
 }
 
 .row {
@@ -477,13 +462,10 @@ label.grow input {
   max-width: 100%;
 }
 
+/* 패딩·border·radius·font는 전역 기본과 같아(패딩은 아주 살짝만 다름) 지웠다 — font-size만 남긴다. */
 input,
 select,
 textarea {
-  padding: 0.4rem 0.55rem;
-  border: 1px solid var(--border-input);
-  border-radius: 6px;
-  font: inherit;
   font-size: 0.85rem;
 }
 
@@ -513,26 +495,10 @@ textarea {
   gap: 0.4rem;
 }
 
+/* 패딩·radius·border·배경·cursor는 전역 기본과 완전히 같은 값이라 지웠다. `.primary`와 그
+   :disabled 변형도 전역 계약과 같아 통째로 지웠다. */
 button {
-  padding: 0.45rem 0.9rem;
-  border-radius: 6px;
-  border: 1px solid var(--border-input);
-  background: var(--surface);
   color: var(--text-muted);
-  cursor: pointer;
   font-size: 0.85rem;
-}
-
-button.primary {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--accent-fg);
-}
-
-button.primary:disabled {
-  background: var(--disabled-bg);
-  border-color: var(--disabled-border);
-  color: var(--disabled-fg);
-  cursor: not-allowed;
 }
 </style>

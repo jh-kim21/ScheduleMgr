@@ -79,4 +79,101 @@ describe('ModalDialog', () => {
     await wrapper.vm.$nextTick()
     expect(wrapper.emitted('close')).toHaveLength(1)
   })
+
+  /**
+   * 중첩 시나리오 — MemberEditor의 "구성원 관리" 안 "구성원 추가"처럼, 이 앱은 실제로
+   * ModalDialog를 겹쳐 쓴다. 아래 테스트들은 모듈 스코프 스택이 "최상단만 반응한다"를
+   * 지키는지, 그리고 배경 스크롤 잠금이 참조 카운트로 다뤄지는지를 고정한다.
+   */
+  describe('중첩', () => {
+    let outer: VueWrapper | undefined
+    let inner: VueWrapper | undefined
+
+    afterEach(() => {
+      inner?.unmount()
+      outer?.unmount()
+      inner = undefined
+      outer = undefined
+    })
+
+    it('안쪽에서 Escape를 눌러도 바깥은 닫히지 않고, 안쪽만 닫힌다', async () => {
+      outer = mount(ModalDialog, { props: { title: '바깥' } })
+      inner = mount(ModalDialog, { props: { title: '안쪽' } })
+
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      await outer.vm.$nextTick()
+      await inner.vm.$nextTick()
+
+      expect(inner.emitted('close')).toHaveLength(1)
+      expect(outer.emitted('close')).toBeUndefined()
+    })
+
+    it('안쪽이 닫혀도 바깥이 아직 열려 있으면 배경 스크롤은 계속 잠긴 채로 남는다', async () => {
+      outer = mount(ModalDialog, { props: { title: '바깥' } })
+      inner = mount(ModalDialog, { props: { title: '안쪽' } })
+
+      expect(document.body.style.overflow).toBe('hidden')
+
+      inner.unmount()
+      inner = undefined
+      await outer.vm.$nextTick()
+
+      // 안쪽 하나가 닫혔을 뿐 바깥은 여전히 열려 있으므로, 표가 움직이면 안 된다.
+      expect(document.body.style.overflow).toBe('hidden')
+    })
+
+    it('마지막 대화상자까지 닫히면 배경 스크롤 잠금이 원래 값으로 되돌아간다', async () => {
+      const original = document.body.style.overflow
+      outer = mount(ModalDialog, { props: { title: '바깥' } })
+      inner = mount(ModalDialog, { props: { title: '안쪽' } })
+
+      inner.unmount()
+      outer.unmount()
+      inner = undefined
+      outer = undefined
+
+      expect(document.body.style.overflow).toBe(original)
+    })
+
+    it('안쪽이 열려 있는 동안 바깥 패널은 inert 로 표시된다', () => {
+      outer = mount(ModalDialog, { props: { title: '바깥' } })
+      const outerBackdrop = document.body.querySelectorAll<HTMLElement>('.backdrop')[0]
+      expect(outerBackdrop.hasAttribute('inert')).toBe(false)
+
+      inner = mount(ModalDialog, { props: { title: '안쪽' } })
+      expect(outerBackdrop.hasAttribute('inert')).toBe(true)
+      expect(outerBackdrop.getAttribute('aria-hidden')).toBe('true')
+
+      inner.unmount()
+      inner = undefined
+      expect(outerBackdrop.hasAttribute('inert')).toBe(false)
+    })
+
+    it('Shift+Tab 이 안쪽 패널 안에서만 순환한다 — 바깥으로 새지 않는다', async () => {
+      outer = mount(ModalDialog, { props: { title: '바깥' } })
+      inner = mount(ModalDialog, {
+        props: { title: '안쪽' },
+        slots: { default: '<input type="text" />' },
+      })
+      await inner.vm.$nextTick()
+
+      const panels = document.body.querySelectorAll<HTMLElement>('.panel')
+      const innerPanel = panels[panels.length - 1]
+      const innerInput = innerPanel.querySelector<HTMLInputElement>('input')!
+      const innerClose = innerPanel.querySelector<HTMLButtonElement>('.close')!
+
+      // 안쪽 패널의 첫 포커스 가능 항목(닫기 버튼)에서 Shift+Tab — 경계에서 안쪽의 마지막
+      // 항목(입력칸)으로 순환해야 한다. 바깥 패널로 새 나가면(예: 바깥의 닫기 버튼) 회귀다.
+      // (jsdom/happy-dom은 실제 브라우저의 기본 Tab 이동을 구현하지 않으므로, 경계가 아닌
+      // 중간 항목의 Tab은 우리 핸들러가 아무 것도 하지 않아 검증할 수 없다 — 그래서 경계값을
+      // 확인한다.)
+      innerClose.focus()
+      expect(document.activeElement).toBe(innerClose)
+
+      const event = new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true })
+      document.dispatchEvent(event)
+
+      expect(document.activeElement).toBe(innerInput)
+    })
+  })
 })

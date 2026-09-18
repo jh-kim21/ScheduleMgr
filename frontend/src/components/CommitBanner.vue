@@ -43,19 +43,15 @@ const label = computed(() => {
   font-size: 0.85rem;
 }
 
+/* 배경(transparent)이 전역 버튼과 같으므로 hover 오버레이(::before)는 전역이 그대로 그려 준다 —
+   여기서 다시 정의할 필요가 없다. 남은 것은 이 배너 안에서만 쓰는 색·크기다. */
 .exit {
   flex: none;
   padding: 0.25rem 0.75rem;
-  border: 1px solid var(--warn);
+  border-color: var(--warn);
   border-radius: 999px;
   background: transparent;
   color: inherit;
-  font: inherit;
   font-size: 0.78rem;
-  cursor: pointer;
-}
-
-.exit:hover {
-  background: var(--state-hover);
 }
 </style>

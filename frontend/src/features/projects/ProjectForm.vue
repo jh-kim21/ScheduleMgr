@@ -111,15 +111,6 @@ label {
   flex: 1;
 }
 
-input,
-textarea,
-select {
-  padding: 0.45rem 0.6rem;
-  border: 1px solid var(--border-input);
-  border-radius: 6px;
-  font: inherit;
-}
-
 .row {
   display: flex;
   gap: 0.75rem;
@@ -130,18 +121,11 @@ select {
   gap: 0.5rem;
 }
 
+/* 강조색 채움 — 취소(.ghost)는 전역 계약과 완전히 같은 값이라 지웠고, 이 제출 버튼만 남긴다.
+   `.primary`와 같은 배색이지만 템플릿에 클래스를 붙이는 건 이번 작업 범위가 아니라 그대로 둔다. */
 button {
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
   border: 1px solid var(--accent);
   background: var(--accent);
   color: var(--accent-fg);
-  cursor: pointer;
-}
-
-button.ghost {
-  background: transparent;
-  color: var(--text-muted);
-  border-color: var(--border-input);
 }
 </style>

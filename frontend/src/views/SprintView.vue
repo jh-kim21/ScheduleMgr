@@ -159,6 +159,17 @@ async function confirmClose() {
   await close(projectId, sprint.id, carryOverTo.value)
 }
 
+/**
+ * 빈 PLANNED Sprint만 지울 수 있다(`canDelete`가 배정 있는 Sprint를 이미 막는다). 그래도
+ * 되돌릴 수 없는 삭제라 앱의 다른 삭제 동작(WbsView·MemberEditor 등 8곳)과 같은 `confirm()`을
+ * 거친다 — 지금까지는 이 버튼만 확인 없이 바로 실행됐다.
+ */
+function requestRemove(sprint: Sprint) {
+  if (readOnly.value) return
+  if (!confirm(`'${sprint.name}' Sprint를 삭제할까요?`)) return
+  remove(selectedProjectId.value!, sprint.id)
+}
+
 async function confirmCancelStart() {
   if (readOnly.value) return
   const projectId = selectedProjectId.value
@@ -196,7 +207,7 @@ async function confirmCancelStart() {
         <span v-if="loading" class="loading">불러오는 중…</span>
         <button
           type="button"
-          class="add"
+          class="primary add"
           :disabled="readOnly"
           :title="readOnly ? READONLY_HINT : undefined"
           @click="openForm(null)"
@@ -272,6 +283,7 @@ async function confirmCancelStart() {
               <button
                 v-if="selected.status === 'PLANNED'"
                 type="button"
+                class="primary"
                 :disabled="readOnly || !selected.canStart"
                 :title="
                   readOnly
@@ -285,6 +297,7 @@ async function confirmCancelStart() {
               <button
                 v-if="selected.status === 'ACTIVE'"
                 type="button"
+                class="primary"
                 :disabled="readOnly"
                 :title="readOnly ? READONLY_HINT : undefined"
                 @click="openClose(selected)"
@@ -311,7 +324,7 @@ async function confirmCancelStart() {
                 class="ghost danger"
                 :disabled="readOnly || !selected.canDelete"
                 :title="readOnly ? READONLY_HINT : (selected.canDelete ? '삭제' : '배정된 항목이 있어 삭제할 수 없습니다')"
-                @click="remove(selectedProjectId!, selected.id)"
+                @click="requestRemove(selected)"
               >삭제</button>
             </div>
           </div>
@@ -338,32 +351,42 @@ async function confirmCancelStart() {
       </template>
     </template>
 
-    <div v-if="closing" class="dialog" role="dialog" aria-modal="true">
-      <div class="dialog-body">
-        <h4>Sprint 종료</h4>
-        <p class="subject">{{ closing.name }}</p>
-        <p class="explain">
-          완료된 항목은 이 Sprint의 실적으로 기록되고, 미완료 항목({{ openItemCount }}건)은
-          <strong>이월</strong>로 남습니다. 항목의 상태는 바뀌지 않습니다.
-        </p>
-        <label v-if="carryOverTargets.length > 0">
-          미완료 항목을 옮길 Sprint
-          <select v-model="carryOverTo">
-            <option :value="null">지금은 옮기지 않음</option>
-            <option v-for="target in carryOverTargets" :key="target.id" :value="target.id">
-              {{ target.name }} ({{ SPRINT_STATUS_LABELS[target.status] }})
-            </option>
-          </select>
-        </label>
-        <p v-else class="explain muted">
-          옮길 Sprint가 없습니다. 나중에 새 Sprint를 만들어 배정할 수 있습니다.
-        </p>
-        <div class="dialog-actions">
-          <button type="button" @click="confirmClose">종료</button>
-          <button type="button" class="ghost" @click="closing = null">취소</button>
-        </div>
+    <ModalDialog
+      v-if="closing"
+      title="Sprint 종료"
+      :error="error"
+      @close="closing = null"
+    >
+      <p class="subject">{{ closing.name }}</p>
+      <p class="explain">
+        완료된 항목은 이 Sprint의 실적으로 기록되고, 미완료 항목({{ openItemCount }}건)은
+        <strong>이월</strong>로 남습니다. 항목의 상태는 바뀌지 않습니다.
+      </p>
+      <label v-if="carryOverTargets.length > 0" class="carry-over">
+        미완료 항목을 옮길 Sprint
+        <select v-model="carryOverTo">
+          <option :value="null">지금은 옮기지 않음</option>
+          <option v-for="target in carryOverTargets" :key="target.id" :value="target.id">
+            {{ target.name }} ({{ SPRINT_STATUS_LABELS[target.status] }})
+          </option>
+        </select>
+      </label>
+      <p v-else class="explain muted">
+        옮길 Sprint가 없습니다. 나중에 새 Sprint를 만들어 배정할 수 있습니다.
+      </p>
+      <div class="dialog-actions">
+        <button type="button" class="primary" @click="confirmClose">종료</button>
+        <!-- 옮길 대상이 있으면 그 select가 기본 포커스를 받는 편이 낫다(ModalDialog가 입력
+             필드를 먼저 찾는다) — 없을 때만 취소에 autofocus를 줘서, 종료처럼 되돌릴 수
+             없는 확인에서 Enter 한 번으로 그대로 실행되는 사고를 막는다. -->
+        <button
+          type="button"
+          class="ghost"
+          :autofocus="carryOverTargets.length === 0"
+          @click="closing = null"
+        >취소</button>
       </div>
-    </div>
+    </ModalDialog>
 
     <ModalDialog
       v-if="cancellingStart"
@@ -375,8 +398,10 @@ async function confirmCancelStart() {
       <p class="explain">{{ cancelStartWarning(cancellingStart.doneItems) }}</p>
       <p class="explain muted">배정된 항목은 그대로 남고, 상태만 계획으로 돌아갑니다.</p>
       <div class="dialog-actions">
-        <button type="button" @click="confirmCancelStart">시작 취소</button>
-        <button type="button" class="ghost" @click="cancellingStart = null">닫기</button>
+        <button type="button" class="primary" @click="confirmCancelStart">시작 취소</button>
+        <!-- 이 대화상자에는 입력 필드가 없어 기본 포커스가 첫 버튼("시작 취소")으로 갔었다 —
+             바로 옆 종료 대화상자와 같은 이유로 취소에 autofocus를 준다. -->
+        <button type="button" class="ghost" autofocus @click="cancellingStart = null">닫기</button>
       </div>
     </ModalDialog>
   </section>
@@ -417,11 +442,8 @@ h1 {
   color: var(--text-faint);
 }
 
+/* 패딩·테두리·radius는 전역 컨트롤 층(Step 1)이 준다 — 이 화면의 글자 크기만 남긴다. */
 select {
-  padding: 0.4rem 0.6rem;
-  border: 1px solid var(--border-input);
-  border-radius: 6px;
-  font: inherit;
   font-size: 0.85rem;
 }
 
@@ -481,6 +503,14 @@ select {
 
 .sprint-list .name {
   font-weight: 600;
+  /*
+   * 명시적으로 지정한다 — 이 칸(그리고 이 목록 버튼 전체)은 예전에 로컬 bare `button{}`
+   * 규칙(강조색 채움 버튼 스타일, 아래에서 지웠다)의 `color: var(--accent-fg)`(흰색)를
+   * 상속하고 있었는데, `.pick`의 배경은 `var(--surface)`(라이트에서 흰색)라 실제로는
+   * 흰 배경에 흰 글자였다 — Step 1 전역 컨트롤 층으로 정리하면서 드러난, 이 파일의
+   * 기존 결함이다.
+   */
+  color: var(--text);
 }
 
 .sprint-list .period,
@@ -569,79 +599,39 @@ select {
   color: var(--text-faint);
 }
 
+/*
+ * Step 1 전역 컨트롤 층이 패딩·radius·테두리·hover·focus-visible·disabled·최소 타깃을 준다.
+ * `class="primary"`가 붙은 버튼(＋ Sprint 추가 · 시작 · 종료 · 대화상자의 확인 동작)은 예전에
+ * 이 파일의 bare `button{}` 규칙이 전부 강조색 채움이었던 것과 같은 모양을 유지한다.
+ * `.ghost`/`.ghost.danger`도 전역이 그대로 준다 — 이 화면 고유의 것(좁은 목록 버튼 안에서
+ * 줄바꿈 방지)만 남긴다.
+ */
 button {
-  padding: 0.4rem 0.8rem;
-  border-radius: 6px;
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: var(--accent-fg);
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.82rem;
   white-space: nowrap;
 }
 
-button.ghost {
-  background: transparent;
-  color: var(--text-muted);
-  border-color: var(--border-input);
-}
-
-button.ghost.danger {
-  color: var(--danger);
-  border-color: var(--danger-border);
-}
-
-button:disabled {
-  background: var(--disabled-bg);
-  color: var(--disabled-fg);
-  border-color: var(--border-soft);
-  cursor: not-allowed;
-}
-
-.dialog {
-  position: fixed;
-  inset: 0;
-  background: rgb(0 0 0 / 45%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 50;
-}
-
-.dialog-body {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1.1rem 1.25rem;
-  max-width: 28rem;
-}
-
-.dialog-body h4 {
-  margin: 0 0 0.5rem;
-  font-size: 0.95rem;
-}
-
-.dialog-body .subject,
 .subject {
   margin: 0 0 0.4rem;
   font-weight: 600;
   font-size: 0.9rem;
 }
 
-.dialog-body .explain,
 .explain {
   margin: 0 0 0.6rem;
   font-size: 0.84rem;
   color: var(--text-muted);
 }
 
-.dialog-body .explain.muted,
 .explain.muted {
   color: var(--text-faint);
 }
 
-.dialog-body label {
+/*
+ * `label`을 전역으로 두지 않는다 — 이 화면에는 이미 다른 모양의 라벨(`.project-picker`,
+ * 가로 배치)이 있어, 요소 선택자로 두면 그 레이아웃을 깨뜨린다. Sprint 종료 대화상자의
+ * 이월 대상 select 라벨에만 붙는 이름으로 좁힌다.
+ */
+.carry-over {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;

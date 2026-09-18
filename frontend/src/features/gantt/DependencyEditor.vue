@@ -279,29 +279,20 @@ h2 {
   margin: 0;
 }
 
+/* border·배경·font·cursor는 전역 기본과 같아 지웠다 — 알약 모양(radius)과 색·크기만 남는다.
+   :disabled는 전역이 특이도로 이미 이기고 있던 죽은 선언이라(값도 같음) 지웠다. */
 .add {
   margin-left: auto;
   padding: 0.35rem 0.7rem;
-  border: 1px solid var(--border-input);
   border-radius: 999px;
-  background: var(--surface);
   color: var(--text-muted);
-  font: inherit;
   font-size: 0.78rem;
-  cursor: pointer;
   white-space: nowrap;
 }
 
 .add:hover:not(:disabled) {
   border-color: var(--accent-border);
   color: var(--text-h);
-}
-
-.add:disabled {
-  background: var(--disabled-bg);
-  border-color: var(--disabled-border);
-  color: var(--disabled-fg);
-  cursor: not-allowed;
 }
 
 .add-form {
@@ -323,12 +314,9 @@ label {
   color: var(--text-muted);
 }
 
+/* 패딩·border·radius·font는 전역 기본과 같아(패딩은 아주 살짝만 다름) 지웠다 — font-size만 남긴다. */
 select,
 input {
-  padding: 0.4rem 0.55rem;
-  border: 1px solid var(--border-input);
-  border-radius: 6px;
-  font: inherit;
   font-size: 0.85rem;
 }
 
@@ -341,27 +329,11 @@ input {
   padding-bottom: 0.5rem;
 }
 
+/* 패딩·radius·border·배경·cursor는 전역 기본과 완전히 같은 값이라 지웠다. `.primary`와 그
+   :disabled 변형도 전역 계약과 같아 통째로 지웠다. */
 button {
-  padding: 0.45rem 0.9rem;
-  border-radius: 6px;
-  border: 1px solid var(--border-input);
-  background: var(--surface);
   color: var(--text-muted);
-  cursor: pointer;
   font-size: 0.85rem;
-}
-
-button.primary {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--accent-fg);
-}
-
-button.primary:disabled {
-  background: var(--disabled-bg);
-  border-color: var(--disabled-border);
-  color: var(--disabled-fg);
-  cursor: not-allowed;
 }
 
 .rule {
@@ -439,10 +411,7 @@ button.primary:disabled {
   font-size: 0.75rem;
 }
 
-.actions button.danger {
-  color: var(--danger);
-  border-color: var(--danger-border);
-}
+/* `.danger`가 전역 계약과 완전히 같은 값이라 지웠다. */
 
 .none {
   margin-top: 0.85rem;

@@ -760,6 +760,7 @@ const chartVars = computed(() => ({
   border-bottom: 1px solid var(--border);
 }
 
+/* font·cursor는 전역 기본과 같아 지웠다. */
 .sprint-label {
   display: flex;
   align-items: center;
@@ -769,10 +770,8 @@ const chartVars = computed(() => ({
   padding: 0 0.5rem;
   border: none;
   background: none;
-  font: inherit;
   font-size: 0.74rem;
   color: var(--text-muted);
-  cursor: pointer;
   text-align: left;
 }
 

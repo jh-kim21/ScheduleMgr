@@ -148,7 +148,7 @@ function onRemove(member: ProjectMember) {
         </form>
       </ModalDialog>
 
-      <p v-if="loading">불러오는 중...</p>
+      <p v-if="loading">불러오는 중…</p>
       <template v-else>
         <ul v-if="members.length > 0" class="list">
           <li
@@ -203,16 +203,13 @@ function onRemove(member: ProjectMember) {
   margin: 0;
 }
 
+/* border·배경·font·cursor는 전역 기본과 같아 지웠다. */
 .add {
   flex: none;
   padding: 0.35rem 0.7rem;
-  border: 1px solid var(--border-input);
   border-radius: 999px;
-  background: var(--surface);
   color: var(--text-muted);
-  font: inherit;
   font-size: 0.78rem;
-  cursor: pointer;
 }
 
 .add:hover {
@@ -239,11 +236,8 @@ label {
   color: var(--text-muted);
 }
 
+/* 패딩·border·radius·font는 전역 기본과 같아(패딩은 아주 살짝만 다름) 지웠다 — font-size만 남긴다. */
 input {
-  padding: 0.4rem 0.55rem;
-  border: 1px solid var(--border-input);
-  border-radius: 6px;
-  font: inherit;
   font-size: 0.85rem;
 }
 
@@ -251,27 +245,11 @@ input {
   min-width: 14rem;
 }
 
+/* 패딩·radius·border·배경·cursor는 전역 기본과 완전히 같은 값이라 지웠다. `.primary`와 그
+   :disabled 변형도 전역 계약과 같아 통째로 지웠다. */
 button {
-  padding: 0.45rem 0.9rem;
-  border-radius: 6px;
-  border: 1px solid var(--border-input);
-  background: var(--surface);
   color: var(--text-muted);
-  cursor: pointer;
   font-size: 0.85rem;
-}
-
-button.primary {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--accent-fg);
-}
-
-button.primary:disabled {
-  background: var(--disabled-bg);
-  border-color: var(--disabled-border);
-  color: var(--disabled-fg);
-  cursor: not-allowed;
 }
 
 .list {
@@ -332,10 +310,7 @@ button.primary:disabled {
   font-size: 0.75rem;
 }
 
-.actions button.danger {
-  color: var(--danger);
-  border-color: var(--danger-border);
-}
+/* `.danger`가 전역 계약과 완전히 같은 값이라 지웠다 — 템플릿의 class="danger"가 이미 그 색을 준다. */
 
 .none {
   font-size: 0.85rem;

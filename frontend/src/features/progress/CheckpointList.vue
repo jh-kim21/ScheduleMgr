@@ -387,56 +387,33 @@ function remove(cp: CheckpointDetail) {
   margin-left: auto;
 }
 
+/* border·배경·font·cursor는 전역 기본과 같아 지웠다 — 이 칸만의 작은 크기만 남는다. */
 .cp-actions button {
-  position: relative;
   overflow: hidden;
   padding: 0.2rem 0.5rem;
-  border: 1px solid var(--border-input);
-  border-radius: 6px;
-  background: var(--surface);
   color: var(--text-muted);
-  cursor: pointer;
-  font: inherit;
   font-size: 0.72rem;
   white-space: nowrap;
 }
 
-/* 상태 레이어 — 배경색을 바꾸는 대신 반투명 층을 겹친다(CLAUDE.md "Material 스타일"). 어떤
- * 버튼 배경(기본·`.primary`·`.danger`) 위에서도 같은 규칙으로 동작한다. */
+/* 전역 ::before가 position·배경을 이미 주므로, 이 버튼만의 트랜지션만 얹는다. `:hover`/`:active`
+ * 오버레이 재선언은 전역과 값이 완전히 같아 지웠다(특이도 동점이라 소스 순서로 이겨 왔을 뿐이다). */
 .cp-actions button::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: transparent;
   transition: background 120ms ease;
 }
 
-.cp-actions button:hover::before {
-  background: var(--state-hover);
-}
-
-.cp-actions button:active::before {
-  background: var(--state-press);
-}
-
-/* 「승인」만 옅은 강조 채움(filled tonal) — 이 칸의 주 동작임을 한눈에 보여준다. 「승인 취소」·
- * 「수정」·「삭제」는 기존 테두리 모양을 유지한다. */
+/* 「승인」만 옅은 강조 채움(filled tonal) — 전역 `.tonal`과 같은 배색이지만 템플릿의 클래스
+ * 이름은 `.primary`라 로컬에 남긴다. 「승인 취소」·「수정」·「삭제」는 기존 테두리 모양을 유지한다. */
 .cp-actions button.primary {
   background: var(--accent-container);
   color: var(--accent-container-fg);
   border-color: transparent;
 }
 
-.cp-actions button.danger {
-  color: var(--danger);
-  border-color: var(--danger-border);
-}
-
+/* `.danger`는 전역 계약과 완전히 같아 지웠다. :disabled는 border-color만 이 칸 고유 값(옅은
+ * --border-soft)이다 — 배경·글자색·cursor는 특이도 동점에서도 전역과 같은 값을 쓰고 있었다. */
 .cp-actions button:disabled {
-  background: var(--disabled-bg);
-  color: var(--disabled-fg);
   border-color: var(--border-soft);
-  cursor: not-allowed;
 }
 
 .approve-row {
@@ -445,13 +422,10 @@ function remove(cp: CheckpointDetail) {
   margin: 0.25rem 0 0.4rem;
 }
 
+/* 패딩·border·radius·font는 전역 기본과 같아(패딩은 아주 살짝만 다름) 지웠다. */
 .approve-row input {
   flex: 1;
   min-width: 8rem;
-  padding: 0.35rem 0.5rem;
-  border: 1px solid var(--border-input);
-  border-radius: 6px;
-  font: inherit;
   font-size: 0.82rem;
 }
 
@@ -462,10 +436,6 @@ function remove(cp: CheckpointDetail) {
 }
 
 .cp-form input {
-  padding: 0.35rem 0.5rem;
-  border: 1px solid var(--border-input);
-  border-radius: 6px;
-  font: inherit;
   font-size: 0.82rem;
 }
 
@@ -489,28 +459,22 @@ function remove(cp: CheckpointDetail) {
   align-self: flex-start;
 }
 
+/* radius·font·cursor는 전역 기본과 같아 지웠다 — 취소(.ghost)는 전역 계약과 완전히 같아
+   통째로 지웠고, :disabled도 전역이 특이도로 이미 이기고 있던 죽은 선언이라 지웠다. */
 button {
   padding: 0.3rem 0.6rem;
-  border-radius: 6px;
-  border: 1px solid var(--accent);
+  border-color: var(--accent);
   background: var(--accent);
   color: var(--accent-fg);
-  cursor: pointer;
-  font: inherit;
   font-size: 0.78rem;
   white-space: nowrap;
 }
 
-button.ghost {
-  background: transparent;
-  color: var(--text-muted);
-  border-color: var(--border-input);
-}
-
-button:disabled {
-  background: var(--disabled-bg);
-  color: var(--disabled-fg);
-  border-color: var(--border-soft);
-  cursor: not-allowed;
+/* 이 파일이 직접 들여오는 transition(승인/수정/삭제 버튼의 상태 레이어 배경)만 끈다 — 전역
+   컨트롤 층의 transition은 style.css가 이미 막는다. */
+@media (prefers-reduced-motion: reduce) {
+  .cp-actions button::before {
+    transition: none;
+  }
 }
 </style>

@@ -236,7 +236,12 @@ async function handleRemove(item: RaidItem) {
             </option>
           </select>
 
-          <input v-model="filters.query" type="search" placeholder="제목·설명·소유자 검색" />
+          <input
+            v-model="filters.query"
+            type="search"
+            aria-label="검색"
+            placeholder="제목·설명·소유자 검색"
+          />
 
           <button v-if="filterActive" type="button" class="reset" @click="resetFilters">
             필터 해제
@@ -268,7 +273,7 @@ async function handleRemove(item: RaidItem) {
         {{ data.items.length }}건 중 {{ visibleItems.length }}건 표시 중.
       </p>
 
-      <p v-if="loading" class="loading">불러오는 중...</p>
+      <p v-if="loading" class="loading">불러오는 중…</p>
       <RaidList
         v-else
         :items="visibleItems"
@@ -332,13 +337,6 @@ h1 {
   gap: 0.5rem;
   font-size: 0.85rem;
   color: var(--text-muted);
-}
-
-.project-picker select {
-  padding: 0.4rem 0.6rem;
-  border: 1px solid var(--border-input);
-  border-radius: 6px;
-  font: inherit;
 }
 
 .reference {
@@ -409,17 +407,15 @@ h1 {
   flex: 1;
 }
 
+/* border 두께·모양·radius·font·cursor는 전역 기본과 같아 지웠다 — border-color만 남겨 강조색을 얹는다. */
 .add {
   flex: none;
   margin-left: auto;
   padding: 0.35rem 0.8rem;
-  border: 1px solid var(--accent);
-  border-radius: 6px;
+  border-color: var(--accent);
   background: var(--accent);
   color: var(--accent-fg);
-  font: inherit;
   font-size: 0.8rem;
-  cursor: pointer;
   white-space: nowrap;
 }
 
@@ -435,15 +431,12 @@ h1 {
   flex-wrap: wrap;
 }
 
+/* border·배경·font·cursor는 전역 기본과 같아 지웠다 — 알약 모양(radius)과 색만 남는다. */
 .chip {
   padding: 0.25rem 0.6rem;
-  border: 1px solid var(--border-input);
   border-radius: 999px;
-  background: var(--surface);
   color: var(--text-muted);
-  font: inherit;
   font-size: 0.78rem;
-  cursor: pointer;
 }
 
 .chip.active {
@@ -452,19 +445,11 @@ h1 {
   color: var(--accent-fg);
 }
 
-.chip:disabled {
-  background: var(--disabled-bg);
-  border-color: var(--disabled-border);
-  color: var(--disabled-fg);
-  cursor: not-allowed;
-}
+/* :disabled는 전역이 특이도로 이미 이기고 있던 죽은 선언이라(값도 같음) 지웠다. */
 
 .filters select,
 .filters input {
   padding: 0.3rem 0.5rem;
-  border: 1px solid var(--border-input);
-  border-radius: 6px;
-  font: inherit;
   font-size: 0.8rem;
 }
 
@@ -474,13 +459,8 @@ h1 {
 
 .reset {
   padding: 0.3rem 0.6rem;
-  border: 1px solid var(--border-input);
-  border-radius: 6px;
-  background: var(--surface);
   color: var(--text-muted);
-  font: inherit;
   font-size: 0.78rem;
-  cursor: pointer;
 }
 
 .filter-note {

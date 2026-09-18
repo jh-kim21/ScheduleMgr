@@ -105,13 +105,10 @@ h1 {
   color: var(--text-muted);
 }
 
+/* 패딩·border·배경·글자색·font는 전역 기본과 같거나 아주 가까워 지웠다 — 이 셀렉트만 8px
+   radius(전역 기본은 6px)를 쓴다. */
 .project-picker select {
-  padding: 0.4rem 0.6rem;
-  border: 1px solid var(--border-input);
   border-radius: 8px;
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
 }
 
 .reference {
@@ -119,22 +116,13 @@ h1 {
   color: var(--text-faint);
 }
 
+/* border·배경·font·cursor는 전역 기본과 같아 지웠다 — 알약 모양(radius)과 색·크기만 남는다.
+   :disabled는 전역이 특이도로 이미 이기고 있던 죽은 선언이라(값도 거의 같음) 지웠다. */
 .refresh {
   padding: 0.35rem 0.9rem;
-  border: 1px solid var(--border-input);
   border-radius: 999px;
-  background: var(--surface);
   color: var(--text-muted);
-  font: inherit;
   font-size: 0.8rem;
-  cursor: pointer;
-}
-
-.refresh:disabled {
-  background: var(--disabled-bg);
-  border-color: var(--disabled-border);
-  color: var(--disabled-fg);
-  cursor: default;
 }
 
 .tabs {
@@ -144,15 +132,14 @@ h1 {
   border-bottom: 1px solid var(--border);
 }
 
+/* 패딩은 전역 기본과 완전히 같은 값이라 지웠다 — font·cursor도 마찬가지. border를 없애고
+   밑줄만 남기는 것이 이 탭 모양의 핵심이라 그대로 둔다. */
 .tabs button {
-  padding: 0.45rem 0.9rem;
   border: none;
   border-bottom: 2px solid transparent;
   background: none;
   color: var(--text-muted);
-  font: inherit;
   font-size: 0.85rem;
-  cursor: pointer;
 }
 
 .tabs button.active {

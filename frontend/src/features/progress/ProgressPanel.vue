@@ -4,6 +4,7 @@ import { RouterLink } from 'vue-router'
 import type { WorkPackageProgress } from '../../api/progressApi'
 import { useProgress } from './useProgress'
 import CheckpointList from './CheckpointList.vue'
+import ModalDialog from '../../components/ModalDialog.vue'
 import { executionModeLabel } from '../../shared/executionMode'
 import {
   ACCEPTANCE_STATUS_LABELS,
@@ -210,6 +211,7 @@ function snapshotSummary(metrics: string): string {
         </span>
         <button
           type="button"
+          class="primary"
           :disabled="readOnly"
           :title="readOnly ? READONLY_HINT : undefined"
           @click="baselineOpen = true"
@@ -277,7 +279,7 @@ function snapshotSummary(metrics: string): string {
                 <span :class="{ none: wp.percent === null }">{{ progressText(wp.percent) }}</span>
               </td>
               <td class="actions">
-                <button type="button" @click="toggle(wp)">
+                <button type="button" class="primary" @click="toggle(wp)">
                   체크포인트 {{ wp.checkpointApproved }}/{{ wp.checkpointTotal }}
                 </button>
               </td>
@@ -318,6 +320,7 @@ function snapshotSummary(metrics: string): string {
       <input v-model="snapshotNote" type="text" placeholder="메모 (선택)" :disabled="readOnly" />
       <button
         type="button"
+        class="primary"
         :disabled="readOnly"
         :title="readOnly ? READONLY_HINT : undefined"
         @click="takeSnapshot"
@@ -337,27 +340,29 @@ function snapshotSummary(metrics: string): string {
     <p v-else class="notice subtle">저장된 스냅샷이 없습니다.</p>
   </template>
 
-<div v-if="baselineOpen" class="dialog" role="dialog" aria-modal="true">
-  <div class="dialog-body">
-    <h4>기준선 승인</h4>
-    <p class="explain">
-      지금의 범위·일정·가중치·완료 기준을 그대로 복사해 보존합니다. 이후 계획이 바뀌어도 이
-      기준선은 변하지 않으며, 계획 진척과 범위 비교의 근거가 됩니다.
-    </p>
-    <label>
-      승인자
-      <input v-model="baselineBy" type="text" placeholder="예: 김재학" />
-    </label>
-    <label>
-      메모
-      <input v-model="baselineNote" type="text" placeholder="승인 사유 (선택)" />
-    </label>
-    <div class="dialog-actions">
-      <button type="button" :disabled="!baselineBy.trim()" @click="confirmBaseline">승인</button>
-      <button type="button" class="ghost" @click="baselineOpen = false">취소</button>
-    </div>
+<ModalDialog
+  v-if="baselineOpen"
+  title="기준선 승인"
+  :error="error"
+  @close="baselineOpen = false"
+>
+  <p class="explain">
+    지금의 범위·일정·가중치·완료 기준을 그대로 복사해 보존합니다. 이후 계획이 바뀌어도 이
+    기준선은 변하지 않으며, 계획 진척과 범위 비교의 근거가 됩니다.
+  </p>
+  <label>
+    승인자
+    <input v-model="baselineBy" type="text" placeholder="예: 김재학" />
+  </label>
+  <label>
+    메모
+    <input v-model="baselineNote" type="text" placeholder="승인 사유 (선택)" />
+  </label>
+  <div class="dialog-actions">
+    <button type="button" class="primary" :disabled="!baselineBy.trim()" @click="confirmBaseline">승인</button>
+    <button type="button" class="ghost" @click="baselineOpen = false">취소</button>
   </div>
-</div>
+</ModalDialog>
   </div>
 </template>
 
@@ -370,12 +375,9 @@ h2 {
 
 
 
+/* 패딩·테두리·radius는 전역 컨트롤 층(Step 1)이 준다 — 이 화면 표에 맞춘 글자 크기만 남긴다. */
 select,
 input {
-  padding: 0.4rem 0.6rem;
-  border: 1px solid var(--border-input);
-  border-radius: 6px;
-  font: inherit;
   font-size: 0.85rem;
 }
 
@@ -634,68 +636,31 @@ tr.detail > td {
   color: var(--status-fg);
 }
 
+/*
+ * Step 1 전역 컨트롤 층(패딩·radius·테두리·hover·focus-visible·disabled·최소 타깃)을 그대로
+ * 쓴다. 여기 남기는 건 이 화면 고유의 것뿐이다 — 좁은 표 셀(`.actions`) 안에서 버튼 글자가
+ * 줄바꿈되면 행 높이가 들쭉날쭉해지므로 `white-space: nowrap`만 남긴다. `class="primary"`가
+ * 붙은 버튼(기준선 승인 · 체크포인트 토글 · 현재 진척 저장)은 예전에 이 파일의 bare
+ * `button{}` 규칙이 전부 강조색 채움이었던 것과 같은 모양을 유지한다.
+ */
 button {
-  padding: 0.35rem 0.7rem;
-  border-radius: 6px;
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: var(--accent-fg);
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.8rem;
   white-space: nowrap;
 }
 
-button.ghost {
-  background: transparent;
-  color: var(--text-muted);
-  border-color: var(--border-input);
-}
-
-button:disabled {
-  background: var(--disabled-bg);
-  color: var(--disabled-fg);
-  border-color: var(--border-soft);
-  cursor: not-allowed;
-}
-
-/* `.link`은 `RouterLink`("WBS에서 편집" 앵커)에 붙는다. */
+/* `.link`은 `RouterLink`("WBS에서 편집" 앵커)에 붙는다 — 전역 `.link`가 테두리·배경·색을
+   주므로 여기서는 이 화면 표 안 크기에 맞춘 글자 크기만 남긴다. */
 .link {
-  border: none;
-  background: none;
-  padding: 0;
-  color: var(--accent);
   font-size: 0.76rem;
-  text-decoration: none;
 }
 
-.dialog {
-  position: fixed;
-  inset: 0;
-  background: rgb(0 0 0 / 45%);
+.dialog-actions {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 50;
-}
-
-.dialog-body {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1.1rem 1.25rem;
-  max-width: 28rem;
-  display: flex;
-  flex-direction: column;
   gap: 0.5rem;
+  margin-top: 0.4rem;
 }
 
-.dialog-body h4 {
-  margin: 0;
-  font-size: 0.95rem;
-}
-
-.dialog-body label {
+/* 기준선 승인 대화상자(ModalDialog 슬롯) 안의 입력 라벨·설명 문구. */
+label {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
@@ -703,16 +668,10 @@ button:disabled {
   color: var(--text-muted);
 }
 
-.dialog-body .explain {
+.explain {
   margin: 0;
   font-size: 0.8rem;
   color: var(--text-faint);
-}
-
-.dialog-actions {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 0.4rem;
 }
 
 @media (max-width: 860px) {

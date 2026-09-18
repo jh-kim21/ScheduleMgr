@@ -161,24 +161,11 @@ td {
   white-space: nowrap;
 }
 
+/* border-radius·border·background·cursor는 전역 기본과 같은 값이라 지웠다. `.danger`·:disabled
+   블록도 전역 계약과 완전히 같아 그대로 지웠다 — 표 행 안이라 작게 쓰는 크기(padding·font-size)만
+   남는다. */
 button {
   padding: 0.35rem 0.7rem;
-  border-radius: 6px;
-  border: 1px solid var(--border-input);
-  background: var(--surface);
-  cursor: pointer;
   font-size: 0.8rem;
-}
-
-button.danger {
-  color: var(--danger);
-  border-color: var(--danger-border);
-}
-
-button:disabled {
-  background: var(--disabled-bg);
-  color: var(--disabled-fg);
-  border-color: var(--disabled-border);
-  cursor: default;
 }
 </style>

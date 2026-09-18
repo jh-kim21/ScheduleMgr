@@ -140,6 +140,7 @@ function handleAssign() {
               <input
                 ref="selectAllCheckbox"
                 type="checkbox"
+                aria-label="전체 선택"
                 :checked="allVisibleSelected"
                 :disabled="locked"
                 @change="toggleAllVisible"
@@ -163,6 +164,7 @@ function handleAssign() {
             <td class="check">
               <input
                 type="checkbox"
+                :aria-label="`${item.title} 선택`"
                 :checked="selectedIds.includes(item.id)"
                 :disabled="locked"
                 @click.stop
@@ -294,5 +296,13 @@ tbody tr {
 
 tbody tr:focus {
   outline: none;
+}
+
+/* 위 규칙이 지운 기본 아웃라인의 대체 — `<tr>` 자체가 (아직) 포커스를 받지 않지만, 클릭 가능한
+   행이라 받게 되는 경우를 대비해 `style.css`의 `.row-selectable:focus-visible`과 같은 값으로
+   대체 표시를 남겨 둔다. */
+tbody tr:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 </style>

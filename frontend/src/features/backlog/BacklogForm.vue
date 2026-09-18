@@ -307,12 +307,10 @@ label.grow {
   min-width: 0;
 }
 
+/* 패딩·border·radius·font는 전역 기본과 같아(패딩은 아주 살짝만 다름) 지웠다 — 이 폼의 좁은
+   칸에 필요한 min-width만 남긴다. */
 input,
 select {
-  padding: 0.45rem 0.6rem;
-  border: 1px solid var(--border-input);
-  border-radius: 6px;
-  font: inherit;
   min-width: 0;
 }
 
@@ -346,26 +344,13 @@ select:disabled {
   gap: 0.5rem;
 }
 
+/* 강조색 채움 — 취소(.ghost)는 전역 계약과 완전히 같아 지웠다. :disabled도 전역이 특이도로
+   이미 이기고 있던 죽은 선언이라 지웠다(border-color만 다르게 적었지만 실제로는 적용되지
+   않고 있었다). */
 button {
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
   border: 1px solid var(--accent);
   background: var(--accent);
   color: var(--accent-fg);
-  cursor: pointer;
-}
-
-button.ghost {
-  background: transparent;
-  color: var(--text-muted);
-  border-color: var(--border-input);
-}
-
-button:disabled {
-  background: var(--disabled-bg);
-  color: var(--disabled-fg);
-  border-color: var(--border-soft);
-  cursor: not-allowed;
 }
 
 .confirm {

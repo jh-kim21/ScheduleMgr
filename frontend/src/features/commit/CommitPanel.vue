@@ -226,7 +226,7 @@ async function handleRemove(commit: CommitMeta) {
         <strong>{{ restoredName }}</strong> 프로젝트를 만들었습니다. 프로젝트 목록에서 확인하세요.
       </p>
 
-      <p v-if="loading">불러오는 중...</p>
+      <p v-if="loading">불러오는 중…</p>
       <template v-else>
         <div class="table-scroll">
           <table>
@@ -300,16 +300,13 @@ async function handleRemove(commit: CommitMeta) {
   margin: 0;
 }
 
+/* border·배경·font·cursor는 전역 기본과 같아 지웠다 — 알약 모양(radius)과 색·크기만 남는다. */
 .add {
   flex: none;
   padding: 0.35rem 0.7rem;
-  border: 1px solid var(--border-input);
   border-radius: 999px;
-  background: var(--surface);
   color: var(--text-muted);
-  font: inherit;
   font-size: 0.78rem;
-  cursor: pointer;
   white-space: nowrap;
 }
 
@@ -354,30 +351,17 @@ td {
   gap: 0.35rem;
 }
 
+/* border-radius·border·배경·cursor는 전역 기본과 같아 지웠다. `:disabled`·`.danger`는 전역
+   계약과 완전히 같은 값이라 통째로 지웠다(특이도상 이미 전역이 이기고 있던 죽은 코드였다). */
 button {
   padding: 0.35rem 0.7rem;
-  border-radius: 6px;
-  border: 1px solid var(--border-input);
-  background: var(--surface);
   color: var(--text-muted);
-  cursor: pointer;
   font-size: 0.78rem;
 }
 
 button:hover {
   border-color: var(--accent-border);
   color: var(--text-h);
-}
-
-button:disabled {
-  color: var(--disabled-fg);
-  border-color: var(--disabled-border);
-  cursor: default;
-}
-
-button.danger {
-  color: var(--danger);
-  border-color: var(--danger-border);
 }
 
 .error {
