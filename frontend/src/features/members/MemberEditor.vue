@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import type { MemberInput, ProjectMember } from '../../api/memberApi'
 import ModalDialog from '../../components/ModalDialog.vue'
 
@@ -10,11 +10,19 @@ const props = defineProps<{
   loading: boolean
   /** 저장이 거부된 이유(이름 중복 등). 대화상자 안에 보여야 사용자가 볼 수 있다. */
   error?: string | null
+  /**
+   * 추가·수정 제출은 emit이 아니라 함수 prop이다 — `emit`은 반환값을 받을 수 없는데,
+   * `useMembers.mutate`가 이미 서버가 받아들였는지를 `Promise<boolean>`으로 돌려준다
+   * (CLAUDE.md "변경 함수가 boolean을 돌려주는 이유"). 그 값을 그대로 전달받아야
+   * "성공했을 때만 닫는다"를 목록 변화를 추측하지 않고 정확히 판단할 수 있다. 실제 API 호출은
+   * 여전히 `ProjectsView`가 한다(Step 1의 `readOnly` 게이팅 구조를 그대로 유지) — 이 prop은
+   * 그 결과만 돌려받는 통로다.
+   */
+  onSubmitAdd: (input: MemberInput) => Promise<boolean>
+  onSubmitUpdate: (memberId: number, input: MemberInput) => Promise<boolean>
 }>()
 
 const emit = defineEmits<{
-  add: [input: MemberInput]
-  update: [memberId: number, input: MemberInput]
   remove: [memberId: number]
   close: []
 }>()
@@ -24,46 +32,21 @@ const title = computed(() => `구성원 관리 — ${props.projectName}`)
 
 const blank = (): MemberInput => ({ name: '', email: null, position: null })
 
+/**
+ * 추가·수정 공용 폼 — 하나의 대화상자, 하나의 draft다(CLAUDE.md "모든 추가·수정 폼은 대화상자").
+ * 예전에는 추가만 대화상자였고 수정은 목록 행 안에서 바로 고치는 인라인 폼이었다 — `ModalDialog`가
+ * 중첩(추가 대화상자가 이미 "구성원 관리" 대화상자 안에 있다)을 지원하지 못했기 때문이다. 중첩
+ * 지원이 들어온 뒤로는 이 화면도 다른 화면과 같은 규칙을 따를 수 있어, 수정도 같은 대화상자를
+ * 공유하도록 합쳤다 — `draft`/`editDraft`, `submittable`/`editSubmittable`처럼 사실상 같은 값을
+ * 두 벌 관리할 이유가 없었다.
+ */
+const formOpen = ref(false)
 const draft = ref<MemberInput>(blank())
-/** 추가 폼은 대화상자로 띄운다 — 이 화면의 주된 행위는 목록을 읽는 것이다. */
-const addOpen = ref(false)
-
-/** The row being edited in place, and the values it is being edited to. */
+/** `null`이면 추가 모드, 아니면 그 id의 구성원을 수정하는 중이다. */
 const editingId = ref<number | null>(null)
-const editDraft = ref<MemberInput>(blank())
 
+const formTitle = computed(() => (editingId.value === null ? '구성원 추가' : '구성원 수정'))
 const submittable = computed(() => draft.value.name.trim().length > 0)
-const editSubmittable = computed(() => editDraft.value.name.trim().length > 0)
-
-// A rejected change leaves the member list untouched, so the draft stays put next to the error
-// message; only an accepted one brings back a row holding the values we sent. The add form clears
-// the same way — losing a typed name to a duplicate-name error is worse than a form that lingers.
-watch(
-  () => props.members,
-  (members) => {
-    const added = draft.value.name.trim()
-    if (added.length > 0 && members.some((member) => member.name === added)) {
-      // 저장이 받아들여졌다는 신호(보낸 이름이 목록에 나타남)일 때만 닫는다. 거부되면 대화상자가
-      // 입력값과 오류 메시지를 그대로 들고 남아 있어야 한다.
-      draft.value = blank()
-      addOpen.value = false
-    }
-
-    if (editingId.value === null) return
-    const saved = members.find((member) => member.id === editingId.value)
-    if (!saved) {
-      cancelEdit()
-      return
-    }
-    if (
-      saved.name === editDraft.value.name.trim() &&
-      (saved.email ?? null) === normalise(editDraft.value.email) &&
-      (saved.position ?? null) === normalise(editDraft.value.position)
-    ) {
-      cancelEdit()
-    }
-  },
-)
 
 function normalise(value: string | null): string | null {
   const trimmed = value?.trim() ?? ''
@@ -78,28 +61,32 @@ function payload(input: MemberInput): MemberInput {
   }
 }
 
-function onSubmit() {
-  if (!submittable.value) return
-  emit('add', payload(draft.value))
-}
-
 function openAdd() {
+  editingId.value = null
   draft.value = blank()
-  addOpen.value = true
+  formOpen.value = true
 }
 
 function startEdit(member: ProjectMember) {
   editingId.value = member.id
-  editDraft.value = { name: member.name, email: member.email, position: member.position }
+  draft.value = { name: member.name, email: member.email, position: member.position }
+  formOpen.value = true
 }
 
-function cancelEdit() {
+function closeForm() {
+  formOpen.value = false
   editingId.value = null
+  draft.value = blank()
 }
 
-function onSave() {
-  if (editingId.value === null || !editSubmittable.value) return
-  emit('update', editingId.value, payload(editDraft.value))
+/** 성공했을 때만(prop 함수가 `true`를 돌려줄 때만) 닫는다 — 거부되면 입력값과 오류가 그대로 남는다. */
+async function onSubmit() {
+  if (!submittable.value) return
+  const ok =
+    editingId.value === null
+      ? await props.onSubmitAdd(payload(draft.value))
+      : await props.onSubmitUpdate(editingId.value, payload(draft.value))
+  if (ok) closeForm()
 }
 
 function onRemove(member: ProjectMember) {
@@ -119,13 +106,16 @@ function onRemove(member: ProjectMember) {
         <button type="button" class="add" @click="openAdd">＋ 구성원 추가</button>
       </header>
 
+      <!-- 추가·수정 공용 대화상자. ModalDialog 중첩 지원(Step 2) 위에서 동작한다 — 이 대화상자가
+           열려 있는 동안 바깥 "구성원 관리" 대화상자는 Escape·Tab에 반응하지 않고 배경으로
+           물러난다. -->
       <ModalDialog
-        v-if="addOpen"
-        title="구성원 추가"
+        v-if="formOpen"
+        :title="formTitle"
         :error="props.error"
-        @close="addOpen = false"
+        @close="closeForm"
       >
-        <form class="add-form" @submit.prevent="onSubmit">
+        <form class="member-form" @submit.prevent="onSubmit">
           <label>
             이름
             <input v-model="draft.name" type="text" placeholder="이름" />
@@ -142,8 +132,10 @@ function onRemove(member: ProjectMember) {
           </label>
 
           <div class="dialog-actions">
-            <button type="submit" class="primary" :disabled="!submittable">추가</button>
-            <button type="button" @click="addOpen = false">취소</button>
+            <button type="submit" class="primary" :disabled="!submittable">
+              {{ editingId === null ? '추가' : '저장' }}
+            </button>
+            <button type="button" @click="closeForm">취소</button>
           </div>
         </form>
       </ModalDialog>
@@ -156,29 +148,14 @@ function onRemove(member: ProjectMember) {
             :key="member.id"
             :class="{ editing: editingId === member.id }"
           >
-            <template v-if="editingId === member.id">
-              <input v-model="editDraft.name" type="text" aria-label="이름" />
-              <input v-model="editDraft.position" type="text" aria-label="직책" placeholder="직책" />
-              <input v-model="editDraft.email" type="email" aria-label="이메일" placeholder="이메일" />
+            <span class="name">{{ member.name }}</span>
+            <span v-if="member.position" class="position">{{ member.position }}</span>
+            <span v-if="member.email" class="email-text">{{ member.email }}</span>
 
-              <span class="actions">
-                <button type="button" class="primary" :disabled="!editSubmittable" @click="onSave">
-                  저장
-                </button>
-                <button type="button" @click="cancelEdit">취소</button>
-              </span>
-            </template>
-
-            <template v-else>
-              <span class="name">{{ member.name }}</span>
-              <span v-if="member.position" class="position">{{ member.position }}</span>
-              <span v-if="member.email" class="email-text">{{ member.email }}</span>
-
-              <span class="actions">
-                <button type="button" @click="startEdit(member)">수정</button>
-                <button type="button" class="danger" @click="onRemove(member)">삭제</button>
-              </span>
-            </template>
+            <span class="actions">
+              <button type="button" @click="startEdit(member)">수정</button>
+              <button type="button" class="danger" @click="onRemove(member)">삭제</button>
+            </span>
           </li>
         </ul>
         <p v-else class="none">등록된 구성원이 없습니다.</p>
@@ -217,7 +194,7 @@ function onRemove(member: ProjectMember) {
   color: var(--text-h);
 }
 
-.add-form {
+.member-form {
   display: flex;
   flex-direction: column;
   gap: 0.7rem;
@@ -271,15 +248,10 @@ button {
   border-radius: 6px;
 }
 
+/* 이 행의 구성원을 지금 수정 대화상자에서 고치는 중임을 보여준다. */
 .list li.editing {
   border-color: var(--accent-border);
   background: var(--accent-weak);
-  flex-wrap: wrap;
-}
-
-.list input {
-  padding: 0.25rem 0.4rem;
-  font-size: 0.8rem;
 }
 
 .name {

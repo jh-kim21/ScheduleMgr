@@ -47,17 +47,24 @@ function closeMembers() {
   membersProject.value = null
 }
 
-function handleAddMember(input: MemberInput) {
+/**
+ * emit이 아니라 `MemberEditor`의 함수 prop으로 넘긴다 — `useMembers.create`/`update`가 이미
+ * 서버가 받아들였는지를 `Promise<boolean>`으로 돌려주므로(CLAUDE.md "변경 함수가 boolean을
+ * 돌려주는 이유"), 그 값을 그대로 돌려줘야 대화상자가 문자열 비교 같은 추측 없이 정확히
+ * "성공했을 때만 닫는다"를 할 수 있다. `readOnly`·`membersProject` 게이팅은 여기 그대로
+ * 둔다 — `MemberEditor`가 API를 직접 부르게 하지 않는 구조(Step 1)는 바뀌지 않았다.
+ */
+async function handleAddMember(input: MemberInput): Promise<boolean> {
   // openMembers가 이미 대화상자 자체를 막지만, 열려 있는 대화상자 안에서 굳이 API를 부르지
   // 않도록 여기서도 한 번 더 막는다 — `ModalDialog` 중첩 결함이 그 방패를 무너뜨릴 수 있다는
   // 것이 별도로 확인됐다(지시서 2-a).
-  if (readOnly.value) return
-  if (membersProject.value) createMember(membersProject.value.id, input)
+  if (readOnly.value || !membersProject.value) return false
+  return createMember(membersProject.value.id, input)
 }
 
-function handleUpdateMember(memberId: number, input: MemberInput) {
-  if (readOnly.value) return
-  if (membersProject.value) updateMember(membersProject.value.id, memberId, input)
+async function handleUpdateMember(memberId: number, input: MemberInput): Promise<boolean> {
+  if (readOnly.value || !membersProject.value) return false
+  return updateMember(membersProject.value.id, memberId, input)
 }
 
 function handleRemoveMember(memberId: number) {
@@ -267,8 +274,8 @@ async function handleRemove(project: Project) {
       :members="members"
       :loading="membersLoading"
       :error="membersError"
-      @add="handleAddMember"
-      @update="handleUpdateMember"
+      :on-submit-add="handleAddMember"
+      :on-submit-update="handleUpdateMember"
       @remove="handleRemoveMember"
       @close="closeMembers"
     />
