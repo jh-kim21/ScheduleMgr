@@ -48,14 +48,20 @@ function closeMembers() {
 }
 
 function handleAddMember(input: MemberInput) {
+  // openMembers가 이미 대화상자 자체를 막지만, 열려 있는 대화상자 안에서 굳이 API를 부르지
+  // 않도록 여기서도 한 번 더 막는다 — `ModalDialog` 중첩 결함이 그 방패를 무너뜨릴 수 있다는
+  // 것이 별도로 확인됐다(지시서 2-a).
+  if (readOnly.value) return
   if (membersProject.value) createMember(membersProject.value.id, input)
 }
 
 function handleUpdateMember(memberId: number, input: MemberInput) {
+  if (readOnly.value) return
   if (membersProject.value) updateMember(membersProject.value.id, memberId, input)
 }
 
 function handleRemoveMember(memberId: number) {
+  if (readOnly.value) return
   if (membersProject.value) removeMember(membersProject.value.id, memberId)
 }
 

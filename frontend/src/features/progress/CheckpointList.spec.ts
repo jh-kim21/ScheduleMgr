@@ -25,6 +25,7 @@ vi.mock('../../api/progressApi', async (importOriginal) => {
       addCheckpoint: vi.fn(),
       updateCheckpoint: vi.fn(),
       setApproval: vi.fn(),
+      deleteCheckpoint: vi.fn(),
     },
   }
 })
@@ -32,6 +33,7 @@ vi.mock('../../api/progressApi', async (importOriginal) => {
 const mockedAddCheckpoint = vi.mocked(progressApi.addCheckpoint)
 const mockedUpdateCheckpoint = vi.mocked(progressApi.updateCheckpoint)
 const mockedSetApproval = vi.mocked(progressApi.setApproval)
+const mockedDeleteCheckpoint = vi.mocked(progressApi.deleteCheckpoint)
 
 function checkpoint(overrides: Partial<CheckpointDetail> = {}): CheckpointDetail {
   return {
@@ -100,6 +102,10 @@ function approveConfirmButton(wrapper: VueWrapper) {
   return wrapper.find('.approve-row button:not(.ghost)')
 }
 
+function removeButtons(wrapper: VueWrapper) {
+  return wrapper.findAll('button').filter((b) => b.text() === '삭제')
+}
+
 describe('CheckpointList', () => {
   let wrapper: VueWrapper | undefined
 
@@ -109,6 +115,8 @@ describe('CheckpointList', () => {
     mockedAddCheckpoint.mockReset()
     mockedUpdateCheckpoint.mockReset()
     mockedSetApproval.mockReset()
+    mockedDeleteCheckpoint.mockReset()
+    vi.unstubAllGlobals()
   })
 
   describe('editable: false (진척 탭 — 조망 전용)', () => {
@@ -380,6 +388,61 @@ describe('CheckpointList', () => {
 
       expect(wrapper.find('.cp-form').exists()).toBe(false)
       expect(addButton(wrapper)).toBeTruthy()
+    })
+  })
+
+  /**
+   * 삭제는 다른 화면의 관례(`WbsView.vue`, `MemberEditor.vue`)와 같은 `confirm()`을 거친다.
+   * 승인된 체크포인트는 진척 계산의 분모라서(CLAUDE.md "진척 집계"), 미승인 항목과 문구가
+   * 달라야 한다는 것까지 함께 고정한다.
+   */
+  describe('editable: true — 삭제 확인', () => {
+    it('확인 대화상자에서 취소하면 삭제 API를 부르지 않는다', async () => {
+      // happy-dom은 window.confirm을 구현하지 않는다 — vi.spyOn 대상 함수 자체가 없어
+      // vi.stubGlobal로 통째로 채워 넣는다(afterEach의 vi.unstubAllGlobals가 되돌린다 —
+      // vi.restoreAllMocks는 stubGlobal을 되돌리지 못하므로 그것으로 바꾸지 마라).
+      vi.stubGlobal('confirm', vi.fn().mockReturnValue(false))
+      wrapper = renderList([checkpoint()], true)
+
+      await removeButtons(wrapper)[0].trigger('click')
+
+      expect(mockedDeleteCheckpoint).not.toHaveBeenCalled()
+    })
+
+    it('확인하면 삭제 API를 부른다', async () => {
+      vi.stubGlobal('confirm', vi.fn().mockReturnValue(true))
+      mockedDeleteCheckpoint.mockResolvedValueOnce({} as never)
+      wrapper = renderList([checkpoint({ id: 9 })], true)
+
+      await removeButtons(wrapper)[0].trigger('click')
+      await flushPromises()
+
+      expect(mockedDeleteCheckpoint).toHaveBeenCalledWith(1, 9)
+    })
+
+    it('미승인 항목은 부작용 문구 없이 묻는다', async () => {
+      const confirmSpy = vi.fn().mockReturnValue(false)
+      vi.stubGlobal('confirm', confirmSpy)
+      wrapper = renderList([checkpoint({ title: '설계 리뷰', approved: false })], true)
+
+      await removeButtons(wrapper)[0].trigger('click')
+
+      expect(confirmSpy).toHaveBeenCalledWith('"설계 리뷰" 체크포인트를 삭제할까요?')
+    })
+
+    it('승인된 항목은 진척 숫자가 바뀐다는 문구를 덧붙여 묻는다', async () => {
+      const confirmSpy = vi.fn().mockReturnValue(false)
+      vi.stubGlobal('confirm', confirmSpy)
+      wrapper = renderList(
+        [checkpoint({ title: '설계 리뷰', approved: true, approvedBy: '김재학', approvedAt: '2026-03-02' })],
+        true,
+      )
+
+      await removeButtons(wrapper)[0].trigger('click')
+
+      expect(confirmSpy).toHaveBeenCalledWith(
+        '"설계 리뷰" 체크포인트를 삭제할까요?\n이미 승인되어 있어 지우면 이 Work Package의 진척 숫자가 즉시 바뀝니다.',
+      )
     })
   })
 

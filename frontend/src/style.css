@@ -21,13 +21,23 @@
   --text-h: #111;
   --text-muted: #555;
   --text-dim: #666;
-  --text-faint: #999;
+  /*
+   * #999는 흰 면 위에서 2.85:1로 WCAG 1.4.3(4.5:1) 미달이었다 — 32개 파일이 본문 급
+   * 텍스트로 쓰고 있어 값을 바꿔야 했다(장식용 placeholder라면 예외지만 이건 아니다).
+   * #717171은 --surface-sunken(가장 어두운 면, 가장 불리한 경우)에서도 4.52:1을 넘긴다.
+   */
+  --text-faint: #717171;
 
   /* 선 */
   --border: #e5e4e7;
   --border-soft: #eee;
   --border-softer: #f0f0f0;
-  --border-input: #ccc;
+  /*
+   * #ccc는 흰 면 위에서 1.61:1로 WCAG 1.4.11(UI 컴포넌트 경계, 3.0:1) 미달이었다.
+   * 입력 필드 테두리는 "이게 입력칸이다"를 알려주는 경계선이라 순수 장식선(--border)과
+   * 달리 3:1 대상이다. #8f8f8f는 흰 면 위 3.23:1로 여유를 두고 통과한다.
+   */
+  --border-input: #8f8f8f;
   --border-dashed: #ddd;
 
   /*
@@ -48,8 +58,30 @@
   --accent-container: #e0e7ff;
   --accent-container-fg: #4338ca;
 
+  /*
+   * radius 드리프트 수렴용 3단계 + 알약. 기존 값 중 가장 많이 쓰인 6px(80회)과
+   * 999px(51회, 알약)을 그대로 표준으로 삼는다. 8px·10px 계열은 --radius-lg로,
+   * 나머지(4px·7px·5px·2px·12px)는 실사용 빈도가 낮아 --radius-sm 아니면 --radius-md로
+   * 흡수한다 — 별도 토큰을 9개 유지할 이유가 없다.
+   */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-pill: 999px;
+
+  /*
+   * 대화상자 배경(scrim). ModalDialog가 55%, 손으로 만든 3곳이 45%를 썼다 — 하나로
+   * 통일한다. 값은 기존에 더 많이 쓰인 쪽(대화상자 본체)을 기준으로 삼았다.
+   */
+  --scrim: rgb(0 0 0 / 55%);
+
   /* 강조 (기본 동작, 활성 링크, 주요 버튼) */
-  --accent: #6366f1;
+  /*
+   * #6366f1은 흰 면 위에서 4.47:1로 WCAG 1.4.3 미달이었다(링크 텍스트로 쓰이는 자리라
+   * 3:1이 아니라 4.5:1 대상). #6265ef는 육안으로는 거의 같은 남보라색이면서 4.54:1을
+   * 넘긴다 — 버튼 배경으로 쓰일 때(흰 글자 대비)는 원래도 넉넉했으므로 그쪽은 영향이 없다.
+   */
+  --accent: #6265ef;
   --accent-fg: #fff;
   --accent-weak: #eef2ff;
   --accent-border: #c7d2fe;
@@ -69,12 +101,18 @@
   --success-weak: #eef8f0;
   --success-text: #2f6b46;
 
-  /* 경고 (지연 배너, 대기 배지) */
-  --warn: #d98324;
+  /*
+   * 경고 (지연 배너, 대기 배지).
+   * --warn은 흰 면 위 경고 본문 텍스트로도 쓰이는데 원래 값(#d98324)은 2.91:1로 미달이었다.
+   * #a9661c는 같은 주황 계열을 유지하면서 4.56:1을 넘긴다 — --warn-strong(#8a3d0c, 7.6:1)과는
+   * 여전히 눈에 띄게 구분된다. --warn-badge-fg는 4.43:1로 근소 미달이라 #a3610a로 아주 조금만
+   * 낮췄다(육안 차이는 없는 수준).
+   */
+  --warn: #a9661c;
   --warn-weak: #fff6ea;
   --warn-strong: #8a3d0c;
   --warn-badge-bg: #fff4e0;
-  --warn-badge-fg: #a5620a;
+  --warn-badge-fg: #a3610a;
 
   /* 프로젝트 상태 배지 */
   --badge-planned-bg: #eef2ff;
@@ -102,13 +140,24 @@
   --raid-issue: #b91c1c;
   --raid-dependency: #4338ca;
 
-  /* 지연 상태 팔레트. 막대 채움·배지·범례가 같은 값을 공유한다. */
-  --status-completed: #2f9e5f;
+  /*
+   * 지연 상태 팔레트. 막대 채움·배지·범례가 같은 값을 공유하므로 두 제약을 동시에
+   * 만족해야 한다 — 막대 위 흰 글자(--status-fg)가 4.5:1, 채움이 배경(흰 면) 대비 3:1.
+   * completed·at-risk·not-started·unscheduled 네 값을 흰 글자 고정 기준으로 낮췄다
+   * (아래 "임계 경로" 절처럼 --status-fg 자체를 상태별로 나누는 대안도 검토했지만,
+   * 그러려면 각 화면의 배지 스타일이 상태별로 다른 글자색 변수를 참조하도록 7개 파일의
+   * 컴포넌트 스코프 스타일을 함께 고쳐야 한다 — 이번 작업은 style.css 한 파일로 한정돼
+   * 있어 그 경로를 쓸 수 없다. 채움을 낮추는 쪽이 이 제약 안에서 유일하게 완결되는 수정이다).
+   * not-started·unscheduled는 원래도 색 차이가 크지 않았는데 같은 흰 글자 기준으로
+   * 맞추면 명도가 거의 같아져 구분이 사라지므로, 색조를 냉·난색으로 갈라 구분을 살렸다
+   * (not-started는 차가운 청회색, unscheduled는 따뜻한 회갈색 — 둘 다 4.5:1 이상).
+   */
+  --status-completed: #278550;
   --status-on-track: #1f6feb;
-  --status-at-risk: #d98324;
+  --status-at-risk: #a9661c;
   --status-delayed: #d93a3d;
-  --status-not-started: #9aa3af;
-  --status-unscheduled: #b8bec9;
+  --status-not-started: #68707d;
+  --status-unscheduled: #79726a;
   --status-fg: #fff;
 
   /* 차트 보조선 */
@@ -204,12 +253,16 @@
   --text-h: #f2f4f7;
   --text-muted: #a7aeb9;
   --text-dim: #99a1ac;
-  --text-faint: #7d858f;
+  /* #7d858f는 --surface(4.5:1대는) 위에서는 이미 통과했지만 --surface-alt(4.22)·
+     --surface-sunken(4.01) 위에서는 미달이었다. #868e98로 살짝 올려 세 면 모두 통과시켰다. */
+  --text-faint: #868e98;
 
   --border: #2c313a;
   --border-soft: #2a2f37;
   --border-softer: #24282f;
-  --border-input: #3c434e;
+  /* 라이트와 같은 이유(WCAG 1.4.11, 3.0:1). #3c434e는 --surface 위 1.69:1이라 미달이었다.
+     같은 청회색 색조를 유지하며 밝혀 #656c77(3.19:1)로 올렸다. */
+  --border-input: #656c77;
   --border-dashed: #3a404a;
 
   /* 어두운 배경에서는 그림자가 잘 안 보여 알파를 올린다. 상태 레이어는 흰색으로 뒤집는다. */
@@ -221,6 +274,10 @@
   --surface-raised: #242830;
   --accent-container: #312e81;
   --accent-container-fg: #c7d2fe;
+
+  /* 배경이 이미 어두워 옅은 검정 스크림이 라이트 모드만큼 또렷하게 배경을 눌러 주지
+     못한다 — 알파를 조금 더 올려 대화상자 뒤가 충분히 가라앉게 한다. */
+  --scrim: rgb(0 0 0 / 65%);
 
   --accent: #818cf8;
   --accent-fg: #1e1b4b;
@@ -269,7 +326,9 @@
   --status-at-risk: #e8a44f;
   --status-delayed: #ee5f62;
   --status-not-started: #79828f;
-  --status-unscheduled: #5d6673;
+  /* #5d6673은 다크 --status-fg(어두운 글자, 3.15) · --surface 배경(2.90) 둘 다 미달이었다.
+     같은 청회색 계열을 유지하며 밝혀 라벨 4.58 / 채움 대 배경 4.23으로 통과시켰다. */
+  --status-unscheduled: #77808d;
   --status-fg: #12151a;
 
   --today-line: #ff6b6e;
@@ -398,4 +457,239 @@ p {
  */
 .num {
   font-variant-numeric: tabular-nums;
+}
+
+/*
+ * ============================================================================
+ * 컨트롤 층 (버튼 · 입력)
+ * ============================================================================
+ *
+ * 진단: <button>을 쓰는 34개 파일 중 :hover를 정의한 곳은 14개뿐이고, 나머지 20개는
+ * 마우스를 올려도 아무 반응이 없다. border-radius는 6px(80회) · 999px(51회, 알약) ·
+ * 8px(12회) · 10px(5회) · 4px(4회) · 7px·5px·2px·12px(각 1회)까지 9종으로 흩어져 있고,
+ * 버튼·입력 스타일을 각자 정의한 파일이 25개, 패딩만 15종 이상이다. 원인은 이 파일에
+ * 색 토큰 층은 있는데 컨트롤(컴포넌트) 층이 없었다는 것 — 그래서 파일마다 버튼을 처음부터
+ * 그리고, 그때마다 hover · focus · disabled · 타깃 크기를 각자 기억해서 넣어야 했다.
+ *
+ * 채택 전략 — 요소 선택자로 기본을 깔고, 변형은 기존에 이미 쓰이던 클래스 이름을 그대로
+ * 전역으로 승격한다:
+ *   1) 꾸미지 않은 <button>·<input>·<select>·<textarea>는 요소 선택자로 전역 적용한다.
+ *      Vue의 scoped 스타일은 셀렉터에 `[data-v-xxxx]`가 붙어 이 파일의 순수 요소 선택자보다
+ *      특이도가 항상 높다. 그래서 이미 자기 스타일을 가진 25개 파일에는 아무 영향이 없고
+ *      (로컬이 계속 이긴다), 스타일이 없던 20개 파일만 이 기본값으로 hover·focus·disabled·
+ *      타깃 크기를 얻는다 — "덮어쓰기"가 아니라 "빈 자리 채우기"로 동작한다는 뜻이라
+ *      전역 적용의 위험(기존 화면이 예고 없이 바뀌는 것)이 실질적으로 없다.
+ *   2) 변형 클래스는 새 이름을 만들지 않고 `.primary` · `.ghost` · `.danger` · `.link`를
+ *      그대로 썼다 — grep해 보면 이미 10개 넘는 파일이 이 정확한 이름으로 로컬 스코프
+ *      버튼 클래스를 만들어 왔다(색과 hover만 제각각). 같은 이름으로 전역 계약을 두면
+ *      Step 2는 각 파일의 로컬 `<style scoped>` 블록만 지우면 되고, 템플릿의
+ *      `class="primary"` 등은 이미 붙어 있어 고칠 필요가 없다. `.tonal`(filled tonal)만
+ *      기존에 없던 이름이라 새로 만들었다.
+ *
+ *      **변형 선택자는 반드시 클래스 단독(`.primary`)으로 두고 `button.primary`처럼
+ *      요소를 붙이지 않는다.** 붙이면 특이도가 (0,1,1)이 되어, scoped 파일이 갖고 있는
+ *      순수 `button {}` 규칙이 번들에서 `[data-v-xxxx]`가 붙어 만들어 내는 특이도
+ *      (0,1,1)와 정확히 동점이 된다 — 동점이면 특이도가 아니라 CSS가 어느 스타일 블록을
+ *      나중에 배치했는지(소스 순서)가 이긴다. 지금은 Vite가 컴포넌트 스타일을 이 파일
+ *      뒤에 주입해 로컬이 이기지만, 그건 번들러 동작에 기댄 우연이지 CSS가 보장하는
+ *      사실이 아니다 — import 순서가 바뀌면 17개 파일(로컬에 순수 `button {}`과
+ *      `.primary`/`.ghost`/`.danger`를 동시에 쓰는 BacklogForm·CommitCapacityDialog·
+ *      CommitForm·CommitPanel·DependencyEditor·MemberEditor·CheckpointList·
+ *      ProgressPanel·ProjectForm·ProjectList·RaidForm·SprintForm·WbsForm·
+ *      WbsImportForm·WbsTagEditor·BacklogView·SprintView)의 버튼 모양이 조용히
+ *      뒤집힌다. 클래스 단독 (0,1,0)으로 두면 scoped `button {}` → `button[data-v-x]`
+ *      (0,1,1)이 항상 더 높아, 순서와 무관하게 로컬이 이긴다 — `.link`(원래도 클래스
+ *      단독)가 우연히 아니라 이 이유로 그렇게 돼 있었던 것이고, 나머지도 거기 맞췄다.
+ *      **"`button.primary`가 더 읽기 명확한데" 하고 되돌리지 말 것** — 되돌리는 순간
+ *      위 우연에 다시 의존하게 된다.
+ *   3) 위 두 규칙 덕분에 이 작업(style.css 한 파일)과 Step 2(각 컴포넌트 정리)가 서로
+ *      막지 않고 이어진다 — 지금 당장 아무 파일도 고치지 않아도 20개 파일이 즉시 좋아지고,
+ *      나머지 파일은 다음 단계에서 로컬 중복만 지우면 된다.
+ *
+ * 상태 레이어(hover 6% · press 12%)는 :root에 이미 있는 --state-hover/--state-press를
+ * 그대로 쓴다. 어떤 배경 위에서도 같은 규칙으로 동작하도록 만든 토큰이라 변형(강조 채움 ·
+ * 위험 등)마다 다시 정의하지 않는다 — 실제로 그럴 필요가 없었다.
+ */
+button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4em;
+  min-height: 24px;
+  min-width: 24px;
+  padding: 0.45em 0.9em;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-input);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+/*
+ * 상태 레이어는 배경색 교체가 아니라 겹치는 반투명 층이다(과거 GanttChart가 팔레트를
+ * 컴포넌트 안에서 재정의했다가 자기 참조로 SVG를 전부 검게 만든 사고 이후의 원칙).
+ * ::before는 position:absolute라 그리기 순서상 버튼 글자보다 나중에 칠해지지만, 알파가
+ * 6~12%뿐이라 Material의 상태 레이어와 같은 방식으로 글자가 그대로 읽힌다.
+ */
+button::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: transparent;
+  pointer-events: none;
+}
+
+button:hover:not(:disabled)::before {
+  background: var(--state-hover);
+}
+
+button:active:not(:disabled)::before {
+  background: var(--state-press);
+}
+
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* 강조색 채움 — 주 동작(저장·추가). */
+.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+/* 강조색을 옅게 깐 채움(filled tonal) — 주 동작이지만 페이지를 지배하지 않을 때. */
+.tonal {
+  border-color: transparent;
+  background: var(--accent-container);
+  color: var(--accent-container-fg);
+}
+
+/* 테두리 없는 저채도 버튼 — 취소·보조 동작. */
+.ghost {
+  border-color: var(--border-input);
+  background: transparent;
+  color: var(--text-muted);
+}
+
+/* 위험(삭제) — 글자·테두리만 위험색으로 바꾸고 채움은 변형(기본/ghost/tonal)을 따른다. */
+.danger {
+  border-color: var(--danger-border);
+  color: var(--danger);
+}
+
+/* 링크처럼 보이는 버튼 — 표 행 안 보조 동작(제거·차단 등)에 쓴다. 버튼뿐 아니라
+   RouterLink처럼 링크 역할을 하는 요소에도 같은 모양을 쓸 수 있게 클래스만으로 열어 둔다. */
+.link {
+  min-height: auto;
+  min-width: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.link::before {
+  content: none;
+}
+
+.link:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+/*
+ * .link와 .danger는 둘 다 클래스 단독(0,1,0)이라 특이도로는 승패가 안 갈리고, 소스 순서상
+ * .danger가 먼저 선언돼 있어 그대로 두면 .link의 color가 이겨 버린다. 결합 선택자
+ * `.link.danger`(0,2,0)로 특이도를 올려 danger가 순서와 무관하게 이기도록 고정한다
+ * (기존 SprintBoard의 `button.link.danger`와 같은 이유 — 여기서는 소스 순서에 기대지
+ * 않기 위해 반드시 필요한 규칙이다).
+ */
+.link.danger {
+  color: var(--danger);
+}
+
+/* 작은 아이콘 버튼 — 시각적 크기는 줄이되 최소 타깃 24px는 그대로 보장한다. */
+.btn-icon {
+  min-width: 24px;
+  min-height: 24px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: var(--radius-pill);
+}
+
+/*
+ * 비활성은 변형과 무관하게 항상 같은 모양이어야 한다. 변형 선택자를 클래스 단독으로 둔
+ * 덕분에(위 참고) `button:disabled`(요소+가상클래스, (0,1,1))가 `.primary`·`.ghost`·
+ * `.danger`(클래스 단독, (0,1,0))보다 특이도로 항상 이긴다 — 이 파일 안에서 선언 순서를
+ * 바꿔도 결과가 달라지지 않는다.
+ */
+button:disabled:not(.link) {
+  background: var(--disabled-bg);
+  color: var(--disabled-fg);
+  border-color: var(--disabled-border);
+  cursor: not-allowed;
+}
+
+button:disabled::before {
+  content: none;
+}
+
+/* .link는 테두리·배경이 원래 없으므로 글자색만 죽인다. */
+.link:disabled,
+button.link:disabled {
+  color: var(--disabled-fg);
+  cursor: not-allowed;
+}
+
+/*
+ * 입력 — 패딩 · 테두리 · radius · focus-visible · disabled를 한 곳에서만 정의한다.
+ * <select>는 배경·글자색을 명시하지 않으면 Windows 다크 모드에서 네이티브 컨트롤이 흰
+ * 배경으로 남는다(앱 전체에 select가 42개, 명시한 곳은 0개였다).
+ */
+input,
+select,
+textarea {
+  min-height: 24px;
+  padding: 0.45em 0.7em;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-md);
+  background-color: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled {
+  background-color: var(--disabled-bg);
+  color: var(--disabled-fg);
+  border-color: var(--disabled-border);
+  cursor: not-allowed;
+}
+
+/* 이 층이 들여오는 transition을 전부 끈다 — 새로 추가하는 transition마다 여기 추가한다. */
+@media (prefers-reduced-motion: reduce) {
+  button,
+  input,
+  select,
+  textarea {
+    transition: none;
+  }
 }

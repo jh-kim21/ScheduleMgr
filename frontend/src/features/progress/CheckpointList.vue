@@ -181,7 +181,16 @@ function revoke(cp: CheckpointDetail) {
   setApproval(props.projectId, cp.id, false, null)
 }
 
+/**
+ * 승인된 체크포인트는 삭제로 진척 숫자(Waterfall·Hybrid의 분모)가 즉시 바뀐다 — 그 사실을 문구에
+ * 담아 확인을 한 번 더 받는다. 다른 확인 문구(`WbsView.vue`의 삭제, `MemberEditor.vue`의 구성원
+ * 삭제)와 같은 어투: `"제목" …을 삭제할까요?` 뒤에 부작용을 줄바꿈으로 덧붙인다.
+ */
 function remove(cp: CheckpointDetail) {
+  const warning = cp.approved
+    ? '\n이미 승인되어 있어 지우면 이 Work Package의 진척 숫자가 즉시 바뀝니다.'
+    : ''
+  if (!confirm(`"${cp.title}" 체크포인트를 삭제할까요?${warning}`)) return
   if (approvingId.value === cp.id) cancelApprove()
   if (editingId.value === cp.id) closeForm()
   deleteCheckpoint(props.projectId, cp.id)

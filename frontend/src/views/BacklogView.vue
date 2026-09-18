@@ -147,6 +147,10 @@ async function handleArchive(item: BacklogItem, archived: boolean) {
 
 async function handleRemove(item: BacklogItem) {
   if (readOnly.value) return
+  // confirm()은 여기 둔다 — 이 핸들러가 이미 readOnly 확인과 closeForm() 처리를 맡고 있어
+  // (RaidList.vue와 달리, 리스트 컴포넌트가 아니라 뷰가 삭제를 조율한다), 확인 절차도 같은
+  // 자리에 있어야 "삭제 전에 확인한다"는 규칙을 한 곳에서 볼 수 있다(RaidList.vue:51 문구 패턴).
+  if (!confirm(`"${item.title}" 항목을 삭제할까요?`)) return
   const projectId = selectedProjectId.value
   if (projectId === null) return
   if (editing.value?.id === item.id) closeForm()
