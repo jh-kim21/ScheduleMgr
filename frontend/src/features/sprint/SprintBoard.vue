@@ -380,20 +380,10 @@ function requestUnassign(item: SprintItem) {
 }
 
 /*
- * 화면 밖으로 밀어 숨기되 스크린리더에는 읽히게 한다 — `aria-live` 영역과 `<select>`의 라벨이
- * 이 클래스를 쓴다. 표준 "visually hidden" 패턴이다.
+ * `.visually-hidden`은 style.css로 올라갔다(WbsView.vue가 제목을 시각적으로만 숨기며 같은
+ * 유틸이 필요해졌다) — 여기 있던 로컬 선언은 지운다. `aria-live` 영역과 `<select>`의 라벨이
+ * 여전히 이 클래스를 쓴다.
  */
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
 
 /* 폭이 좁은 카드 footer에 맞춘 크기 — 전역 select의 min-height(24px)는 그대로 둔다. */
 .move-select select {

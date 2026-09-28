@@ -208,25 +208,12 @@ async function handleMove(itemId: number, input: WbsMoveInput) {
 
 <template>
   <section>
-    <div class="head">
-      <h1>WBS</h1>
-      <div v-if="projects.length > 0" class="head-actions">
-        <button
-          type="button"
-          class="add ghost"
-          :disabled="readOnly"
-          :title="readOnly ? READONLY_HINT : undefined"
-          @click="openImportForm"
-        >＋ 파일에서 가져오기</button>
-        <button
-          type="button"
-          class="add"
-          :disabled="readOnly"
-          :title="readOnly ? READONLY_HINT : undefined"
-          @click="openAddRoot"
-        >＋ 최상위 항목 추가</button>
-      </div>
-    </div>
+    <!--
+      화면에서는 없앴지만(사용자 요구, 아래 참고) 스크린리더에는 남긴다 — heading으로 화면을
+      훑는 사용자에게 이 화면만 목차가 비는 것을 막는다. `display: none`·`visibility: hidden`은
+      보조기술에서도 사라지므로 대신 `.visually-hidden`(style.css)을 쓴다.
+    -->
+    <h1 class="visually-hidden">WBS</h1>
 
     <p v-if="projectsError" class="error" role="alert">{{ projectsError }}</p>
 
@@ -235,15 +222,41 @@ async function handleMove(itemId: number, input: WbsMoveInput) {
       <RouterLink to="/projects">프로젝트 화면으로 이동</RouterLink>
     </p>
 
+    <!--
+      제목("WBS")을 시각적으로 없애고 프로젝트 선택과 툴바를 한 줄로 합쳤다(wbs-tree-density
+      후속 요청, 지시서 6장의 "페이지 크롬 합치기" 후보). 상단 메뉴가 이미 WBS를 굵게 표시하므로
+      화면에 보이는 제목이 없어도 맥락을 잃지 않는다(위 `<h1>`이 보조기술에는 여전히 남는다).
+      이 둘을 하나의 v-else 분기 안에 두면 "projects.length > 0"을 두 번 따로 검사하지 않아도
+      된다 — 예전에는 `.head`(제목+버튼)가 이 분기 밖에 있어 조건이 둘로 갈라져 있었다.
+    -->
     <template v-else>
-      <label class="project-picker">
-        프로젝트
-        <select v-model="selectedProjectId">
-          <option v-for="project in projects" :key="project.id" :value="project.id">
-            {{ project.name }}
-          </option>
-        </select>
-      </label>
+      <div class="head">
+        <label class="project-picker">
+          프로젝트
+          <select v-model="selectedProjectId">
+            <option v-for="project in projects" :key="project.id" :value="project.id">
+              {{ project.name }}
+            </option>
+          </select>
+        </label>
+
+        <div class="head-actions">
+          <button
+            type="button"
+            class="add ghost"
+            :disabled="readOnly"
+            :title="readOnly ? READONLY_HINT : undefined"
+            @click="openImportForm"
+          >＋ 파일에서 가져오기</button>
+          <button
+            type="button"
+            class="add"
+            :disabled="readOnly"
+            :title="readOnly ? READONLY_HINT : undefined"
+            @click="openAddRoot"
+          >＋ 최상위 항목 추가</button>
+        </div>
+      </div>
 
       <WbsForm
         v-if="formOpen"
@@ -292,16 +305,17 @@ async function handleMove(itemId: number, input: WbsMoveInput) {
 </template>
 
 <style scoped>
+/*
+ * 프로젝트 선택과 툴바를 한 줄로 합친다 — 너무 좁아 한 줄에 안 들어가면 `flex-wrap`으로 두
+ * 줄로 접히게 둔다(넘쳐서 가로로 잘리는 것보다는 낫다). `gap`이 접힌 뒤 줄 사이 간격도
+ * 그대로 준다.
+ */
 .head {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 1rem;
   margin-bottom: 1rem;
-}
-
-h1 {
-  font-size: 1.4rem;
-  margin: 0;
 }
 
 .head-actions {
@@ -333,13 +347,18 @@ h1 {
   border-color: var(--border-input);
 }
 
+/*
+ * margin-bottom을 두지 않는다 — 이제 `.head`(위 flex row)의 아이템 중 하나라
+ * `align-items: center`로 다른 아이템(.head-actions)과 함께 세로 가운데 정렬돼야 한다.
+ * 여기 남겨 두면 마진 박스만 커져서 글자가 버튼 줄보다 위로 치우쳐 보인다. 줄 아래 여백은
+ * `.head`의 margin-bottom이 담당한다.
+ */
 .project-picker {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   font-size: 0.85rem;
   color: var(--text-muted);
-  margin-bottom: 1.25rem;
 }
 
 .project-picker select {
