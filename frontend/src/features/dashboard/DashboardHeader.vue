@@ -12,28 +12,36 @@ import { selectedProjectId } from '../../stores/projectSelection'
  * <p>기준일은 언제나 서버가 정한 값(`referenceDate`)이다 — 클라이언트 시계를 쓰면 오래 열어둔
  * 탭에서 카드의 판정과 화면에 적힌 날짜가 어긋난다.
  */
+type Tab = 'summary' | 'progress' | 'workload'
+
 const props = defineProps<{
   projects: Project[]
-  tab: 'summary' | 'progress'
+  tab: Tab
   referenceDate: string | null
   loading: boolean
 }>()
 
 const emit = defineEmits<{
-  'update:tab': ['summary' | 'progress']
+  'update:tab': [Tab]
   refresh: []
 }>()
 
+/** 탭이 화면에 보이는 순서 그대로다 — 방향키 순환과 렌더링 순서가 어긋나면 왼쪽으로 갔는데
+ * 시각적으로 오른쪽 탭이 선택되는 것처럼 보인다. */
+const TAB_ORDER: Tab[] = ['summary', 'progress', 'workload']
+
 /**
- * ARIA Tabs의 방향키 이동(WAI-ARIA APG) — 탭이 둘뿐이라 어느 방향이든 서로를 오간다. 선택과
- * 포커스를 함께 옮기는 "automatic activation"을 쓴다: 탭이 둘뿐이라 골라만 두고 다른 키(Enter
- * 등)로 다시 확정하게 하면 손이 하나 더 간다. 패널은 `DashboardView`가 그리므로 `id`만 여기서
- * 정해 그 쪽의 `aria-labelledby`/`id`와 맞춘다.
+ * ARIA Tabs의 방향키 이동(WAI-ARIA APG) — `TAB_ORDER`를 순환한다(둘일 때도 셋일 때도 같은
+ * 코드로 동작한다). 선택과 포커스를 함께 옮기는 "automatic activation"을 쓴다: 골라만 두고
+ * 다른 키(Enter 등)로 다시 확정하게 하면 손이 하나 더 간다. 패널은 `DashboardView`가 그리므로
+ * `id`만 여기서 정해 그 쪽의 `aria-labelledby`/`id`와 맞춘다.
  */
 function onTabsKeydown(event: KeyboardEvent) {
   if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
   event.preventDefault()
-  const next = props.tab === 'summary' ? 'progress' : 'summary'
+  const currentIndex = TAB_ORDER.indexOf(props.tab)
+  const delta = event.key === 'ArrowRight' ? 1 : -1
+  const next = TAB_ORDER[(currentIndex + delta + TAB_ORDER.length) % TAB_ORDER.length]
   emit('update:tab', next)
   nextTick(() => {
     document.getElementById(`dashboard-tab-${next}`)?.focus()
@@ -59,7 +67,7 @@ function onTabsKeydown(event: KeyboardEvent) {
       </label>
       <span v-if="referenceDate" class="reference num">기준일 {{ referenceDate }}</span>
       <button
-        v-if="tab === 'summary'"
+        v-if="tab !== 'progress'"
         type="button"
         class="refresh"
         :disabled="loading"
@@ -67,7 +75,7 @@ function onTabsKeydown(event: KeyboardEvent) {
       >새로고침</button>
     </div>
 
-    <!-- 탭은 링크가 아니라 같은 화면의 두 면이라 버튼으로 둔다. -->
+    <!-- 탭은 링크가 아니라 같은 화면의 세 면이라 버튼으로 둔다. -->
     <div class="tabs" role="tablist" @keydown="onTabsKeydown">
       <button
         id="dashboard-tab-summary"
@@ -89,6 +97,16 @@ function onTabsKeydown(event: KeyboardEvent) {
         :class="{ active: tab === 'progress' }"
         @click="emit('update:tab', 'progress')"
       >진척</button>
+      <button
+        id="dashboard-tab-workload"
+        type="button"
+        role="tab"
+        :aria-selected="tab === 'workload'"
+        :tabindex="tab === 'workload' ? 0 : -1"
+        aria-controls="dashboard-panel-workload"
+        :class="{ active: tab === 'workload' }"
+        @click="emit('update:tab', 'workload')"
+      >부하</button>
     </div>
   </header>
 </template>

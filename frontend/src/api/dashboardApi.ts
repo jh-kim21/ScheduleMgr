@@ -25,6 +25,7 @@ export interface Dashboard {
   control: ControlCard
   scope: ScopeComparison
   gaps: DataGap[]
+  workload: WorkloadCard
 }
 
 export interface DashboardProject {
@@ -174,6 +175,34 @@ export interface DataGap {
   count: number
   wbsItemIds: number[]
   backlogItemIds: number[]
+}
+
+/**
+ * 한 사람의 부하 (workload-balance 지시서). 가용 공수가 없어(1-1-a) 절대 판정은 할 수 없고,
+ * 이 프로젝트 안에서의 상대 비교만 가능하다 — 다른 프로젝트와 합산하면 거짓이 된다(1-1-b).
+ *
+ * <p>`storyPoints`가 `null`인 것과 `0`인 것은 다른 사실이다: `null`은 담당 Story·Bug가 아예
+ * 없거나 있어도 포인트가 안 적힌 경우, `0`은 포인트 합이 실제로 0인 경우다.
+ */
+export interface MemberLoad {
+  memberId: number
+  memberName: string
+  /** 기준일에 진행 중인 담당(R, 상속 포함) 업무 수 — 주 지표. */
+  activeCount: number
+  delayedCount: number
+  atRiskCount: number
+  openStoryCount: number
+  storyPoints: number | null
+  openRaidCount: number
+}
+
+/**
+ * 전원이 실려 온다(5명으로 자르지 않는다) — 요약 카드가 상위 5명만 추리고, 부하 탭이 전부 그린다.
+ * `members`는 이미 activeCount 내림차순 · 동점은 이름 순으로 정렬돼 온다.
+ */
+export interface WorkloadCard {
+  members: MemberLoad[]
+  unassignedActiveCount: number
 }
 
 export const dashboardApi = {

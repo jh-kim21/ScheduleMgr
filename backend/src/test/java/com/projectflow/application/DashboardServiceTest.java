@@ -62,7 +62,7 @@ class DashboardServiceTest {
         raidService = mock(RaidService.class);
 
         service = new DashboardService(projectRepository, progressService, ganttService,
-                sprintService, backlogService, raciService, raidService);
+                sprintService, backlogService, raciService, raidService, new WorkloadService());
 
         Project project = new Project("테스트 프로젝트", null, ProjectStatus.IN_PROGRESS,
                 LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31));

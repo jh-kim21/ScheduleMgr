@@ -5,6 +5,7 @@ import RiskCard from './RiskCard.vue'
 import SprintCard from './SprintCard.vue'
 import VelocityCard from './VelocityCard.vue'
 import BaselineCard from './BaselineCard.vue'
+import WorkloadCard from './WorkloadCard.vue'
 import { EMPTY_DASHBOARD, FULL_DASHBOARD } from './dashboardFixture'
 
 /**
@@ -106,5 +107,55 @@ describe('SprintCard — 차단 항목 안의 2단 중첩 RAID 목록', () => {
     }
     const wrapper = mount(SprintCard, { props: { data }, global: { stubs } })
     expect(wrapper.find('.refs').exists()).toBe(false)
+  })
+})
+
+describe('WorkloadCard — 절대 임계값 없이 상위 5명 + 각주', () => {
+  it('6명 중 상위 5명만 그린다 — FULL_DASHBOARD.workload.members 는 6명이다', () => {
+    const wrapper = mount(WorkloadCard, { props: { data: FULL_DASHBOARD }, global: { stubs } })
+    expect(wrapper.text()).toContain('김민준')
+    expect(wrapper.text()).not.toContain('한지호') // 6번째, top-5에서 잘린다
+  })
+
+  it('"이 프로젝트 안에서의 비교입니다" 각주는 항상 있다', () => {
+    const wrapper = mount(WorkloadCard, { props: { data: FULL_DASHBOARD }, global: { stubs } })
+    expect(wrapper.text()).toContain('이 프로젝트 안에서의 비교입니다')
+  })
+
+  it('미배정 진행 업무가 있으면 각주에 건수를 적는다', () => {
+    const wrapper = mount(WorkloadCard, { props: { data: FULL_DASHBOARD }, global: { stubs } })
+    expect(wrapper.text()).toContain('담당자 미지정 진행 업무 2건')
+  })
+
+  it('미배정 진행 업무가 0이면 그 각주를 아예 만들지 않는다', () => {
+    const data = { ...FULL_DASHBOARD, workload: { ...FULL_DASHBOARD.workload, unassignedActiveCount: 0 } }
+    const wrapper = mount(WorkloadCard, { props: { data }, global: { stubs } })
+    expect(wrapper.text()).not.toContain('담당자 미지정')
+  })
+
+  it('지연이 있는 사람은 지연 배지가, 지연 없이 위험만 있으면 위험 배지가 뜬다', () => {
+    const wrapper = mount(WorkloadCard, { props: { data: FULL_DASHBOARD }, global: { stubs } })
+    expect(wrapper.text()).toContain('지연 2') // 김민준: delayedCount 2
+    expect(wrapper.text()).toContain('위험 1') // 이서연: delayedCount 0, atRiskCount 1
+  })
+
+  it('구성원이 0명이면 오류 없이 "구성원이 없습니다"로 조용히 빈다', () => {
+    const wrapper = mount(WorkloadCard, { props: { data: EMPTY_DASHBOARD }, global: { stubs } })
+    expect(wrapper.text()).toContain('구성원이 없습니다')
+    expect(wrapper.find('.barlist').exists()).toBe(false)
+  })
+
+  it('전원 activeCount가 0이어도(최댓값 0) NaN 없이 그린다', () => {
+    const data = {
+      ...FULL_DASHBOARD,
+      workload: {
+        unassignedActiveCount: 0,
+        members: [
+          { memberId: 1, memberName: '가', activeCount: 0, delayedCount: 0, atRiskCount: 0, openStoryCount: 0, storyPoints: null, openRaidCount: 0 },
+        ],
+      },
+    }
+    const wrapper = mount(WorkloadCard, { props: { data }, global: { stubs } })
+    expect(wrapper.text()).not.toContain('NaN')
   })
 })

@@ -11,6 +11,8 @@ import RiskCard from '../features/dashboard/RiskCard.vue'
 import SprintCard from '../features/dashboard/SprintCard.vue'
 import TimelineCard from '../features/dashboard/TimelineCard.vue'
 import VelocityCard from '../features/dashboard/VelocityCard.vue'
+import WorkloadCard from '../features/dashboard/WorkloadCard.vue'
+import WorkloadPanel from '../features/dashboard/WorkloadPanel.vue'
 import { useDashboard } from '../features/dashboard/useDashboard'
 import ProgressPanel from '../features/progress/ProgressPanel.vue'
 import { useProjects } from '../features/projects/useProjects'
@@ -27,31 +29,40 @@ const route = useRoute()
 const router = useRouter()
 
 /**
- * 요약과 진척은 한 화면의 두 면이다 (설계서 §2.2의 메뉴 일곱 개를 그대로 두려고 합쳤다). 요약은
+ * 요약·진척·부하는 한 화면의 세 면이다 (설계서 §2.2의 메뉴 일곱 개를 그대로 두려고 합쳤다). 요약은
  * 읽기 전용 집계이고, 진척은 그 숫자의 근거를 입력하는 곳이다 — 가중치·체크포인트·기준선·스냅샷.
+ * 부하도 읽기 전용이라 요약과 같은 `data`를 그대로 읽는다(workload-balance 지시서 2-3·3-4).
  * 탭이 쿼리에 있어야 다른 화면에서 "진척으로 가라"고 링크할 수 있다(/progress 가 이리로 온다).
  */
-type Tab = 'summary' | 'progress'
-const tab = ref<Tab>(route.query.tab === 'progress' ? 'progress' : 'summary')
+type Tab = 'summary' | 'progress' | 'workload'
+
+function tabFromQuery(value: unknown): Tab {
+  if (value === 'progress') return 'progress'
+  if (value === 'workload') return 'workload'
+  return 'summary'
+}
+
+const tab = ref<Tab>(tabFromQuery(route.query.tab))
 
 function selectTab(next: Tab) {
   if (tab.value === next) return
   tab.value = next
-  router.replace({ path: '/dashboard', query: next === 'progress' ? { tab: 'progress' } : {} })
+  router.replace({ path: '/dashboard', query: next === 'summary' ? {} : { tab: next } })
 }
 
 // 주소로 직접 들어오거나 뒤로 가기를 했을 때 탭을 맞춘다.
 watch(
   () => route.query.tab,
   (value) => {
-    tab.value = value === 'progress' ? 'progress' : 'summary'
+    tab.value = tabFromQuery(value)
   },
 )
 
 /**
  * 진척 탭에서 기준선을 승인하거나 체크포인트를 바꾸면 요약의 숫자가 낡는다. 탭은 같은 컴포넌트
  * 안이라 마운트가 다시 일어나지 않으므로, 요약으로 돌아올 때 다시 확인한다. 캐시 키가 그대로면
- * ensureLoaded 는 아무것도 하지 않는다.
+ * ensureLoaded 는 아무것도 하지 않는다. 부하 탭은 요약과 같은 `data`를 읽을 뿐 자기 쓰기가 없어
+ * 여기서 무효화를 만들지 않는다.
  */
 watch(tab, (value) => {
   const id = selectedProjectId.value
@@ -109,6 +120,18 @@ function refresh() {
       />
 
       <div
+        v-else-if="tab === 'workload'"
+        id="dashboard-panel-workload"
+        role="tabpanel"
+        aria-labelledby="dashboard-tab-workload"
+        tabindex="0"
+      >
+        <p v-if="error" class="error" role="alert">{{ error }}</p>
+        <p v-if="loading" class="loading" aria-live="polite">불러오는 중…</p>
+        <WorkloadPanel v-else-if="data" :data="data" />
+      </div>
+
+      <div
         v-else
         id="dashboard-panel-summary"
         role="tabpanel"
@@ -134,6 +157,8 @@ function refresh() {
             <RiskCard class="span-5" :data="data" />
             <BaselineCard class="span-7" :data="data" />
             <RaciCard class="span-5" :data="data" />
+            <!-- 막대가 다섯 줄까지 늘어날 수 있어 7:5 짝을 짓지 않고 전체 폭을 준다(VelocityCard와 같은 이유). -->
+            <WorkloadCard class="span-12" :data="data" />
             <VelocityCard class="span-12" :data="data" />
             <GapsCard v-if="data.gaps.length > 0" class="span-12" :data="data" />
           </div>

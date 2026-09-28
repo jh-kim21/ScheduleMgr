@@ -14,6 +14,9 @@ import type { Tone } from './icons'
 /** 같은 화면의 진척 탭. 카드에서 숫자의 근거를 고치러 갈 때 쓴다. */
 export const PROGRESS_TAB = { path: '/dashboard', query: { tab: 'progress' } }
 
+/** 같은 화면의 부하 탭. 요약 카드가 상위 5명만 보여주고 잘린 나머지를 보러 갈 때 쓴다. */
+export const WORKLOAD_TAB = { path: '/dashboard', query: { tab: 'workload' } }
+
 export function taskRoute(task: TaskRef) {
   return { path: '/wbs', query: { focus: task.wbsItemId } }
 }
@@ -90,6 +93,8 @@ export interface BarListItem {
   /** 직접 계산한 비율. `null` 은 산정 전이라 막대를 그리지 않는다. */
   percent?: number | null
   tone?: Tone
+  /** 값 옆에 붙는 작은 배지(선택). 지금은 WorkloadCard의 지연 배지가 유일한 사용처다. */
+  badge?: { label: string; tone: 'danger' | 'warn' } | null
 }
 
 export function barPercent(item: BarListItem): number | null {

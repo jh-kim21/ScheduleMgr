@@ -13,6 +13,7 @@ import com.projectflow.application.dto.DashboardResponse.RaidRef;
 import com.projectflow.application.dto.DashboardResponse.ScheduleCard;
 import com.projectflow.application.dto.DashboardResponse.SprintVelocity;
 import com.projectflow.application.dto.DashboardResponse.TaskRef;
+import com.projectflow.application.dto.DashboardResponse.WorkloadCard;
 import com.projectflow.application.dto.DashboardResponse.WorkPackageCard;
 import com.projectflow.application.dto.GanttResponse;
 import com.projectflow.application.dto.GanttResponse.GanttTaskResponse;
@@ -33,6 +34,8 @@ import com.projectflow.domain.RaidLevel;
 import com.projectflow.domain.RaidStatus;
 import com.projectflow.domain.RaidType;
 import com.projectflow.domain.SprintStatus;
+import com.projectflow.domain.WorkloadAssessor;
+import com.projectflow.domain.WorkloadAssessor.MemberLoad;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -69,6 +72,7 @@ public class DashboardService {
     private final BacklogService backlogService;
     private final RaciService raciService;
     private final RaidService raidService;
+    private final WorkloadService workloadService;
 
     public DashboardService(ProjectRepository projectRepository,
                              ProgressService progressService,
@@ -76,7 +80,8 @@ public class DashboardService {
                              SprintService sprintService,
                              BacklogService backlogService,
                              RaciService raciService,
-                             RaidService raidService) {
+                             RaidService raidService,
+                             WorkloadService workloadService) {
         this.projectRepository = projectRepository;
         this.progressService = progressService;
         this.ganttService = ganttService;
@@ -84,6 +89,7 @@ public class DashboardService {
         this.backlogService = backlogService;
         this.raciService = raciService;
         this.raidService = raidService;
+        this.workloadService = workloadService;
     }
 
     public DashboardResponse getDashboard(Long projectId) {
@@ -120,8 +126,21 @@ public class DashboardService {
                 workPackageCard(progress),
                 controlCard(raci, raid),
                 progress.scope(),
-                gaps(progress, backlog)
+                gaps(progress, backlog),
+                workloadCard(raci, gantt, backlog, raid)
         );
+    }
+
+    /**
+     * 계산은 {@code WorkloadService}가, 여기서는 배치만 한다 — 이 파일 머리의 "아무것도 계산하지
+     * 않는다" 규칙 그대로다. 정렬({@code rank})도 판정이라 도메인({@code WorkloadAssessor})에 둔다.
+     */
+    private WorkloadCard workloadCard(RaciMatrixResponse raci, GanttResponse gantt,
+                                       BacklogResponse backlog, RaidLogResponse raid) {
+        List<MemberLoad> members = WorkloadAssessor.rank(
+                workloadService.summarize(raci, gantt, backlog, raid));
+        int unassignedActive = workloadService.unassignedActiveCount(raci, gantt);
+        return new WorkloadCard(members, unassignedActive);
     }
 
     private ProjectCard projectCard(Project project, GanttResponse gantt) {

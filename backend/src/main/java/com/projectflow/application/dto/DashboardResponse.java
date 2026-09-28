@@ -6,6 +6,7 @@ import com.projectflow.application.dto.ProgressResponse.ScopeComparison;
 import com.projectflow.domain.ExecutionMode;
 import com.projectflow.domain.ProjectStatus;
 import com.projectflow.domain.SprintStatus;
+import com.projectflow.domain.WorkloadAssessor.MemberLoad;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -39,7 +40,8 @@ public record DashboardResponse(
         WorkPackageCard workPackages,
         ControlCard control,
         ScopeComparison scope,
-        List<DataGap> gaps
+        List<DataGap> gaps,
+        WorkloadCard workload
 ) {
     /**
      * @param planEnd     the latest planned end across the WBS
@@ -178,6 +180,20 @@ public record DashboardResponse(
             List<RaidRef> highExposure,
             List<RaidRef> overdue
     ) {
+    }
+
+    /**
+     * 구성원별 부하 (지시서 workload-balance). 계산은 {@code WorkloadService}가 하고, 이 카드는
+     * 그 결과를 실어 나를 뿐이다({@code DashboardService}는 아무것도 계산하지 않는다는 규칙 그대로).
+     *
+     * @param members {@code WorkloadAssessor.rank()}로 활성 업무 수 내림차순 정렬한 전원.
+     *                {@code LIST_LIMIT}을 적용하지 않는다 — 요약 카드가 상위 5명만 그리고, 탭이
+     *                같은 배열을 전부 그린다(지시서 2-4)
+     * @param unassignedActiveCount 진행 중인 leaf 중 담당(R)이 상속까지 봐도 없는 것의 수.
+     *                {@link ControlCard#missingResponsibleCount()}와 다른 모집단이다 — 그건
+     *                프로젝트의 leaf 전체에서 R 누락을 세고, 이건 오늘 진행 중인 leaf만 본다
+     */
+    public record WorkloadCard(List<MemberLoad> members, int unassignedActiveCount) {
     }
 
     public record TaskRef(

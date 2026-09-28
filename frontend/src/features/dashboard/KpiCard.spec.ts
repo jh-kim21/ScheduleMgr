@@ -86,4 +86,28 @@ describe('BarList', () => {
     expect(wrapper.text()).not.toContain('NaN')
     expect(wrapper.find('.fill').exists()).toBe(false)
   })
+
+  /*
+   * 배지 트랙(WorkloadCard가 쓰는 5번째 그리드 열)은 목록 전체에 배지가 하나도 없으면 아예
+   * 만들지 않는다 — happy-dom에는 레이아웃 엔진이 없어 막대 폭 자체는 여기서 잴 수 없지만,
+   * 그 폭을 좌우하는 `has-badge` 클래스가 배지 유무에 정확히 따라붙는지는 고정할 수 있다.
+   */
+  it('배지가 있는 항목이 하나도 없으면 has-badge 클래스를 붙이지 않는다 (RaciCard 등 기존 카드가 이 경로다)', () => {
+    const wrapper = mount(BarList, {
+      props: { items: [{ key: 'a', label: '담당자 없음', value: 1, total: 3 }] },
+    })
+    expect(wrapper.find('.barlist').classes()).not.toContain('has-badge')
+  })
+
+  it('하나라도 배지가 있으면 has-badge 클래스를 붙인다', () => {
+    const wrapper = mount(BarList, {
+      props: {
+        items: [
+          { key: 'a', label: '김민준', value: 5, total: 5, badge: { label: '지연 2', tone: 'danger' } },
+          { key: 'b', label: '이서연', value: 3, total: 5 },
+        ],
+      },
+    })
+    expect(wrapper.find('.barlist').classes()).toContain('has-badge')
+  })
 })

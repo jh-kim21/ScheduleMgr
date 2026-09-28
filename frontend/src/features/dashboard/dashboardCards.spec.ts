@@ -10,9 +10,10 @@ import RiskCard from './RiskCard.vue'
 import SprintCard from './SprintCard.vue'
 import TimelineCard from './TimelineCard.vue'
 import VelocityCard from './VelocityCard.vue'
+import WorkloadCard from './WorkloadCard.vue'
 import { EMPTY_DASHBOARD, FULL_DASHBOARD } from './dashboardFixture'
 
-const cards = { KpiStrip, ProgressCard, SprintCard, TimelineCard, RiskCard, BaselineCard, RaciCard, VelocityCard, GapsCard }
+const cards = { KpiStrip, ProgressCard, SprintCard, TimelineCard, RiskCard, BaselineCard, RaciCard, VelocityCard, GapsCard, WorkloadCard }
 const stubs = { RouterLink: { template: '<a><slot /></a>' } }
 
 describe('카드 아홉 장이 두 극단에서 모두 그려진다', () => {

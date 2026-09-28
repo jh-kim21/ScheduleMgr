@@ -25,6 +25,7 @@ export const EMPTY_DASHBOARD: Dashboard = {
   control: { raciIssueCount: 0, missingAccountableCount: 0, missingResponsibleCount: 0, multipleAccountableCount: 0, openIssueCount: 0, highExposureCount: 0, overdueCount: 0, openIssues: [], highExposure: [], overdue: [] },
   scope: { hasBaseline: false, baselineItemCount: 0, currentItemCount: 0, added: [], removed: [], weightChanged: [] },
   gaps: [],
+  workload: { members: [], unassignedActiveCount: 0 },
 }
 
 /** 모든 카드가 값을 갖는 프로젝트. 다른 spec 에서도 가져다 쓰라고 내보낸다. */
@@ -53,4 +54,15 @@ export const FULL_DASHBOARD: Dashboard = {
     overdue: [{ raidItemId: 3, type: 'DEPENDENCY', title: 'PG 계약', ownerName: '이', detail: '3일 초과' }] },
   scope: { hasBaseline: true, baselineItemCount: 42, currentItemCount: 43, added: ['5.1'], removed: [], weightChanged: ['1.2'] },
   gaps: [{ kind: 'EXECUTION_MODE_UNSPECIFIED', label: '실행 방식 미지정', count: 1, wbsItemIds: [5], backlogItemIds: [] }],
+  workload: {
+    unassignedActiveCount: 2,
+    members: [
+      { memberId: 1, memberName: '김민준', activeCount: 5, delayedCount: 2, atRiskCount: 1, openStoryCount: 4, storyPoints: 13, openRaidCount: 1 },
+      { memberId: 2, memberName: '이서연', activeCount: 3, delayedCount: 0, atRiskCount: 1, openStoryCount: 2, storyPoints: 5, openRaidCount: 0 },
+      { memberId: 3, memberName: '박도윤', activeCount: 3, delayedCount: 0, atRiskCount: 0, openStoryCount: 0, storyPoints: null, openRaidCount: 2 },
+      { memberId: 4, memberName: '최하은', activeCount: 1, delayedCount: 0, atRiskCount: 0, openStoryCount: 1, storyPoints: 0, openRaidCount: 0 },
+      { memberId: 5, memberName: '정우진', activeCount: 0, delayedCount: 0, atRiskCount: 0, openStoryCount: 0, storyPoints: null, openRaidCount: 0 },
+      { memberId: 6, memberName: '한지호', activeCount: 0, delayedCount: 0, atRiskCount: 0, openStoryCount: 0, storyPoints: null, openRaidCount: 0 },
+    ],
+  },
 }

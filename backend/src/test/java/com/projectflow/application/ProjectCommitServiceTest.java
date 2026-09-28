@@ -119,7 +119,8 @@ class ProjectCommitServiceTest {
         // 섹션을 이 서비스와 똑같은 asOf로 호출하므로(§3.5), 목(mock)으로 갈음하면 그 propagation을
         // 검증할 수 없다.
         DashboardService dashboardService = new DashboardService(projectRepository, progressService,
-                ganttService, sprintService, backlogService, raciService, raidService);
+                ganttService, sprintService, backlogService, raciService, raidService,
+                new WorkloadService());
 
         service = new ProjectCommitService(fakeCommitRepository(), projectRepository, exportService,
                 importService, wbsService, ganttService, memberService, raciService, raidService,
@@ -284,7 +285,7 @@ class ProjectCommitServiceTest {
                 importService, wbsService, ganttService, memberService, raciService, raidService,
                 backlogService, sprintService, progressService, progressBasisService,
                 new DashboardService(projectRepository, progressService, ganttService, sprintService,
-                        backlogService, raciService, raidService),
+                        backlogService, raciService, raidService, new WorkloadService()),
                 objectMapper(), maxBytes);
     }
 
