@@ -62,13 +62,19 @@ const PIN_SEQUENCE: Record<Exclude<PinLevel, 'none'>, WbsColumnKey[]> = {
   name: ['code', 'name'],
 }
 
+/** `보통 / 좁게` — 표 행의 밀도(지시서 `wbs-tree-density` 3-A). */
+export type WbsDensity = 'normal' | 'dense'
+
+const DENSITIES = new Set<string>(['normal', 'dense'])
+
 export interface WbsColumnPrefs {
   hidden: WbsColumnKey[]
   pin: PinLevel
+  density: WbsDensity
 }
 
 export function defaultPrefs(): WbsColumnPrefs {
-  return { hidden: [], pin: 'none' }
+  return { hidden: [], pin: 'none', density: 'normal' }
 }
 
 /** 참조를 공유하면 호출한 쪽이 실수로 고치는 순간 다른 곳에도 번진다 — 값을 쓸 때는 `defaultPrefs()`를 쓴다. */
@@ -108,6 +114,9 @@ export function normalizePrefs(raw: unknown): WbsColumnPrefs {
   const pin = typeof candidate.pin === 'string' && PIN_LEVELS.has(candidate.pin)
     ? (candidate.pin as PinLevel)
     : 'none'
+  const density = typeof candidate.density === 'string' && DENSITIES.has(candidate.density)
+    ? (candidate.density as WbsDensity)
+    : 'normal'
 
-  return { hidden, pin }
+  return { hidden, pin, density }
 }

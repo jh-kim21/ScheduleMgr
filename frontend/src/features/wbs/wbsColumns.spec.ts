@@ -10,7 +10,7 @@ import {
 
 describe('visibleColumns', () => {
   it('업무명은 hidden에 넣어도 표시된다 — 2-2를 고정한다', () => {
-    const prefs: WbsColumnPrefs = { hidden: ['name', 'code'], pin: 'none' }
+    const prefs: WbsColumnPrefs = { hidden: ['name', 'code'], pin: 'none', density: 'normal' }
 
     const keys = visibleColumns(prefs).map((column) => column.key)
 
@@ -27,19 +27,19 @@ describe('visibleColumns', () => {
 
 describe('pinnedSequence', () => {
   it("pin: 'none'이면 빈 배열이다", () => {
-    expect(pinnedSequence({ hidden: [], pin: 'none' })).toEqual([])
+    expect(pinnedSequence({ hidden: [], pin: 'none', density: 'normal' })).toEqual([])
   })
 
   it("pin: 'code'면 code만 있다", () => {
-    expect(pinnedSequence({ hidden: [], pin: 'code' })).toEqual(['code'])
+    expect(pinnedSequence({ hidden: [], pin: 'code', density: 'normal' })).toEqual(['code'])
   })
 
   it("pin: 'name'이면 code, name 순서다", () => {
-    expect(pinnedSequence({ hidden: [], pin: 'name' })).toEqual(['code', 'name'])
+    expect(pinnedSequence({ hidden: [], pin: 'name', density: 'normal' })).toEqual(['code', 'name'])
   })
 
   it('code를 숨긴 채 pin: \'name\'이면 name만 남는다 — 숨긴 열은 고정 순서에서 빠진다', () => {
-    expect(pinnedSequence({ hidden: ['code'], pin: 'name' })).toEqual(['name'])
+    expect(pinnedSequence({ hidden: ['code'], pin: 'name', density: 'normal' })).toEqual(['name'])
   })
 })
 
@@ -74,14 +74,48 @@ describe('normalizePrefs', () => {
     expect(normalizePrefs({ hidden: ['owner', 'notAColumn', 42], pin: 'none' })).toEqual({
       hidden: ['owner'],
       pin: 'none',
+      density: 'normal',
     })
   })
 
   it('잘못된 pin 값은 none으로 떨어진다', () => {
-    expect(normalizePrefs({ hidden: [], pin: 'everything' })).toEqual({ hidden: [], pin: 'none' })
+    expect(normalizePrefs({ hidden: [], pin: 'everything' })).toEqual({
+      hidden: [],
+      pin: 'none',
+      density: 'normal',
+    })
   })
 
   it('hidden이 배열이 아니면 빈 배열로 떨어진다', () => {
-    expect(normalizePrefs({ hidden: 'owner', pin: 'code' })).toEqual({ hidden: [], pin: 'code' })
+    expect(normalizePrefs({ hidden: 'owner', pin: 'code' })).toEqual({
+      hidden: [],
+      pin: 'code',
+      density: 'normal',
+    })
+  })
+
+  it('모르는 density는 normal로 떨어진다 — pin과 같은 방식이다', () => {
+    expect(normalizePrefs({ hidden: [], pin: 'none', density: 'huge' })).toEqual({
+      hidden: [],
+      pin: 'none',
+      density: 'normal',
+    })
+  })
+
+  it('기본값의 density는 normal이다', () => {
+    expect(DEFAULT_PREFS.density).toBe('normal')
+    expect(normalizePrefs({ hidden: [], pin: 'none' })).toEqual({
+      hidden: [],
+      pin: 'none',
+      density: 'normal',
+    })
+  })
+
+  it("density: 'dense'는 그대로 보존된다", () => {
+    expect(normalizePrefs({ hidden: [], pin: 'none', density: 'dense' })).toEqual({
+      hidden: [],
+      pin: 'none',
+      density: 'dense',
+    })
   })
 })

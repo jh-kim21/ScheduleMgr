@@ -203,7 +203,7 @@ describe('WbsTree — 열 표시/숨김·고정', () => {
   })
 
   it('열을 숨기면 thead th 수와 체크포인트 서랍의 colspan이 함께 줄어든다', async () => {
-    setColumnPrefs({ hidden: ['owner', 'tags'], pin: 'none' })
+    setColumnPrefs({ hidden: ['owner', 'tags'], pin: 'none', density: 'normal' })
     wrapper = render([node({ executionMode: 'WATERFALL' })])
 
     await wrapper.get('.cp-badge').trigger('click')
@@ -215,7 +215,7 @@ describe('WbsTree — 열 표시/숨김·고정', () => {
   })
 
   it('숨긴 열의 td가 사라진다 — 담당자를 숨기면 td.owner도 RACI 링크도 없다', () => {
-    setColumnPrefs({ hidden: ['owner'], pin: 'none' })
+    setColumnPrefs({ hidden: ['owner'], pin: 'none', density: 'normal' })
     wrapper = render([node({ responsible: [{ memberId: 2, name: '이승하' }] })])
 
     expect(wrapper.find('td.owner').exists()).toBe(false)
@@ -224,7 +224,7 @@ describe('WbsTree — 열 표시/숨김·고정', () => {
   })
 
   it('업무명은 hidden에 넣어도 남는다', () => {
-    setColumnPrefs({ hidden: ['name'], pin: 'none' })
+    setColumnPrefs({ hidden: ['name'], pin: 'none', density: 'normal' })
     wrapper = render([node({ name: '요구사항 정의' })])
 
     const cell = wrapper.get('td.col-name')
@@ -232,7 +232,7 @@ describe('WbsTree — 열 표시/숨김·고정', () => {
   })
 
   it('pin: "code" → th.code/td.code에 sticky가 붙고, 고정하지 않은 열(.mode)에는 없다', async () => {
-    setColumnPrefs({ hidden: [], pin: 'code' })
+    setColumnPrefs({ hidden: [], pin: 'code', density: 'normal' })
     wrapper = render([node()])
     // 오프셋은 onMounted의 measurePins()가 재는 값이라 한 tick 뒤에 반영된다.
     await nextTick()
@@ -244,7 +244,7 @@ describe('WbsTree — 열 표시/숨김·고정', () => {
   })
 
   it('pin: "name" → .code와 .col-name 둘 다 sticky다', async () => {
-    setColumnPrefs({ hidden: [], pin: 'name' })
+    setColumnPrefs({ hidden: [], pin: 'name', density: 'normal' })
     wrapper = render([node()])
     await nextTick()
 
@@ -255,7 +255,7 @@ describe('WbsTree — 열 표시/숨김·고정', () => {
   })
 
   it('WBS 코드를 숨긴 채 pin: "name" → .col-name이 sticky다', async () => {
-    setColumnPrefs({ hidden: ['code'], pin: 'name' })
+    setColumnPrefs({ hidden: ['code'], pin: 'name', density: 'normal' })
     wrapper = render([node()])
     await nextTick()
 
@@ -265,7 +265,7 @@ describe('WbsTree — 열 표시/숨김·고정', () => {
   })
 
   it('pin: "name"일 때 pinned-edge는 .col-name에만 붙는다 — 고정 영역의 끝이 하나여야 한다', async () => {
-    setColumnPrefs({ hidden: [], pin: 'name' })
+    setColumnPrefs({ hidden: [], pin: 'name', density: 'normal' })
     wrapper = render([node()])
     await nextTick()
 
@@ -280,7 +280,7 @@ describe('WbsTree — 열 표시/숨김·고정', () => {
     await nextTick()
     expect(wrapper.get<HTMLElement>('td.code').element.style.position).not.toBe('sticky')
 
-    setColumnPrefs({ hidden: [], pin: 'code' })
+    setColumnPrefs({ hidden: [], pin: 'code', density: 'normal' })
     // 세 번의 tick이 필요하다 — ① columnPrefs 변경 자체의 리렌더, ② 그 watch가 부른
     // nextTick(measure) 콜백이 실행되며 pinnedLeft를 채우는 시점, ③ pinnedLeft 변경이
     // 다시 트리거하는 리렌더(이때 비로소 DOM에 sticky가 반영된다).

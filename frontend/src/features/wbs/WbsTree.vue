@@ -336,7 +336,7 @@ function ancestorIds(nodes: WbsNode[], targetId: number): number[] {
 }
 
 const dragging = ref<WbsNode | null>(null)
-const dropTarget = ref<{ id: number | 'root'; placement: DropPlacement } | null>(null)
+const dropTarget = ref<{ id: number; placement: DropPlacement } | null>(null)
 
 /**
  * Persistent row selection — unlike `highlighted` above, this does not fade on its own. It stays
@@ -669,29 +669,18 @@ function onDrop(event: DragEvent, row: WbsRow) {
   onDragEnd()
 }
 
-function onDragOverRoot(event: DragEvent) {
-  if (!dragging.value) return
-  event.preventDefault()
-  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
-  dropTarget.value = { id: 'root', placement: 'inside' }
-}
-
-function onDropRoot(event: DragEvent) {
-  const dragged = dragging.value
-  if (!dragged) return
-  event.preventDefault()
-  emit('move', dragged.id, {
-    parentId: null,
-    position: resolveDropPosition(dragged.id, props.tree, props.tree.length, 'before'),
-  })
-  onDragEnd()
-}
-
 /**
  * 열 표시·숨김·고정(지시서 `wbs-tree-columns`). 판정 자체는 `wbsColumns.ts`가 답하고, 여기서는
  * `columnPrefs`(사람 단위로 하나, 프로젝트를 옮겨도 유지)를 그 판정에 흘려 넣기만 한다.
  */
 const columnSettingsOpen = ref(false)
+
+/**
+ * 도움말 토글(지시서 `wbs-tree-density` 3-C) — 드롭존을 지우면서 그 자리에 있던 설명문을
+ * 기본 접힘으로 옮긴다. 필터 중 안내(`legendText`)는 이 상태와 무관하게 항상 보인다(아래 템플릿) —
+ * 도움말이 아니라 "왜 드래그가 안 되는지"에 대한 답이기 때문이다.
+ */
+const helpOpen = ref(false)
 
 const visibleColumnKeys = computed(
   () => new Set(visibleColumns(columnPrefs.value).map((column) => column.key)),
@@ -879,6 +868,19 @@ function rowClass(row: WbsRow) {
         :aria-expanded="filterRowOpen"
         @click="filterRowOpen = !filterRowOpen"
       >필터</button>
+      <!--
+        드롭존을 지우면서 그 자리에 있던 안내문을 여기서 접어 둔다(지시서 `wbs-tree-density` 3-C).
+        선택·readOnly·필터와 무관하게 항상 활성이다 — 도움말도 읽기다.
+      -->
+      <button
+        type="button"
+        data-action="help"
+        class="help-toggle"
+        :class="{ active: helpOpen }"
+        :aria-expanded="helpOpen"
+        title="도움말"
+        @click="helpOpen = !helpOpen"
+      >?</button>
     </div>
 
     <!--
@@ -906,7 +908,11 @@ function rowClass(row: WbsRow) {
       <table
         class="wbs-tree"
         role="grid"
-        :class="{ 'pin-name': columnPrefs.pin === 'name', filtering }"
+        :class="{
+          'pin-name': columnPrefs.pin === 'name',
+          filtering,
+          dense: columnPrefs.density === 'dense',
+        }"
         :style="{ '--head-h': headHeightPx }"
       >
         <thead>
@@ -1249,21 +1255,24 @@ function rowClass(row: WbsRow) {
       </table>
     </div>
 
-    <div
-      v-if="!readOnly && !filtering"
-      class="root-dropzone"
-      :class="{ active: dropTarget?.id === 'root' }"
-      @dragover="onDragOverRoot"
-      @drop="onDropRoot"
-    >
-      여기로 끌어다 놓으면 최상위 항목이 됩니다
+    <!--
+      필터 중 안내는 도움말과 무관하게 항상 보인다(`legendText`) — 도움말이 아니라 "왜 드래그가
+      안 되는지"에 대한 답이기 때문이다. 도움말은 [?] 토글로 접혀 있고, 기본은 아무것도 그리지
+      않는다(드롭존이 하던 "여기로 끌어다 놓으면 최상위 항목이 됩니다" 안내를 여기로 옮겼다 —
+      지시서 `wbs-tree-density` 2-B).
+    -->
+    <p v-if="filtering" class="legend">{{ legendText }}</p>
+    <div v-else-if="helpOpen" class="legend help">
+      <p>
+        드래그: 다른 항목의 <strong>가운데</strong>에 놓으면 하위 항목이 되고, 위/아래
+        가장자리에 놓으면 같은 계층에서 순서만 바뀝니다.
+      </p>
+      <p>
+        최상위로 옮기기: <strong>내어쓰기(Alt+←)</strong>를 누르거나, 최상위 행의 위/아래
+        가장자리에 놓으세요.
+      </p>
+      <p>키보드: 위로·아래로·들여쓰기·내어쓰기 = Alt+↑ · Alt+↓ · Alt+→ · Alt+←</p>
     </div>
-
-    <p v-if="!filtering" class="legend">
-      행을 드래그해 순서를 바꾸거나 다른 항목의 <strong>가운데</strong>에 놓아 하위 항목으로 만들 수 있습니다.
-      위/아래 가장자리에 놓으면 같은 계층에서 순서만 바뀝니다.
-    </p>
-    <p v-else class="legend">{{ legendText }}</p>
     </div>
   </template>
 </template>
@@ -1289,6 +1298,50 @@ th {
   font-size: 0.8rem;
   color: var(--text-dim);
   font-weight: 600;
+}
+
+/*
+ * 행 밀도 "좁게"(지시서 `wbs-tree-density` 3-A) — padding·font-size만 줄인다. 위 th,td 규칙에
+ * 합치지 않는다: 그 규칙은 테두리·white-space·정렬도 들고 있어서, 합치면 밀도를 나중에 지울 때
+ * 나머지가 남는다. border-top(드롭 표시 자리)은 여기서 건드리지 않는다. padding은 th·td가 같은
+ * 값이라 함께 선언해도 안전하다.
+ */
+.wbs-tree.dense th,
+.wbs-tree.dense td {
+  padding: 0.3rem 0.5rem;
+}
+
+/*
+ * font-size는 th·td를 각자 따로 선언한다 — 합치지 않는다. 머리글(`th`)은 원래 본문(`td`)보다
+ * 이미 작고(0.8rem `:1297` vs 0.9rem `:1290`대), 좁게 모드에서도 그 관계가 유지돼야 한다. 하나로
+ * 합치면(`.wbs-tree.dense th, .wbs-tree.dense td { font-size: … }`) 둘이 같은 값을 받아 머리글이
+ * 본문보다 커지는 역전이 생긴다 — 실제로 그렇게 했다가 나왔던 결함이다. 이렇게 요소를 나눠 두면
+ * `.wbs-tree.dense th`와 `.wbs-tree.dense td`가 서로 다른 요소를 겨냥해 특이도가 같아도(둘 다
+ * (0,2,1)) 충돌하지 않는다 — "나중에 나와서 이기는" 순서 의존이 아니다. 값은 각자의 정상 크기에
+ * 본문과 같은 축소 비율(0.85/0.9)을 곱한 것이다.
+ */
+.wbs-tree.dense td {
+  font-size: 0.85rem;
+}
+
+.wbs-tree.dense th {
+  font-size: 0.76rem;
+}
+
+/*
+ * `.mode`·`.backlog`·`.owner`는 자기 font-size를 갖고 있다(각각 `:1579`·`:1594`·`:1738` — 본문보다
+ * 이미 작다). 세 클래스 선택자(`.wbs-tree.dense .mode` 특이도 (0,3,0))가 위 `.wbs-tree.dense th`/
+ * `td`(둘 다 (0,2,1))를 특이도로 이겨야 하고, 값도 새로 정하지 않으면 좁게 모드에서 이 세 칸만
+ * 커진다 — 각자의 값에 본문과 같은 비율(0.85/0.9)을 곱해 그대로 유지한다. `th`도 같은 클래스를
+ * 공유하므로(`<th class="mode">` 등) 함께 덮인다.
+ */
+.wbs-tree.dense .mode,
+.wbs-tree.dense .owner {
+  font-size: 0.78rem;
+}
+
+.wbs-tree.dense .backlog {
+  font-size: 0.76rem;
 }
 
 /*
@@ -1954,23 +2007,6 @@ tbody tr.checkpoint-row {
   overscroll-behavior: contain;
 }
 
-.root-dropzone {
-  flex: none;
-  margin-top: 0.75rem;
-  padding: 0.7rem;
-  border: 1px dashed var(--border-input);
-  border-radius: 8px;
-  text-align: center;
-  font-size: 0.8rem;
-  color: var(--text-faint);
-}
-
-.root-dropzone.active {
-  border-color: var(--accent);
-  background: var(--accent-weak);
-  color: var(--accent);
-}
-
 .empty {
   padding: 2.5rem 0;
   text-align: center;
@@ -1982,5 +2018,30 @@ tbody tr.checkpoint-row {
   margin-top: 0.75rem;
   font-size: 0.78rem;
   color: var(--text-faint);
+}
+
+/* `.legend.help`는 <p>가 세 개 든 <div>다(3-C) — 위 규칙의 margin-top은 그대로 두고 안쪽 줄만 좁힌다. */
+.legend.help {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.legend.help p {
+  margin: 0;
+}
+
+/*
+ * 도움말([?]) 토글 — 다른 버튼과 같은 `.tree-toolbar button` 모양을 그대로 쓰되, `margin-left: auto`로
+ * 툴바 오른쪽 끝에 붙인다(지시서 3-C "오른쪽 끝"). 셀렉터 자체가 폭·타깃 크기를 새로 정하지 않으므로
+ * 24×24px 최소 타깃은 이미 전역 규칙이 보장한다.
+ */
+.tree-toolbar button.help-toggle {
+  margin-left: auto;
+}
+
+.tree-toolbar button.help-toggle.active {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 </style>

@@ -24,10 +24,10 @@ describe('wbsColumnPrefs', () => {
     localStorage.clear()
   })
 
-  it('저장된 값이 없으면 기본값(hidden: [], pin: none)으로 뜬다', async () => {
+  it('저장된 값이 없으면 기본값(hidden: [], pin: none, density: normal)으로 뜬다', async () => {
     const { columnPrefs } = await freshModule()
 
-    expect(columnPrefs.value).toEqual({ hidden: [], pin: 'none' })
+    expect(columnPrefs.value).toEqual({ hidden: [], pin: 'none', density: 'normal' })
   })
 
   it('저장된 값을 정규화해 되돌린다', async () => {
@@ -35,28 +35,29 @@ describe('wbsColumnPrefs', () => {
 
     const { columnPrefs } = await freshModule()
 
-    expect(columnPrefs.value).toEqual({ hidden: ['owner'], pin: 'code' })
+    expect(columnPrefs.value).toEqual({ hidden: ['owner'], pin: 'code', density: 'normal' })
   })
 
   it('setColumnPrefs가 ref를 갱신하고 localStorage에 쓴다', async () => {
     const { columnPrefs, setColumnPrefs } = await freshModule()
 
-    setColumnPrefs({ hidden: ['tags'], pin: 'name' })
+    setColumnPrefs({ hidden: ['tags'], pin: 'name', density: 'dense' })
 
-    expect(columnPrefs.value).toEqual({ hidden: ['tags'], pin: 'name' })
+    expect(columnPrefs.value).toEqual({ hidden: ['tags'], pin: 'name', density: 'dense' })
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')).toEqual({
       hidden: ['tags'],
       pin: 'name',
+      density: 'dense',
     })
   })
 
   it('resetColumnPrefs가 ref를 기본값으로 되돌리고 저장소를 지운다', async () => {
     const { columnPrefs, setColumnPrefs, resetColumnPrefs } = await freshModule()
-    setColumnPrefs({ hidden: ['tags'], pin: 'name' })
+    setColumnPrefs({ hidden: ['tags'], pin: 'name', density: 'dense' })
 
     resetColumnPrefs()
 
-    expect(columnPrefs.value).toEqual({ hidden: [], pin: 'none' })
+    expect(columnPrefs.value).toEqual({ hidden: [], pin: 'none', density: 'normal' })
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull()
   })
 
@@ -67,7 +68,7 @@ describe('wbsColumnPrefs', () => {
 
     const { columnPrefs } = await freshModule()
 
-    expect(columnPrefs.value).toEqual({ hidden: [], pin: 'none' })
+    expect(columnPrefs.value).toEqual({ hidden: [], pin: 'none', density: 'normal' })
   })
 
   it('localStorage.setItem이 던져도 ref는 갱신된다 — 저장 실패가 화면을 막지 않는다', async () => {
@@ -76,7 +77,7 @@ describe('wbsColumnPrefs', () => {
       throw new Error('blocked')
     })
 
-    expect(() => setColumnPrefs({ hidden: ['tags'], pin: 'name' })).not.toThrow()
-    expect(columnPrefs.value).toEqual({ hidden: ['tags'], pin: 'name' })
+    expect(() => setColumnPrefs({ hidden: ['tags'], pin: 'name', density: 'dense' })).not.toThrow()
+    expect(columnPrefs.value).toEqual({ hidden: ['tags'], pin: 'name', density: 'dense' })
   })
 })

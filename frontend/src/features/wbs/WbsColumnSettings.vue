@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import ModalDialog from '../../components/ModalDialog.vue'
-import { WBS_COLUMNS, type PinLevel, type WbsColumnKey } from './wbsColumns'
+import { WBS_COLUMNS, type PinLevel, type WbsColumnKey, type WbsDensity } from './wbsColumns'
 import { columnPrefs, resetColumnPrefs, setColumnPrefs } from './wbsColumnPrefs'
 
 /**
@@ -30,6 +30,10 @@ function onToggle(key: WbsColumnKey, checked: boolean) {
 
 function onPin(pin: PinLevel) {
   setColumnPrefs({ ...columnPrefs.value, pin })
+}
+
+function onDensity(density: WbsDensity) {
+  setColumnPrefs({ ...columnPrefs.value, density })
 }
 </script>
 
@@ -93,6 +97,36 @@ function onPin(pin: PinLevel) {
                 @change="onPin('name')"
               />
               WBS + 업무명
+            </label>
+          </li>
+        </ul>
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>행 밀도</legend>
+        <ul class="pin-list">
+          <li>
+            <label>
+              <input
+                type="radio"
+                name="wbs-density"
+                value="normal"
+                :checked="columnPrefs.density === 'normal'"
+                @change="onDensity('normal')"
+              />
+              보통
+            </label>
+          </li>
+          <li>
+            <label>
+              <input
+                type="radio"
+                name="wbs-density"
+                value="dense"
+                :checked="columnPrefs.density === 'dense'"
+                @change="onDensity('dense')"
+              />
+              좁게 — 한 화면에 3~4행 더
             </label>
           </li>
         </ul>

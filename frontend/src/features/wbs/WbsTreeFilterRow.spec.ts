@@ -135,14 +135,13 @@ describe('WbsTree — 열별 값 필터', () => {
     expect(wrapper.get('tr[data-row-id="2"]').classes()).not.toContain('context')
   })
 
-  it('필터가 걸리면 draggable 행이 하나도 없고 root-dropzone이 사라진다', async () => {
+  it('필터가 걸리면 draggable 행이 하나도 없다', async () => {
     const design = node({ id: 1, code: '1', name: '설계', children: [] })
     const screen = node({ id: 2, parentId: 1, code: '1.1', name: '화면 설계' })
     wrapper = render([{ ...design, children: [screen] }])
 
-    // 필터 전: 드래그 가능하고 드롭존이 있다.
+    // 필터 전: 드래그 가능하다.
     expect(wrapper.findAll('tr[draggable="true"]').length).toBeGreaterThan(0)
-    expect(wrapper.find('.root-dropzone').exists()).toBe(true)
 
     await openFilterRow(wrapper)
     await wrapper
@@ -150,7 +149,6 @@ describe('WbsTree — 열별 값 필터', () => {
       .setValue('화면')
 
     expect(wrapper.findAll('tr[draggable="true"]')).toHaveLength(0)
-    expect(wrapper.find('.root-dropzone').exists()).toBe(false)
   })
 
   it('필터를 풀면 드래그가 돌아온다', async () => {
@@ -167,7 +165,6 @@ describe('WbsTree — 열별 값 필터', () => {
     await wrapper.get('[data-action="clear-filter"]').trigger('click')
 
     expect(wrapper.findAll('tr[draggable="true"]').length).toBeGreaterThan(0)
-    expect(wrapper.find('.root-dropzone').exists()).toBe(true)
   })
 
   it('접어 둔 조상 아래의 일치 행이 필터 중에는 보이고, 필터를 풀면 다시 접힌 상태로 돌아온다', async () => {
@@ -217,7 +214,7 @@ describe('WbsTree — 열별 값 필터', () => {
       '1',
     ])
 
-    setColumnPrefs({ hidden: ['mode'], pin: 'none' })
+    setColumnPrefs({ hidden: ['mode'], pin: 'none', density: 'normal' })
     await wrapper.vm.$nextTick()
 
     // 숨긴 열의 필터 칸은 그려지지 않는다.

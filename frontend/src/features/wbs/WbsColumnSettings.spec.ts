@@ -80,8 +80,8 @@ describe('WbsColumnSettings', () => {
     expect(columnPrefs.value.pin).toBe('name')
   })
 
-  it('[data-action="reset"] → 기본값(hidden: [], pin: "none")으로 돌아간다', async () => {
-    setColumnPrefs({ hidden: ['owner', 'tags'], pin: 'code' })
+  it('[data-action="reset"] → 기본값(hidden: [], pin: "none", density: "normal")으로 돌아간다', async () => {
+    setColumnPrefs({ hidden: ['owner', 'tags'], pin: 'code', density: 'dense' })
     wrapper = mount(WbsColumnSettings)
 
     const resetButton = document.body.querySelector<HTMLButtonElement>('button[data-action="reset"]')
@@ -90,7 +90,22 @@ describe('WbsColumnSettings', () => {
     resetButton!.click()
     await nextTick()
 
-    expect(columnPrefs.value).toEqual({ hidden: [], pin: 'none' })
+    expect(columnPrefs.value).toEqual({ hidden: [], pin: 'none', density: 'normal' })
+  })
+
+  it('밀도 라디오에서 "좁게"를 고르면 columnPrefs.density가 dense로 바뀐다', async () => {
+    wrapper = mount(WbsColumnSettings)
+
+    const radio = document.body.querySelector<HTMLInputElement>(
+      'input[type="radio"][name="wbs-density"][value="dense"]',
+    )
+    expect(radio).not.toBeNull()
+
+    radio!.checked = true
+    radio!.dispatchEvent(new Event('change'))
+    await nextTick()
+
+    expect(columnPrefs.value.density).toBe('dense')
   })
 
   it('[닫기]가 close를 emit 한다', async () => {
