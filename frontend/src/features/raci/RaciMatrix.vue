@@ -358,7 +358,14 @@ tr.summary .name {
 
 /* border·배경·font·cursor는 전역 기본과 같아 지웠다 — 아주 작은 정사각형(1.35rem)이라
    radius는 전역 --radius-md보다 작은 4px을 그대로 남긴다. */
+/*
+ * position: relative 는 아래 `button.letter::after`(히트 영역)의 기준이다. 전역
+ * `button { position: relative }`(style.css)에 맡기지 않고 여기 명시한다 — 이 클래스는
+ * 표의 <button> 과 범례의 <span> 이 함께 쓰는데, span 은 그 전역 규칙을 받지 못해
+ * ::after 가 초기 컨테이닝 블록으로 올라가 화면 전체를 덮고 모든 클릭을 먹었다.
+ */
 .letter {
+  position: relative;
   width: 1.35rem;
   height: 1.35rem;
   padding: 0;
@@ -372,9 +379,10 @@ tr.summary .name {
 /*
  * 히트 영역만 24×24px로 키운다(WCAG 2.5.8) — 시각 크기(1.35rem ≈ 21.6px)는 조밀한 격자를 위해
  * 그대로 둔다. 투명한 `::after`를 버튼 밖으로 살짝 넘치게 그려 클릭·탭 판정 영역만 넓힌다
- * (전역 상태 레이어는 `::before`를 쓰므로 겹치지 않는다).
+ * (전역 상태 레이어는 `::before`를 쓰므로 겹치지 않는다). `button`으로 한정한다 — 범례의
+ * 견본은 <span>이고 장식이라(`.legend .letter { cursor: default }`) 넓은 히트 영역이 필요 없다.
  */
-.letter::after {
+button.letter::after {
   content: '';
   position: absolute;
   inset: -0.075rem;
