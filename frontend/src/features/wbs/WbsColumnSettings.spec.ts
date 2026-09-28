@@ -7,7 +7,7 @@ import WbsColumnSettings from './WbsColumnSettings.vue'
 
 /**
  * `wbs-tree-columns` 지시서 3-3 — 열 설정 대화상자의 렌더링·상호작용을 고정한다. 판정 자체
- * (`visibleColumns`·`pinOffsets`·`normalizePrefs`)는 `wbsColumns.spec.ts`가 덮으므로, 여기서는
+ * (`visibleColumns`·`pinnedSequence`·`normalizePrefs`)는 `wbsColumns.spec.ts`가 덮으므로, 여기서는
  * 이 폼이 그 모델을 옳게 읽고 쓰는지만 본다.
  *
  * `ModalDialog` 기반이라 `<Teleport to="body">`로 렌더한다 — `wrapper.find(...)`로는 내용을 찾을

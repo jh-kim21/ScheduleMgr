@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_PREFS,
   normalizePrefs,
-  pinOffsets,
+  pinnedSequence,
   visibleColumns,
   WBS_COLUMNS,
   type WbsColumnPrefs,
@@ -25,21 +25,21 @@ describe('visibleColumns', () => {
   })
 })
 
-describe('pinOffsets', () => {
-  it("pin: 'none'이면 빈 객체다", () => {
-    expect(pinOffsets({ hidden: [], pin: 'none' })).toEqual({})
+describe('pinnedSequence', () => {
+  it("pin: 'none'이면 빈 배열이다", () => {
+    expect(pinnedSequence({ hidden: [], pin: 'none' })).toEqual([])
   })
 
-  it("pin: 'code'면 code만 0이다", () => {
-    expect(pinOffsets({ hidden: [], pin: 'code' })).toEqual({ code: 0 })
+  it("pin: 'code'면 code만 있다", () => {
+    expect(pinnedSequence({ hidden: [], pin: 'code' })).toEqual(['code'])
   })
 
-  it("pin: 'name'이면 code는 0, name은 code의 폭(5.5)만큼 밀린다", () => {
-    expect(pinOffsets({ hidden: [], pin: 'name' })).toEqual({ code: 0, name: 5.5 })
+  it("pin: 'name'이면 code, name 순서다", () => {
+    expect(pinnedSequence({ hidden: [], pin: 'name' })).toEqual(['code', 'name'])
   })
 
-  it('code를 숨긴 채 pin: \'name\'이면 name의 오프셋은 0이다 — 숨긴 열이 오프셋을 밀면 안 된다', () => {
-    expect(pinOffsets({ hidden: ['code'], pin: 'name' })).toEqual({ name: 0 })
+  it('code를 숨긴 채 pin: \'name\'이면 name만 남는다 — 숨긴 열은 고정 순서에서 빠진다', () => {
+    expect(pinnedSequence({ hidden: ['code'], pin: 'name' })).toEqual(['name'])
   })
 })
 

@@ -16,7 +16,7 @@ import {
   moveUpInput,
   outdentInput,
 } from './wbsMove'
-import { pinOffsets, visibleColumns, WBS_COLUMNS, type WbsColumnKey } from './wbsColumns'
+import { pinnedSequence, visibleColumns, WBS_COLUMNS, type WbsColumnKey } from './wbsColumns'
 import { columnPrefs } from './wbsColumnPrefs'
 import WbsColumnSettings from './WbsColumnSettings.vue'
 import {
@@ -253,6 +253,41 @@ const BOTTOM_GAP = 16
 const headRow = ref<HTMLElement | null>(null)
 const headHeight = ref<number | null>(null)
 
+/**
+ * 고정된 열의 left(px) — 지시서 `wbs-tree-pin-offset` 2-2. 선언한 CSS 폭(`content-box`)이나
+ * `table-layout: auto`의 제안 폭이 아니라 머리글 셀의 실제 렌더 폭을 누적한다. 측정 전(마운트 직후,
+ * 또는 `headRow`가 아직 없는 테스트 환경)에는 비어 있어 모든 폭이 0으로 읽힌다 — 실제 브라우저에서는
+ * `onMounted`의 첫 `measure()`가 페인트 전에 돌아 사실상 보이지 않고, 레이아웃이 없는 `happy-dom`
+ * 테스트는 `position: sticky`만 확인하므로 문제되지 않는다.
+ */
+const pinnedLeft = ref<Partial<Record<WbsColumnKey, number>>>({})
+
+function measurePins() {
+  const row = headRow.value
+  const sequence = pinnedSequence(columnPrefs.value)
+  if (!row || sequence.length === 0) {
+    pinnedLeft.value = {}
+    return
+  }
+  // 머리글 행만 재도 본문·필터 행 셀의 실제 폭과 같다 — 표 스펙상 같은 열의 폭은 모든 행에
+  // 걸쳐 하나로 계산된다(`table-layout: auto`가 폭을 정하는 단위 자체가 "열"이지 "셀"이 아니다).
+  // 머리글 셀은 visibleColumns 와 같은 순서·같은 개수다.
+  const keys = visibleColumns(columnPrefs.value).map((column) => column.key)
+  const widths = new Map<WbsColumnKey, number>()
+  Array.from(row.children).forEach((cell, index) => {
+    const key = keys[index]
+    if (key) widths.set(key, cell.getBoundingClientRect().width)
+  })
+
+  const next: Partial<Record<WbsColumnKey, number>> = {}
+  let cursor = 0
+  for (const key of sequence) {
+    next[key] = cursor
+    cursor += widths.get(key) ?? 0
+  }
+  pinnedLeft.value = next
+}
+
 function measure() {
   const el = pane.value
   if (!el) return
@@ -262,6 +297,7 @@ function measure() {
   if (headRow.value) {
     headHeight.value = headRow.value.getBoundingClientRect().height
   }
+  measurePins()
 }
 
 onMounted(() => {
@@ -277,6 +313,14 @@ watch(
 
 // 필터 행이 열리거나 닫히면 머리글 높이가 그대로여도 필터 행의 top 기준이 바뀔 수 있으므로 다시 잰다.
 watch(filterRowOpen, () => nextTick(measure))
+
+// 열 표시·숨김·고정을 바꾸면 오프셋이 즉시 따라와야 한다. `nextTick`이 필수다 — pin: 'name'으로
+// 바꾸면 `.pin-name` 클래스가 업무명 열의 폭을 바꾸므로(아래 `.pin-name .col-name`) DOM이 갱신된
+// 뒤에 재야 한다. ref 전체(`columnPrefs`)를 본다 — `.pin`만 좁혀 보면 `hidden`이 바뀌었을 때
+// (열을 숨기면 그만큼 폭이 사라져 오프셋이 반드시 달라진다) 재측정을 놓친다. `setColumnPrefs`/
+// `resetColumnPrefs`(wbsColumnPrefs.ts)가 항상 새 객체를 대입하므로 참조 비교만으로 이미
+// 트리거되고, `deep: true`는 필요 없다.
+watch(columnPrefs, () => nextTick(measure))
 
 /** Ids on the path from a root down to (but excluding) the target. */
 function ancestorIds(nodes: WbsNode[], targetId: number): number[] {
@@ -659,17 +703,18 @@ function shows(key: WbsColumnKey): boolean {
 
 const visibleColumnCount = computed(() => visibleColumns(columnPrefs.value).length)
 
-const pinnedOffsets = computed(() => pinOffsets(columnPrefs.value))
-
 function isPinned(key: WbsColumnKey): boolean {
-  return pinnedOffsets.value[key] !== undefined
+  return pinnedLeft.value[key] !== undefined
 }
 
-/** 고정된 열 중 가장 오른쪽(오프셋이 가장 큰) 열 — 그 열에만 경계선을 그어 고정 영역의 끝을 보인다. */
+/**
+ * 고정된 열 중 가장 오른쪽 열 — 그 열에만 경계선을 그어 고정 영역의 끝을 보인다.
+ * `pinnedSequence`의 마지막 원소를 쓴다(오프셋 최대값 비교보다 단순하고, 폭이 0으로 측정되는
+ * 테스트 환경에서도 흔들리지 않는다).
+ */
 const lastPinnedKey = computed<WbsColumnKey | null>(() => {
-  const entries = Object.entries(pinnedOffsets.value) as [WbsColumnKey, number][]
-  if (entries.length === 0) return null
-  return entries.reduce((furthest, entry) => (entry[1] > furthest[1] ? entry : furthest))[0]
+  const sequence = pinnedSequence(columnPrefs.value)
+  return sequence.length === 0 ? null : sequence[sequence.length - 1]
 })
 
 function isPinnedEdge(key: WbsColumnKey): boolean {
@@ -681,9 +726,9 @@ function isPinnedEdge(key: WbsColumnKey): boolean {
  * 머리글이 겹치는 칸(3). `header`를 받아 어느 층인지 가른다.
  */
 function pinStyle(key: WbsColumnKey, header: boolean) {
-  const left = pinnedOffsets.value[key]
+  const left = pinnedLeft.value[key]
   if (left === undefined) return undefined
-  return { position: 'sticky' as const, left: `${left}rem`, zIndex: header ? 3 : 1 }
+  return { position: 'sticky' as const, left: `${left}px`, zIndex: header ? 3 : 1 }
 }
 
 /** 그 열에 조건이 걸려 있는가 — 머리글 표시(계약 B)와 숨긴 열 안내(계약 D)가 함께 쓴다. */
@@ -1450,9 +1495,25 @@ thead th.pinned {
   background: var(--surface-alt);
 }
 
-/* 고정된 마지막 열에만 경계선을 그어 고정 영역의 끝을 보인다(RaciMatrix.vue:290과 같은 이유). */
+/*
+ * 고정된 마지막 열에만 경계선을 그어 고정 영역의 끝을 보인다(RaciMatrix.vue:290과 같은 이유).
+ * border-collapse: collapse 에서는 경계선을 표가 그리므로 sticky 셀과 함께 움직이지 않는다 —
+ * 머리글의 border-bottom 을 box-shadow 로 바꾼 것(위 thead th)과 같은 이유로 여기도 box-shadow를
+ * 쓴다.
+ */
 .pinned-edge {
-  border-right: 1px solid var(--border);
+  box-shadow: inset -1px 0 0 var(--border);
+}
+
+/*
+ * 머리글의 고정 칸은 세로 경계(thead th의 아래 선)와 가로 경계(고정 영역의 끝)를 동시에 그어야
+ * 한다. box-shadow는 뒤 선언이 앞을 덮으므로 쉼표로 이어 붙인다 — 하나만 쓰면 다른 쪽 선이
+ * 사라진다.
+ */
+thead th.pinned-edge {
+  box-shadow:
+    inset 0 -1px 0 var(--border),
+    inset -1px 0 0 var(--border);
 }
 
 /*
@@ -1464,8 +1525,9 @@ thead th.pinned {
 }
 
 /*
- * pin: 'name'일 때만 폭을 고정한다 — `wbsColumns.ts`의 `name.pinWidthRem`(22)과 반드시 같은 값이어야
- * 한다. 어긋나면 오른쪽 열들이 고정 영역 아래로 밀려 들어간다.
+ * pin: 'name'일 때만 폭을 고정한다 — 고정된 열의 폭이 확정돼야 가로 스크롤 중에 흔들리지 않는다.
+ * 이 값을 `wbsColumns.ts`에 복사해 두지 않는다(지시서 `wbs-tree-pin-offset`) — 실제 오프셋은
+ * `WbsTree.vue`의 `measurePins()`가 이 셀의 렌더 폭을 직접 재서 계산한다.
  */
 .pin-name .col-name {
   width: 22rem;

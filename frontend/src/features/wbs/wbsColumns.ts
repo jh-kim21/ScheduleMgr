@@ -1,7 +1,6 @@
 /**
- * WBS 트리 열의 단일 정의(지시서 `wbs-tree-columns` 3-1). 폭은 CSS(`WbsTree.vue`)에 두고, 여기에는
- * 고정 오프셋 계산에 필요한 것만 둔다(= 고정 가능한 열의 폭만) — 그러지 않으면 같은 값이 두 곳에
- * 생겨 어긋난다.
+ * WBS 트리 열의 단일 정의(지시서 `wbs-tree-columns` 3-1). 폭은 CSS(`WbsTree.vue`)에만 둔다 —
+ * 여기에 복사해 두면 그 값이 렌더 폭과 어긋날 수 있다(지시서 `wbs-tree-pin-offset`).
  */
 export type WbsColumnKey =
   | 'code'
@@ -33,19 +32,13 @@ export interface WbsColumn {
   key: WbsColumnKey
   label: string
   hideable: boolean
-  /** 고정 단계에 참여하는 열의 폭(rem). 고정 오프셋 계산에만 쓴다. */
-  pinWidthRem?: number
   filter: WbsFilterKind
 }
 
-/**
- * 화면 순서 그대로. `code.pinWidthRem`(5.5)은 `WbsTree.vue`의 `.code` 폭과, `name.pinWidthRem`(22)은
- * `.pin-name .col-name`의 폭과 반드시 같은 값이어야 한다 — 어긋나면 오른쪽 열이 고정 영역 아래로
- * 밀려 들어간다.
- */
+/** 화면 순서 그대로. */
 export const WBS_COLUMNS: readonly WbsColumn[] = [
-  { key: 'code', label: 'WBS', hideable: true, pinWidthRem: 5.5, filter: 'text' },
-  { key: 'name', label: '업무명', hideable: false, pinWidthRem: 22, filter: 'text' },
+  { key: 'code', label: 'WBS', hideable: true, filter: 'text' },
+  { key: 'name', label: '업무명', hideable: false, filter: 'text' },
   { key: 'startDate', label: '시작일', hideable: true, filter: 'none' },
   { key: 'endDate', label: '종료일', hideable: true, filter: 'none' },
   { key: 'mode', label: '실행 방식', hideable: true, filter: 'enum' },
@@ -88,24 +81,17 @@ export function visibleColumns(prefs: WbsColumnPrefs): WbsColumn[] {
 }
 
 /**
- * 고정된 열의 left 오프셋(rem). 고정되지 않은 열은 키가 없다. 숨겨진 열은 누적에서 빠진다 —
- * WBS 코드를 숨긴 채 업무명을 고정하면 업무명의 left는 0이어야 한다(2-3).
+ * 고정 단계에서 앞에서부터 참여하는 열 — 순서만 답하고 폭은 답하지 않는다(지시서
+ * `wbs-tree-pin-offset` 2-2/2-3). 선언한 CSS 폭은 `content-box`이고 표가 `table-layout: auto`라
+ * 내용에 따라 더 넓어질 수 있어(`.code`는 코드가 길어지면, `.pin-name .col-name`은 패딩만큼)
+ * 여기서 값을 알 수 없다 — 렌더된 실제 폭은 `WbsTree.vue`의 `measurePins()`가 머리글 셀에서 잰다.
+ * 숨긴 열은 순서에서 빠진다.
  */
-export function pinOffsets(prefs: WbsColumnPrefs): Partial<Record<WbsColumnKey, number>> {
-  if (prefs.pin === 'none') return {}
+export function pinnedSequence(prefs: WbsColumnPrefs): WbsColumnKey[] {
+  if (prefs.pin === 'none') return []
 
   const visible = new Set(visibleColumns(prefs).map((column) => column.key))
-  const offsets: Partial<Record<WbsColumnKey, number>> = {}
-  let cursor = 0
-
-  for (const key of PIN_SEQUENCE[prefs.pin]) {
-    if (!visible.has(key)) continue
-    offsets[key] = cursor
-    const column = WBS_COLUMNS.find((c) => c.key === key)
-    cursor += column?.pinWidthRem ?? 0
-  }
-
-  return offsets
+  return PIN_SEQUENCE[prefs.pin].filter((key) => visible.has(key))
 }
 
 /** 모르는 키·잘못된 pin 값을 걸러 낸다 — localStorage 값은 신뢰할 수 없다. */

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { nextTick } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import type { TagRef, WbsNode } from '../../api/wbsApi'
 import { resetColumnPrefs, setColumnPrefs } from './wbsColumnPrefs'
@@ -180,8 +181,10 @@ describe('WbsTree — 담당자·분야 열', () => {
 
 /**
  * `wbs-tree-columns` 지시서 3-5 — 열 표시/숨김·고정이 실제 표에 반영되는지 본다. 판정 자체
- * (`visibleColumns`·`pinOffsets`)는 `wbsColumns.spec.ts`가 순수 함수로 덮으므로, 여기서는 그
- * 판정을 받은 `WbsTree`가 옳은 DOM을 그리는지만 본다.
+ * (`visibleColumns`·`pinnedSequence`)는 `wbsColumns.spec.ts`가 순수 함수로 덮으므로, 여기서는 그
+ * 판정을 받은 `WbsTree`가 옳은 DOM을 그리는지만 본다. 실제 오프셋(px)은 `WbsTree.vue`의
+ * `measurePins()`가 DOM에서 재므로(지시서 `wbs-tree-pin-offset`), 여기서는 `left`의 숫자를
+ * 단정하지 않는다 — happy-dom에는 레이아웃이 없어 `getBoundingClientRect()`가 항상 0이다.
  *
  * `columnPrefs`는 모듈 스코프라 테스트끼리 상태가 샌다 — 매 테스트 앞에 `resetColumnPrefs()`를
  * 부른다.
@@ -228,9 +231,11 @@ describe('WbsTree — 열 표시/숨김·고정', () => {
     expect(cell.text()).toContain('요구사항 정의')
   })
 
-  it('pin: "code" → th.code/td.code에 sticky가 붙고, 고정하지 않은 열(.mode)에는 없다', () => {
+  it('pin: "code" → th.code/td.code에 sticky가 붙고, 고정하지 않은 열(.mode)에는 없다', async () => {
     setColumnPrefs({ hidden: [], pin: 'code' })
     wrapper = render([node()])
+    // 오프셋은 onMounted의 measurePins()가 재는 값이라 한 tick 뒤에 반영된다.
+    await nextTick()
 
     expect(wrapper.get<HTMLElement>('th.code').element.style.position).toBe('sticky')
     expect(wrapper.get<HTMLElement>('td.code').element.style.position).toBe('sticky')
@@ -238,26 +243,52 @@ describe('WbsTree — 열 표시/숨김·고정', () => {
     expect(wrapper.get<HTMLElement>('td.mode').element.style.position).not.toBe('sticky')
   })
 
-  it('pin: "name" → .code와 .col-name 둘 다 sticky이고 left가 0/5.5rem 계열이다', () => {
+  it('pin: "name" → .code와 .col-name 둘 다 sticky다', async () => {
     setColumnPrefs({ hidden: [], pin: 'name' })
     wrapper = render([node()])
+    await nextTick()
 
     const code = wrapper.get<HTMLElement>('td.code').element
     const name = wrapper.get<HTMLElement>('td.col-name').element
     expect(code.style.position).toBe('sticky')
     expect(name.style.position).toBe('sticky')
-    expect(parseFloat(code.style.left)).toBe(0)
-    expect(parseFloat(name.style.left)).toBeCloseTo(5.5, 1)
   })
 
-  it('WBS 코드를 숨긴 채 pin: "name" → .col-name의 left가 0이다 (숨긴 열이 오프셋을 밀면 안 된다)', () => {
+  it('WBS 코드를 숨긴 채 pin: "name" → .col-name이 sticky다', async () => {
     setColumnPrefs({ hidden: ['code'], pin: 'name' })
     wrapper = render([node()])
+    await nextTick()
 
     expect(wrapper.find('td.code').exists()).toBe(false)
     const name = wrapper.get<HTMLElement>('td.col-name').element
     expect(name.style.position).toBe('sticky')
-    expect(parseFloat(name.style.left)).toBe(0)
+  })
+
+  it('pin: "name"일 때 pinned-edge는 .col-name에만 붙는다 — 고정 영역의 끝이 하나여야 한다', async () => {
+    setColumnPrefs({ hidden: [], pin: 'name' })
+    wrapper = render([node()])
+    await nextTick()
+
+    expect(wrapper.get('td.code').classes()).not.toContain('pinned-edge')
+    expect(wrapper.get('td.col-name').classes()).toContain('pinned-edge')
+    expect(wrapper.get('th.code').classes()).not.toContain('pinned-edge')
+    expect(wrapper.get('th.col-name').classes()).toContain('pinned-edge')
+  })
+
+  it('마운트 뒤 열 설정을 고정으로 바꾸면 오프셋이 즉시 따라온다 — columnPrefs watch가 없으면 이 테스트만 실패한다', async () => {
+    wrapper = render([node()])
+    await nextTick()
+    expect(wrapper.get<HTMLElement>('td.code').element.style.position).not.toBe('sticky')
+
+    setColumnPrefs({ hidden: [], pin: 'code' })
+    // 세 번의 tick이 필요하다 — ① columnPrefs 변경 자체의 리렌더, ② 그 watch가 부른
+    // nextTick(measure) 콜백이 실행되며 pinnedLeft를 채우는 시점, ③ pinnedLeft 변경이
+    // 다시 트리거하는 리렌더(이때 비로소 DOM에 sticky가 반영된다).
+    await nextTick()
+    await nextTick()
+    await nextTick()
+
+    expect(wrapper.get<HTMLElement>('td.code').element.style.position).toBe('sticky')
   })
 
   it('툴바에 [열 설정] 버튼이 있고, readOnly에서도 disabled가 아니다', () => {
