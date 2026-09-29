@@ -172,19 +172,59 @@ class ProgressCalculatorTest {
         }
 
         @Test
-        @DisplayName("일부 자식만 가중치가 있으면 나머지를 1로 채운다 — 빼지 않는다")
-        void partialWeightsFallBackToOne() {
+        @DisplayName("일부 자식만 가중치가 있으면 나머지를 선언값 평균으로 채운다 — 빼지 않는다")
+        void partialWeightsFallBackToDeclaredAverage() {
             WbsItem parent = summary("단계");
             manual(parent, "가중치 있음", 100, 10);
             manual(parent, "가중치 없음", 0, null);
 
-            // 빼면 남은 자식 하나의 진척(100%)이 곧 가지 전체가 된다 — 적지 않은 자식이
-            // 사라지는 것이지 0이 아니다. 체크포인트·Backlog·기준선과 같은 규칙으로 1을 채운다:
-            // (10×100 + 1×0) / 11.
-            assertThat(percentOf(parent)).isEqualTo(1000.0 / 11);
+            // 빼면 100%가 되는데, 자식이 100%/0%인 상황에서 그것도 근거 없는 숫자다.
+            // 선언값이 10 하나뿐이므로 미선언 자식도 10 → (10×100 + 10×0) / 20 = 50.
+            assertThat(percentOf(parent)).isEqualTo(50.0);
             assertThat(basisOf(parent)).isEqualTo(ProgressBasis.ROLLUP);
             assertThat(resultOf(parent).incompleteWeights()).isFalse();
             assertThat(resultOf(parent).incomplete()).isFalse();
+        }
+
+        @Test
+        @DisplayName("폴백은 상대값 성질을 지킨다 — 가중치에 배수를 곱해도 결과가 같다")
+        void fallbackPreservesRatio() {
+            WbsItem a = summary("A");
+            manual(a, "가", 100, 10);
+            manual(a, "나", 0, 20);
+            manual(a, "다", 0, null);       // 폴백 = (10+20)/2 = 15
+
+            WbsItem b = summary("B");
+            manual(b, "가", 100, 100);
+            manual(b, "나", 0, 200);
+            manual(b, "다", 0, null);       // 폴백 = (100+200)/2 = 150
+
+            // A: (10×100) / (10+20+15) = 1000/45,  B: (100×100) / (100+200+150) = 10000/450 = 1000/45
+            assertThat(percentOf(a)).isEqualTo(1000.0 / 45);
+            assertThat(percentOf(b)).isEqualTo(percentOf(a));
+        }
+
+        @Test
+        @DisplayName("0은 평균에서 뺀다 — 진척에 기여하지 않는다는 뜻이지 '작다'가 아니다")
+        void zeroIsExcludedFromTheAverage() {
+            WbsItem parent = summary("단계");
+            manual(parent, "빼달라", 100, 0);
+            manual(parent, "센다", 100, 10);
+            manual(parent, "미입력", 0, null);   // 폴백 = 10 (0은 평균에서 제외)
+
+            // (0×100 + 10×100 + 10×0) / (0+10+10) = 1000/20 = 50
+            assertThat(percentOf(parent)).isEqualTo(50.0);
+        }
+
+        @Test
+        @DisplayName("양수 선언값이 하나도 없으면 폴백은 1 — 분모가 0이 되면 안 된다")
+        void allZeroDeclaredFallsBackToOne() {
+            WbsItem parent = summary("단계");
+            manual(parent, "빼달라", 100, 0);
+            manual(parent, "미입력", 40, null);   // 양수 선언값 없음 → 폴백 1
+
+            // (0×100 + 1×40) / (0+1) = 40
+            assertThat(percentOf(parent)).isEqualTo(40.0);
         }
 
         @Test
@@ -219,8 +259,9 @@ class ProgressCalculatorTest {
             rootWorkPackage("새 항목", null, 0, 10);
 
             // 예전에는 '기존 단계'(50%)가 통째로 빠져 프로젝트 진척이 새 항목의 값 0%가 됐다.
-            // 이제 1 : 10으로 함께 센다 — (1×50 + 10×0) / 11.
-            assertThat(projectResult().percent()).isEqualTo(50.0 / 11);
+            // 이제 함께 센다 — 루트에서 선언된 양수 가중치는 10 하나뿐이므로 '기존 단계'의 폴백도
+            // 10 : (10×50 + 10×0) / 20 = 25.
+            assertThat(projectResult().percent()).isEqualTo(25.0);
         }
 
         @Test

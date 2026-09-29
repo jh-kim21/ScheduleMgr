@@ -26,10 +26,13 @@ import java.util.Map;
  * ({@link ProgressBasis#LEGACY_ROLLUP}). Where nothing has opted in, every number is identical to
  * before Step 5; the design's weighted formula takes over branch by branch as weights are entered.
  *
- * <p>A <em>partly</em> weighted branch is not a third policy: a child without a weight counts as 1
- * ({@link #weightOf}), exactly as it does in the checkpoint, Backlog and baseline denominators. It
- * used to be dropped from the average, which let a single weighted sibling speak for the whole
- * branch — one weight entered at the top could redefine the project's progress.
+ * <p>A <em>partly</em> weighted branch is not a third policy: a child without a weight counts as the
+ * average of its siblings' declared weights ({@link #evenFallback}) — not a fixed 1 like the
+ * checkpoint, Backlog and baseline denominators use. Weights are relative values with no sum
+ * constraint, so a fixed fallback would make entering {@code 10} or {@code 100} for the same ratio
+ * change the answer; the average keeps that invariant. It used to be dropped from the average
+ * entirely, which let a single weighted sibling speak for the whole branch — one weight entered at
+ * the top could redefine the project's progress.
  */
 public final class ProgressCalculator {
 
@@ -182,12 +185,14 @@ public final class ProgressCalculator {
      *
      * <p>With no weights anywhere among the direct children this falls back to leaf-count
      * weighting, which is what the app has always done — see the transition policy above. Once any
-     * sibling carries a weight, a child that lacks one weighs 1 ({@link #weightOf}) — the same
-     * {@code null} reading as every other denominator here. No child is ever dropped for lacking a
-     * weight.
+     * sibling carries a weight, a child that lacks one weighs the average of its siblings' declared
+     * weights ({@link #evenFallback}) rather than a fixed 1 — weights are relative values, so a fixed
+     * fallback would make {@code [10, null]} and {@code [100, null]} answer differently. No child is
+     * ever dropped for lacking a weight.
      */
     private static ProgressResult rollUp(List<WbsNode> children, Map<Long, ProgressResult> results) {
         boolean anyWeight = children.stream().anyMatch(child -> child.item().getWeight() != null);
+        double fallbackWeight = evenFallback(children);
         boolean incompleteChildren = false;
 
         double weighted = 0;
@@ -203,9 +208,12 @@ public final class ProgressCalculator {
                 incompleteChildren = true;
             }
 
-            // 형제 중 누구든 가중치를 적었으면 그 값을, 안 적은 형제는 1을 쓴다. 아무도 안 적었으면
-            // 예전처럼 leaf 개수로 센다 (전환 정책).
-            double weight = anyWeight ? weightOf(child.item().getWeight()) : leafCount(child);
+            // 형제 중 누구든 가중치를 적었으면 그 값을, 안 적은 형제는 선언값 평균으로 채운다.
+            // 아무도 안 적었으면 예전처럼 leaf 개수로 센다 (전환 정책).
+            Integer declared = child.item().getWeight();
+            double weight = anyWeight
+                    ? (declared != null ? declared : fallbackWeight)
+                    : leafCount(child);
             weighted += weight * childResult.percent();
             weightSum += weight;
         }
@@ -238,6 +246,31 @@ public final class ProgressCalculator {
         return weight == null ? 1 : weight;
     }
 
+    /**
+     * 미선언 형제에게 줄 가중치 — 선언된 <b>양수</b> 가중치의 평균.
+     *
+     * <p>가중치는 상대값이라(합 제약이 없다) 배수를 곱해도 결과가 같아야 한다. 고정값 1로 폴백하면
+     * {@code [10, null]}과 {@code [100, null]}이 다른 비율이 되어 그 성질이 깨진다. 평균은 지킨다.
+     *
+     * <p>{@code 0}은 "진척에 기여하지 않음"이라는 별도의 뜻이라 평균에서 뺀다 — 포함시키면 0 하나가
+     * 미선언 형제들의 몫까지 끌어내린다.
+     *
+     * <p>양수 선언값이 하나도 없으면(전부 {@code 0}이거나 전부 미선언) 1을 쓴다. 0을 돌려주면
+     * 분모가 0이 되어 가지 전체가 "산정 전"이 된다.
+     */
+    private static double evenFallback(List<WbsNode> children) {
+        double sum = 0;
+        int count = 0;
+        for (WbsNode child : children) {
+            Integer declared = child.item().getWeight();
+            if (declared != null && declared > 0) {
+                sum += declared;
+                count++;
+            }
+        }
+        return count == 0 ? 1 : sum / count;
+    }
+
     private record Contribution(ProgressResult result, int leafCount) {
     }
 
@@ -246,8 +279,8 @@ public final class ProgressCalculator {
      *                           반올림은 표시 단계에서만 한다 (지시서 완료 기준)
      * @param basis              어떻게 계산된 값인가
      * @param incompleteWeights  <b>항상 {@code false}.</b> 가중치 없는 하위를 평균에서 빼던 시절의
-     *                           신호이고, 지금은 1로 채우므로 빠지는 하위가 없다. 이미 찍힌 커밋
-     *                           payload와 모양을 맞추려고 필드만 남긴다
+     *                           신호이고, 지금은 선언값 평균으로 채우므로({@link #evenFallback}) 빠지는
+     *                           하위가 없다. 이미 찍힌 커밋 payload와 모양을 맞추려고 필드만 남긴다
      * @param incompleteChildren 일부 하위가 산정 전이거나 그 자체로 불완전하다
      * @param note               산정 전인 이유 (사람에게 보여줄 한 줄)
      */
@@ -262,7 +295,13 @@ public final class ProgressCalculator {
             return new ProgressResult(null, ProgressBasis.NOT_ESTIMABLE, false, false, note);
         }
 
-        /** Whether the number, if any, is only part of the picture. */
+        /**
+         * Whether the number, if any, is only part of the picture.
+         *
+         * <p>{@code incompleteWeights} is currently always {@code false} — an undeclared weight is
+         * filled in with the sibling average ({@link ProgressCalculator#evenFallback}), so it is
+         * never incomplete on that account.
+         */
         public boolean incomplete() {
             return incompleteWeights || incompleteChildren;
         }
