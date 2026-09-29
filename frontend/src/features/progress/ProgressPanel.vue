@@ -160,8 +160,9 @@ function snapshotSummary(metrics: string): string {
     </p>
 
     <!--
-      사유가 하나뿐이라 "또는"을 뺐다 — 가중치 미입력은 이제 1로 폴백하므로(정직한 값) 불완전의
-      사유가 아니고, `incompleteWeights`는 더 이상 참이 되지 않는다.
+      사유가 하나뿐이라 "또는"을 뺐다 — 가중치 미입력은 이제 형제가 적은 가중치에서 뽑은 leaf당
+      단위에 자기 가지의 leaf 수를 곱해 폴백하므로(정직한 값) 불완전의 사유가 아니고,
+      `incompleteWeights`는 더 이상 참이 되지 않는다.
     -->
     <p v-if="project.incomplete" class="attention" aria-live="polite">
       일부 하위가 아직 산정 전이라 <strong>집계가 불완전</strong>합니다. 위 숫자는 셀 수 있는
@@ -222,8 +223,9 @@ function snapshotSummary(metrics: string): string {
     <h2>Work Package별 진척</h2>
     <p class="notice subtle">
       가중치는 같은 상위 아래 형제 Work Package 사이의 비중입니다. <strong>이 화면에서는 입력하지
-      않습니다</strong> — 비워 두면(미입력) 1로 계산되고, 형제 중 누구도 적지 않았다면 그 가지는
-      예전처럼 하위 leaf 개수 가중 평균으로 집계됩니다 — <strong>0과 미입력은 다른 값</strong>입니다.
+      않습니다</strong> — 비워 두면(미입력) 형제가 적은 가중치에서 leaf 하나당 비중을 뽑아, 그
+      항목이 거느린 가지 크기만큼 칩니다. 형제 중 누구도 적지 않았다면 그 가지는 예전처럼 하위
+      leaf 개수 가중 평균으로 집계됩니다 — <strong>0과 미입력은 다른 값</strong>입니다.
       α(Hybrid의 Agile 비율)는 WBS 화면의 항목 수정 폼에서 고칩니다.
     </p>
     <div class="table-scroll">

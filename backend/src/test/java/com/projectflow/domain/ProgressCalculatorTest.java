@@ -259,9 +259,65 @@ class ProgressCalculatorTest {
             rootWorkPackage("새 항목", null, 0, 10);
 
             // 예전에는 '기존 단계'(50%)가 통째로 빠져 프로젝트 진척이 새 항목의 값 0%가 됐다.
-            // 이제 함께 센다 — 루트에서 선언된 양수 가중치는 10 하나뿐이므로 '기존 단계'의 폴백도
-            // 10 : (10×50 + 10×0) / 20 = 25.
-            assertThat(projectResult().percent()).isEqualTo(25.0);
+            // 선언값 10이 leaf 1개를 덮으므로 leaf당 단위는 10이고, leaf 2개짜리 '기존 단계'는 20을
+            // 받는다 : (20×50 + 10×0) / 30 = 100/3.
+            // 가중치를 아무것도 안 적었을 때의 값(leaf 2:1 → 100/3)과 같다 — 선언값이 하나뿐이면
+            // 비교 대상이 없어 비중 정보를 담지 못하므로, 그것이 옳다.
+            assertThat(projectResult().percent()).isEqualTo(100.0 / 3);
+        }
+
+        @Test
+        @DisplayName("형제 하나에 가중치를 적어도 큰 가지의 비중이 무너지지 않는다 (LEGACY와 연속)")
+        void firstWeightKeepsSiblingBranchShare() {
+            WbsItem root = summary("루트");
+            WbsItem branch = summaryUnder(root, "큰 가지");   // leaf 3개, 전부 0%
+            manual(branch, "가", 0, null);
+            manual(branch, "나", 0, null);
+            manual(branch, "다", 0, null);
+            manual(root, "작은 가지", 100, 2);                // leaf 1개, 가중치 2
+
+            // 단위 = 2 / 1 = 2 → 큰 가지는 2×3 = 6. (6×0 + 2×100) / 8 = 25.0.
+            // 가중치를 아무것도 안 적었을 때(leafCount 3:1 → 25.0)와 같다.
+            // 형제 수 평균이면 큰 가지가 2를 받아 (2×0 + 2×100)/4 = 50.0으로 튄다.
+            assertThat(percentOf(root)).isEqualTo(25.0);
+        }
+
+        @Test
+        @DisplayName("선언값이 전부 0이어도 미선언 형제끼리는 가지 크기로 나뉜다")
+        void allZeroDeclaredStillScalesByLeafCount() {
+            WbsItem root = summary("루트");
+            manual(root, "0으로 적음", 100, 0);
+            WbsItem branch = summaryUnder(root, "큰 가지");   // leaf 3개, 전부 0%
+            manual(branch, "가", 0, null);
+            manual(branch, "나", 0, null);
+            manual(branch, "다", 0, null);
+            manual(root, "작은 가지", 100, null);             // leaf 1개
+
+            // 양수 선언값이 없어 단위는 1 → 큰 가지 1×3 = 3, 작은 가지 1×1 = 1.
+            // (0×100 + 3×0 + 1×100) / 4 = 25.0.
+            // 형제 수 폴백이면 큰 가지도 1을 받아 (1×0 + 1×100)/2 = 50.0으로 튄다.
+            assertThat(percentOf(root)).isEqualTo(25.0);
+        }
+
+        @Test
+        @DisplayName("선언한 형제 자체가 leaf 여럿이면 단위의 분모는 형제 '수'가 아니라 그 leaf 수의 합이다")
+        void declaredSiblingWithMultipleLeavesScalesTheUnitByItsOwnLeafCount() {
+            WbsItem root = summary("루트");
+            WbsItem branchA = summaryUnder(root, "큰 가지", 20);   // leaf 2개, weight=20 (선언)
+            manual(branchA, "가", 100, null);
+            manual(branchA, "나", 60, null);                        // 큰 가지 percent = (100+60)/2 = 80.0
+            WbsItem branchB = summaryUnder(root, "작은 가지");       // leaf 1개, 미선언
+            manual(branchB, "다", 0, null);                          // 작은 가지 percent = 0.0
+
+            // 단위 = Σ선언 양수 / Σ(그 형제들의 leaf 수) = 20 / leafCount(큰가지=2) = 10.
+            // 작은 가지(leaf 1개, 미선언) weight = 10 × 1 = 10.
+            // (20×80 + 10×0) / (20+10) = 1600/30 = 160/3.
+            //
+            // 분모를 형제 "수"(선언한 형제는 큰 가지 하나뿐 → 1)로 셌다면 단위 = 20/1 = 20이 되어
+            // 작은 가지 weight = 20 × 1 = 20, (20×80 + 20×0)/(20+20) = 40.0 으로 달라진다.
+            // 형제가 전부 leaf인 테스트는 이 차이를 못 잡는다 — 여기서는 '큰 가지'가 leaf 2개짜리라
+            // 선언한 형제의 leaf 수(2)와 선언한 형제의 수(1)가 갈린다.
+            assertThat(percentOf(root)).isEqualTo(160.0 / 3);
         }
 
         @Test
@@ -378,6 +434,13 @@ class ProgressCalculatorTest {
     private WbsItem summaryUnder(WbsItem parent, String name) {
         return register(new WbsItem(PROJECT_ID, parent.getId(), name, null, null, null, 0,
                 items.size(), WbsNodeType.SUMMARY, null));
+    }
+
+    /** 가중치를 선언한 Summary. 레벨 무관 가중치이므로(CLAUDE.md) Summary도 선언할 수 있다. */
+    private WbsItem summaryUnder(WbsItem parent, String name, Integer weight) {
+        WbsItem item = summaryUnder(parent, name);
+        item.restoreProgressBasis(weight, null, null);
+        return item;
     }
 
     private WbsItem workPackage(String name, ExecutionMode mode, Integer agileRatio) {

@@ -145,3 +145,45 @@ describe('ProgressPanel — 기준선 승인 대화상자', () => {
     expect(document.body.querySelector('.panel[role="dialog"]')).toBeNull()
   })
 })
+
+describe('ProgressPanel — 가중치 폴백 안내 문구', () => {
+  let wrapper: VueWrapper | undefined
+
+  afterEach(() => {
+    wrapper?.unmount()
+    wrapper = undefined
+    selectedProjectId.value = null
+    mockedGet.mockReset()
+    mockedSnapshots.mockReset()
+    mockedApproveBaseline.mockReset()
+  })
+
+  /**
+   * 이 문구는 계산식이 바뀔 때마다 두 번 뒤처졌다(`docs/tasks/progress-weight-leaf-scaling.md` §0) —
+   * `ed102a6`이 "1로 계산되고"라고 썼고, `e2ced02`가 폴백을 평균으로 바꾸면서도 화면은 고치지 않아
+   * `main`에 거짓 문구가 남았다. 전문을 그대로 박으면 오타 하나 고칠 때마다 깨져서 다음 사람이
+   * 기대값만 갱신하고 넘어가게 되고, 반대로 존재 여부만 보면(문단 길이 등) 이번 같은 "말은 다른데
+   * 지워지지 않는" 거짓을 못 잡는다. 그래서 두 가지를 함께 본다 — 낡은 서술("1로 계산")이
+   * 없다는 것과, 현재 규칙의 핵심 낱말(leaf 하나당 단위, 가지 크기)이 있다는 것. 계산식이 또
+   * 바뀌면 이 중 하나는 반드시 깨진다.
+   */
+  it('Work Package 가중치 안내가 낡은 "1로 계산" 서술을 담지 않고, 현재의 leaf당 단위 규칙을 말한다', async () => {
+    wrapper = await renderPanel()
+
+    const notice = [...document.body.querySelectorAll('.progress-panel .notice.subtle')].find((p) =>
+      p.textContent?.includes('가중치는 같은 상위'),
+    )
+    expect(notice).not.toBeUndefined()
+    const text = notice!.textContent ?? ''
+
+    // 낡은 서술 — 이제 거짓이다.
+    expect(text).not.toContain('1로 계산')
+    // 현재 규칙의 핵심 — leaf 하나당 단위를 뽑아 자기 가지 크기만큼 곱한다.
+    expect(text).toContain('leaf 하나당 비중')
+    expect(text).toContain('가지 크기만큼')
+    // 이 변경이 건드리지 않는 것 — 형제 전원 미입력이면 여전히 leaf 개수 가중 평균이고,
+    // 0과 미입력은 여전히 다른 값이다.
+    expect(text).toContain('leaf 개수 가중')
+    expect(text).toContain('0과 미입력은 다른 값')
+  })
+})
