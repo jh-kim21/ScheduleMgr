@@ -273,7 +273,7 @@ class WbsServiceTest {
             // 프론트의 WbsItemInput은 이 값들을 생성 요청에도 실어 보낸다 — DTO에 필드가 없으면
             // Jackson이 오류 없이 버려서, Hybrid Work Package가 만들자마자 산정 전이 됐다.
             WbsItemCreateRequest request = new WbsItemCreateRequest(
-                    null, "인수 테스트", null, null, null, null,
+                    null, "인수 테스트", null, null, null, null, null,
                     WbsNodeType.WORK_PACKAGE, ExecutionMode.HYBRID, 3, 60,
                     AcceptanceStatus.PENDING,
                     LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 5), LocalDate.of(2026, 1, 7),
@@ -301,6 +301,31 @@ class WbsServiceTest {
             assertThat(saved.getActualStartDate()).isNull();
             assertThat(saved.getActualEndDate()).isNull();
             assertThat(saved.getForecastEndDate()).isNull();
+            assertThat(saved.getActionItemUrl()).isNull();
+        }
+
+        @Test
+        @DisplayName("Action Item 주소는 생성 시점부터 저장된다 — 생성자가 못 받는 값이라 별도 호출이다")
+        void persistsActionItemUrlOnCreate() {
+            service.createItem(PROJECT_ID, createWithUrl("회의록", "https://example.com/notes"));
+
+            assertThat(byName("회의록").getActionItemUrl()).isEqualTo("https://example.com/notes");
+        }
+
+        @Test
+        @DisplayName("빈 문자열로 온 주소는 null로 눕는다 — '없음'의 표현이 둘이면 안 된다")
+        void normalisesBlankActionItemUrl() {
+            // 폼이 칸을 비우면 null이 아니라 ""가 온다. bean validation은 그것을 통과시킨다(^$).
+            service.createItem(PROJECT_ID, createWithUrl("빈 주소", ""));
+            Long id = byName("빈 주소").getId();
+
+            assertThat(byName("빈 주소").getActionItemUrl()).isNull();
+
+            service.updateItem(PROJECT_ID, id, updateWithUrl("빈 주소", "https://example.com/a"));
+            assertThat(byName("빈 주소").getActionItemUrl()).isEqualTo("https://example.com/a");
+
+            service.updateItem(PROJECT_ID, id, updateWithUrl("빈 주소", ""));
+            assertThat(byName("빈 주소").getActionItemUrl()).isNull();
         }
     }
 
@@ -318,7 +343,7 @@ class WbsServiceTest {
             // 화면의 startDate/endDate/progress 입력칸은 비활성화돼 있지만, 값 자체는 여전히 이
             // 항목의 집계값을 담고 있다가 그대로 제출된다 — 서버가 최종 방어선이어야 한다.
             WbsItemUpdateRequest request = new WbsItemUpdateRequest(
-                    "단계 이름 변경", null, LocalDate.of(2099, 1, 1), LocalDate.of(2099, 1, 2), 99,
+                    "단계 이름 변경", null, null, LocalDate.of(2099, 1, 1), LocalDate.of(2099, 1, 2), 99,
                     WbsNodeType.SUMMARY, null, null, null, null, null, null, null, null);
 
             service.updateItem(PROJECT_ID, stage, request);
@@ -336,7 +361,7 @@ class WbsServiceTest {
             Long id = byName("개발").getId();
 
             WbsItemUpdateRequest request = new WbsItemUpdateRequest(
-                    "개발", null, LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 10), 40,
+                    "개발", null, null, LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 10), 40,
                     WbsNodeType.WORK_PACKAGE, null, null, null, null, null, null, null, null);
 
             service.updateItem(PROJECT_ID, id, request);
@@ -739,24 +764,34 @@ class WbsServiceTest {
 
     private WbsItemCreateRequest create(Long parentId, String name,
                                          WbsNodeType nodeType, ExecutionMode mode) {
-        return new WbsItemCreateRequest(parentId, name, null, null, null, null, nodeType,
+        return new WbsItemCreateRequest(parentId, name, null, null, null, null, null, nodeType,
                 mode, null, null, null, null, null, null, null);
     }
 
     private WbsItemUpdateRequest update(String name, WbsNodeType nodeType, ExecutionMode mode) {
-        return new WbsItemUpdateRequest(name, null, null, null, null, nodeType, mode,
+        return new WbsItemUpdateRequest(name, null, null, null, null, null, nodeType, mode,
                 null, null, null, null, null, null, null);
+    }
+
+    private WbsItemCreateRequest createWithUrl(String name, String actionItemUrl) {
+        return new WbsItemCreateRequest(null, name, null, actionItemUrl, null, null, null,
+                WbsNodeType.WORK_PACKAGE, null, null, null, null, null, null, null, null);
+    }
+
+    private WbsItemUpdateRequest updateWithUrl(String name, String actionItemUrl) {
+        return new WbsItemUpdateRequest(name, null, actionItemUrl, null, null, null,
+                WbsNodeType.WORK_PACKAGE, null, null, null, null, null, null, null, null);
     }
 
     private WbsItemCreateRequest createWithTags(Long parentId, String name, WbsNodeType nodeType,
                                                   List<Long> tagIds) {
-        return new WbsItemCreateRequest(parentId, name, null, null, null, null, nodeType,
+        return new WbsItemCreateRequest(parentId, name, null, null, null, null, null, nodeType,
                 null, null, null, null, null, null, null, tagIds);
     }
 
     private WbsItemUpdateRequest updateWithTags(String name, WbsNodeType nodeType,
                                                   List<Long> tagIds) {
-        return new WbsItemUpdateRequest(name, null, null, null, null, nodeType, null,
+        return new WbsItemUpdateRequest(name, null, null, null, null, null, nodeType, null,
                 null, null, null, null, null, null, tagIds);
     }
 

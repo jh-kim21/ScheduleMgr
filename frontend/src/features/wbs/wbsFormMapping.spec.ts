@@ -71,7 +71,13 @@ describe('nodeToFormInput', () => {
   })
 
   it('나머지 필드도 편집 없이 저장할 수 있도록 그대로 옮긴다', () => {
-    const node = baseNode({ weight: 3, agileRatio: 60, acceptanceStatus: 'PENDING' })
+    const node = baseNode({
+      weight: 3,
+      agileRatio: 60,
+      acceptanceStatus: 'PENDING',
+      description: '설계 문서를 먼저 확정한다',
+      actionItemUrl: 'https://example.com/tickets/1',
+    })
 
     const input = nodeToFormInput(node)
 
@@ -83,6 +89,27 @@ describe('nodeToFormInput', () => {
     expect(input.agileRatio).toBe(60)
     expect(input.acceptanceStatus).toBe('PENDING')
     expect(input.nodeType).toBe('WORK_PACKAGE')
+    expect(input.description).toBe('설계 문서를 먼저 확정한다')
+    expect(input.actionItemUrl).toBe('https://example.com/tickets/1')
+  })
+
+  /**
+   * Action Item 주소는 이 매핑이 빠뜨리기 가장 쉬운 자리다 — 새 필드를 `WbsItemInput`에만 더하고
+   * 여기를 잊으면 **제목만 고쳐 저장해도 URL이 조용히 사라진다.** 커밋 `da96ebe`(결함 3)와 정확히
+   * 같은 사고이고, 화면에서는 저장이 성공한 것처럼 보여서 눈으로는 잡히지 않는다.
+   */
+  describe('Action Item 주소', () => {
+    it('제목만 고쳐도 살아남도록 그대로 옮긴다 — 빠뜨리면 저장 한 번에 조용히 지워진다(결함 3)', () => {
+      const input = nodeToFormInput(baseNode({ actionItemUrl: 'https://example.com/a' }))
+
+      expect(input.actionItemUrl).toBe('https://example.com/a')
+    })
+
+    it('노드가 그 값을 갖고 있지 않으면 null로 담는다 — undefined를 그대로 보내지 않는다', () => {
+      const input = nodeToFormInput(baseNode())
+
+      expect(input.actionItemUrl).toBeNull()
+    })
   })
 
   /**

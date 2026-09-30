@@ -19,6 +19,11 @@ import java.util.Map;
  * fields and — for summary nodes — the schedule and progress are all derived server-side, so
  * clients render the tree without recomputing anything.
  *
+ * @param actionItemUrl        external Action Item address, {@code null} when 미입력. Only
+ *                             {@code http}/{@code https} is ever stored, but the screen checks
+ *                             again before rendering it as a link — rows saved before that rule
+ *                             existed may still be out there, and the browser is what actually
+ *                             runs a {@code javascript:} URL
  * @param summary              whether the schedule and progress above were rolled up from children.
  *                             Distinct from {@code nodeType}: it answers where the dates came from
  * @param nodeType             stored management unit — {@code WORK_PACKAGE} is where the Agile
@@ -67,6 +72,7 @@ public record WbsNodeResponse(
         int level,
         String name,
         String description,
+        String actionItemUrl,
         LocalDate startDate,
         LocalDate endDate,
         LocalDate actualStartDate,
@@ -171,6 +177,7 @@ public record WbsNodeResponse(
                 node.level(),
                 node.item().getName(),
                 node.item().getDescription(),
+                node.item().getActionItemUrl(),
                 node.startDate(),
                 node.endDate(),
                 // 실적·예상 종료는 파생값이 아니라 항목 자신의 입력이다 — Summary라고 하위에서

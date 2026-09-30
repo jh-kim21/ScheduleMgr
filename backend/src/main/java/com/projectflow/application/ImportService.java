@@ -65,6 +65,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * Rebuilds a project from an exported file (the other half of {@link ExportService}).
@@ -98,9 +99,28 @@ public class ImportService {
      * version 3 simply has no Backlog section, one below 4 has no Sprints, and one below 5 has no
      * aggregation basis — a missing section is the same as an empty one, and a project with no
      * weights or checkpoints reads as 산정 전, which is the honest answer for it. One below 7 has
-     * no 업무 분야 section, which reads as a project that has not labelled anything yet.
+     * no 업무 분야 section, which reads as a project that has not labelled anything yet, and one
+     * below 8 has no {@code actionItemUrl} on its WBS entries, which reads as none recorded.
      */
-    private static final int SUPPORTED_FORMAT_VERSION = 7;
+    private static final int SUPPORTED_FORMAT_VERSION = 8;
+
+    /**
+     * Kept identical to the {@code @Pattern} on {@code WbsItemCreateRequest}/{@code UpdateRequest}
+     * — one rule with two enforcement points, because a hand-edited file skips bean validation.
+     */
+    private static final Pattern ACTION_ITEM_URL_PATTERN = Pattern.compile("^https?://\\S+$");
+
+    /** Matches {@code wbs_items.action_item_url} (V24) and the DTOs' {@code @Size(max = 2000)}. */
+    private static final int ACTION_ITEM_URL_MAX_LENGTH = 2000;
+
+    /**
+     * Matches {@code wbs_items.description} (V2) and the DTOs' {@code @Size(max = 2000)}.
+     *
+     * <p>Named separately from {@link #ACTION_ITEM_URL_MAX_LENGTH} even though the two columns
+     * happen to agree today: they are different columns from different migrations, and folding
+     * them into one constant would silently mis-guard one of them the day either widens.
+     */
+    private static final int DESCRIPTION_MAX_LENGTH = 2000;
 
     private final ProjectRepository projectRepository;
     private final ProjectMemberRepository memberRepository;
@@ -227,6 +247,8 @@ public class ImportService {
             if (Objects.equals(item.parentId(), item.id())) {
                 throw new InvalidImportException("자기 자신을 상위로 가리키는 WBS 항목이 있습니다: id=" + item.id());
             }
+            requireDescriptionFits(item);
+            requireSafeActionItemUrl(item);
             Set<String> seenTags = new HashSet<>();
             for (Long tagId : tagIdsOf(item)) {
                 requireKnown(tagIds, tagId, "WBS 항목 '%s'의 분야".formatted(item.name()));
@@ -508,6 +530,52 @@ public class ImportService {
         }
     }
 
+    /**
+     * Free text, so only its length is judged — never its content.
+     *
+     * <p>Without this an over-long description reaches {@code VARCHAR(2000)} and comes back as a
+     * bare 500 naming nothing, which is the dead end {@code GlobalExceptionHandler}'s unreadable-body
+     * handler exists to avoid. That became reachable in ordinary use when the form's description
+     * box turned from a one-line {@code <input>} into a {@code <textarea>}: asking for long
+     * descriptions and then failing the long ones opaquely is the worst of both.
+     */
+    private void requireDescriptionFits(ExportedWbsItem item) {
+        String description = item.description();
+        if (description != null && description.length() > DESCRIPTION_MAX_LENGTH) {
+            throw new InvalidImportException(
+                    "WBS 항목 '%s'의 설명이 너무 깁니다 (최대 %d자)."
+                            .formatted(item.name(), DESCRIPTION_MAX_LENGTH));
+        }
+    }
+
+    /**
+     * The same rule the request DTOs' {@code @Pattern} applies, enforced here because a hand-edited
+     * file never goes through bean validation.
+     *
+     * <p>This does not contradict "구조는 검증하고 계획의 품질은 검증하지 않는다": a
+     * {@code javascript:} address is not a plan anyone disagrees with, it is an executable script
+     * that runs the moment somebody clicks the link the screen draws from it.
+     *
+     * <p>Length is checked too — the column is {@code VARCHAR(2000)}, and an over-long value would
+     * otherwise surface as a 500 from the database instead of a message naming the entry.
+     */
+    private void requireSafeActionItemUrl(ExportedWbsItem item) {
+        String url = item.actionItemUrl();
+        if (url == null || url.isBlank()) {
+            return;
+        }
+        if (url.length() > ACTION_ITEM_URL_MAX_LENGTH) {
+            throw new InvalidImportException(
+                    "WBS 항목 '%s'의 Action Item 주소가 너무 깁니다 (최대 %d자)."
+                            .formatted(item.name(), ACTION_ITEM_URL_MAX_LENGTH));
+        }
+        if (!ACTION_ITEM_URL_PATTERN.matcher(url).matches()) {
+            throw new InvalidImportException(
+                    "WBS 항목 '%s'의 Action Item 주소는 http:// 또는 https:// 로 시작해야 합니다: %s"
+                            .formatted(item.name(), url));
+        }
+    }
+
     /** Walks each item's parent chain; a repeat means the chain loops and no tree exists. */
     private void detectParentCycles(List<ExportedWbsItem> items) {
         Map<Long, Long> parents = new HashMap<>();
@@ -642,6 +710,11 @@ public class ImportService {
             row.restoreProgressBasis(item.weight(), item.agileRatio(), item.acceptanceStatus());
             row.restoreActualDates(item.actualStartDate(), item.actualEndDate(),
                     item.forecastEndDate());
+            // 검증 단계가 http/https만 통과시켰다. 빈 문자열은 미입력과 같은 뜻이라 null로 눕힌다.
+            row.restoreActionItemUrl(
+                    item.actionItemUrl() == null || item.actionItemUrl().isBlank()
+                            ? null
+                            : item.actionItemUrl().trim());
             WbsItem saved = wbsItemRepository.save(row);
             idMap.put(item.id(), saved.getId());
             queue.addAll(byParent.getOrDefault(item.id(), List.of()));

@@ -466,6 +466,60 @@ class ImportServiceTest {
     }
 
     @Nested
+    @DisplayName("Action Item 주소 (formatVersion 8)")
+    class ActionItemUrl {
+
+        @Test
+        @DisplayName("http/https 주소는 그대로 들어온다")
+        void keepsSafeUrl() {
+            service.importProject(wbsFile(8, List.of(
+                    wbsWithUrl(1L, null, "회의록", "https://example.com/notes"))));
+
+            assertThat(byName("회의록").getActionItemUrl()).isEqualTo("https://example.com/notes");
+        }
+
+        @Test
+        @DisplayName("빈 문자열은 미입력과 같은 뜻이라 null로 눕는다")
+        void normalisesBlankToNull() {
+            service.importProject(wbsFile(8, List.of(wbsWithUrl(1L, null, "회의록", "  "))));
+
+            assertThat(byName("회의록").getActionItemUrl()).isNull();
+        }
+
+        @Test
+        @DisplayName("javascript: 주소는 거부하고 아무것도 남기지 않는다")
+        void refusesScriptUrlBeforeInserting() {
+            // 손으로 편집한 파일은 요청 DTO의 bean validation을 타지 않는다. 이 값이 그대로
+            // <a href>가 되므로 링크를 누르는 것만으로 스크립트가 실행된다 — 계획의 품질이
+            // 아니라 실행 가능한 스크립트라서 거부한다.
+            assertThatThrownBy(() -> service.importProject(wbsFile(8, List.of(
+                    wbsWithUrl(1L, null, "악성", "javascript:alert(1)")))))
+                    .isInstanceOf(InvalidImportException.class)
+                    .hasMessageContaining("악성")
+                    .hasMessageContaining("http://");
+
+            assertThat(projects).isEmpty();
+            assertThat(wbsItems).isEmpty();
+        }
+
+        @Test
+        @DisplayName("data: 주소도 같은 규칙으로 거부한다")
+        void refusesDataUrl() {
+            assertThatThrownBy(() -> service.importProject(wbsFile(8, List.of(
+                    wbsWithUrl(1L, null, "악성", "data:text/html,<script>alert(1)</script>")))))
+                    .isInstanceOf(InvalidImportException.class);
+        }
+
+        @Test
+        @DisplayName("주소 절이 없는 구형 파일(formatVersion 7)은 거부하지 않고 비운 채 들어온다")
+        void acceptsOlderFileWithoutTheField() {
+            service.importProject(wbsFile(7, List.of(wbs(1L, null, "회의록"))));
+
+            assertThat(byName("회의록").getActionItemUrl()).isNull();
+        }
+    }
+
+    @Nested
     @DisplayName("Backlog")
     class Backlog {
 
@@ -641,8 +695,14 @@ class ImportServiceTest {
 
     private ExportedWbsItem wbs(Long id, Long parentId, String name, WbsNodeType nodeType,
                                  ExecutionMode executionMode, List<Long> tagIds) {
-        return new ExportedWbsItem(id, parentId, "무시됨", name, null, null, null, 0, 0,
+        return new ExportedWbsItem(id, parentId, "무시됨", name, null, null, null, null, 0, 0,
                 nodeType, executionMode, null, null, null, null, null, null, tagIds);
+    }
+
+    /** The formatVersion 8 shape: an external Action Item address on the entry. */
+    private ExportedWbsItem wbsWithUrl(Long id, Long parentId, String name, String actionItemUrl) {
+        return new ExportedWbsItem(id, parentId, "무시됨", name, null, actionItemUrl, null, null,
+                0, 0, null, null, null, null, null, null, null, null, List.of());
     }
 
     private ExportedTag tag(Long id, String name, String color, int sortOrder) {

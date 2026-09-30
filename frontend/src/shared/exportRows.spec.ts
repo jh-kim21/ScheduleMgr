@@ -3,6 +3,7 @@ import type { BacklogItem } from '../api/backlogApi'
 import type { RaciMatrix } from '../api/raciApi'
 import type { RaidItem } from '../api/raidApi'
 import type { WbsNode } from '../api/wbsApi'
+import { toCsv } from './csv'
 import { backlogCsv, raciCsv, raciLegend, raidCsv, wbsCsv } from './exportRows'
 
 /**
@@ -191,6 +192,53 @@ describe('wbsCsv', () => {
     it('0과 척도 밖 값은 숫자째로 드러낸다 — 0("집계 제외")과 미지정은 다른 값이다', () => {
       expect(sizeOf(wbsNode({ weight: 0 }))).toBe('집계 제외(0)')
       expect(sizeOf(wbsNode({ weight: 30 }))).toBe('사용자 지정 30')
+    })
+  })
+
+  /**
+   * 열을 하나 끼워 넣을 때 머리글과 행은 **따로** 고쳐야 하는 두 배열이라, 한쪽만 고치면 그
+   * 지점부터 모든 값이 한 칸씩 밀린다 — 파일은 멀쩡해 보이고 Excel에서 열어야 드러난다.
+   * `header.indexOf(...)`로 값을 집으면 그 어긋남이 여기서 바로 빨개진다(`규모`와 같은 방식).
+   */
+  describe('Action Item', () => {
+    const actionItemOf = (node: WbsNode) => {
+      const table = wbsCsv([node], null)
+      return table.rows[0][table.header.indexOf('Action Item')]
+    }
+
+    it('머리글과 행의 칸 수가 같다 — 한쪽에만 열을 더하면 그 뒤가 통째로 밀린다', () => {
+      const table = wbsCsv([wbsNode()], null)
+
+      expect(table.header).toContain('Action Item')
+      expect(table.rows[0]).toHaveLength(table.header.length)
+    })
+
+    it('주소가 있으면 그대로 적는다 — 링크는 사람이 Excel에서 눌러야 하므로 가공하지 않는다', () => {
+      expect(actionItemOf(wbsNode({ actionItemUrl: 'https://example.com/tickets/1' })))
+        .toBe('https://example.com/tickets/1')
+    })
+
+    /**
+     * 빈 칸인지는 표(`CsvTable`)가 아니라 **글자로 만든 뒤** 봐야 한다 — 표에 남는 것은 `null`
+     * 이나 `undefined` 그 자체이고, 그것을 빈 칸으로 바꾸는 것은 `toCsv`의 `toField`다. 표만
+     * 보면 "빈 칸이 된다"가 아니라 "값이 없다"까지만 확인한 셈이 된다.
+     */
+    const cellText = (node: WbsNode) => {
+      const value = actionItemOf(node)
+      // 그 칸 하나만 다시 그린다 — 행 전체를 쉼표로 쪼개면 다른 칸에 쉼표가 하나 생기는 순간
+      // 자리가 밀려 엉뚱한 값을 보게 된다(따옴표로 감싼 칸을 naive split이 못 읽는다).
+      return toCsv([], [[value]]).split('\r\n')[1]
+    }
+
+    it('없으면(null) 빈 칸이 된다 — "null"이라 적지 않는다', () => {
+      expect(cellText(wbsNode({ actionItemUrl: null }))).toBe('')
+    })
+
+    it('노드가 그 필드를 아예 갖고 있지 않아도(선택 필드) 빈 칸일 뿐 열은 그대로 남는다', () => {
+      const table = wbsCsv([wbsNode()], null)
+
+      expect(cellText(wbsNode())).toBe('')
+      expect(table.rows[0]).toHaveLength(table.header.length)
     })
   })
 })

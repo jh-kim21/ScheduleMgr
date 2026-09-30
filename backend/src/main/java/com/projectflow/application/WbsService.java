@@ -186,8 +186,8 @@ public class WbsService {
                 request.executionMode()
         ));
         // 새 항목은 자식이 없어 결함 2의 롤업 문제가 없다 — weight·agileRatio·acceptanceStatus·
-        // 실적/예상 일자는 update()가 아니라 이 별도 호출로만 채워지므로, 값이 하나도 없으면 굳이
-        // 다시 저장하지 않는다.
+        // 실적/예상 일자·Action Item 주소는 update()가 아니라 이 별도 호출로만 채워지므로, 값이
+        // 하나도 없으면 굳이 다시 저장하지 않는다.
         boolean hasBasis = request.weight() != null || request.agileRatio() != null
                 || request.acceptanceStatus() != null;
         if (hasBasis) {
@@ -198,7 +198,11 @@ public class WbsService {
         if (hasActuals) {
             saved.restoreActualDates(request.actualStartDate(), request.actualEndDate(), request.forecastEndDate());
         }
-        if (hasBasis || hasActuals) {
+        String actionItemUrl = blankToNull(request.actionItemUrl());
+        if (actionItemUrl != null) {
+            saved.restoreActionItemUrl(actionItemUrl);
+        }
+        if (hasBasis || hasActuals || actionItemUrl != null) {
             wbsItemRepository.save(saved);
         }
         if (wantedTags != null && !wantedTags.isEmpty()) {
@@ -335,7 +339,8 @@ public class WbsService {
                 request.acceptanceStatus(),
                 request.actualStartDate(),
                 request.actualEndDate(),
-                request.forecastEndDate()
+                request.forecastEndDate(),
+                blankToNull(request.actionItemUrl())
         );
         wbsItemRepository.save(item);
 
@@ -666,6 +671,19 @@ public class WbsService {
         if (!added.isEmpty()) {
             itemTagRepository.saveAll(added);
         }
+    }
+
+    /**
+     * "Not set" has one representation, not two.
+     *
+     * <p>The form sends {@code ""} when the user clears the Action Item box — bean validation lets
+     * that through on purpose ({@code ^$} in the pattern) — while an older client simply omits the
+     * field and sends {@code null}. Storing both as-is would leave two values meaning the same
+     * thing, and the screen would have to test for each. Same handling as
+     * {@code ProgressBasisService.blankToNull}.
+     */
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     /**

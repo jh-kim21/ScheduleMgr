@@ -44,6 +44,24 @@ public class WbsItem {
     @Column(length = 2000)
     private String description;
 
+    /**
+     * An external Action Item this entry points at — a meeting note, a ticket, a deliverable.
+     * Allowed on every entry, summaries included: it is free-form memo at the same level as
+     * {@link #description}, so there is no reason to repeat the "a summary may hold but not change
+     * it" rule that {@link #executionMode} and 분야 need.
+     *
+     * <p>Only {@code http://} and {@code https://} get here — the request DTOs' {@code @Pattern}
+     * and {@code ImportService}'s validation phase both refuse anything else, because this value
+     * goes straight into an {@code <a href>} and a {@code javascript:} URL would run on click.
+     * The screen checks once more before rendering; the schema does not, since H2 and PostgreSQL
+     * disagree on regular-expression syntax.
+     *
+     * <p>{@code null} means 미입력. A blank string is normalised to null on the way in, so "not
+     * set" has exactly one representation.
+     */
+    @Column(name = "action_item_url", length = 2000)
+    private String actionItemUrl;
+
     @Column(name = "start_date")
     private LocalDate startDate;
 
@@ -171,12 +189,15 @@ public class WbsItem {
      * <p>{@code nodeType} and {@code executionMode} are validated against the tree by
      * {@code WbsService} before this is called — a summary cannot be given a mode, and an entry
      * with children cannot become a Work Package.
+     *
+     * <p>{@code actionItemUrl} is last on purpose: the two constructors above are used by some
+     * twenty test files, so the field was added here rather than to them.
      */
     public void update(String name, String description, LocalDate startDate, LocalDate endDate,
                         int progress, WbsNodeType nodeType, ExecutionMode executionMode,
                         Integer weight, Integer agileRatio, AcceptanceStatus acceptanceStatus,
                         LocalDate actualStartDate, LocalDate actualEndDate,
-                        LocalDate forecastEndDate) {
+                        LocalDate forecastEndDate, String actionItemUrl) {
         this.name = name;
         this.description = description;
         this.startDate = startDate;
@@ -190,6 +211,7 @@ public class WbsItem {
         this.actualStartDate = actualStartDate;
         this.actualEndDate = actualEndDate;
         this.forecastEndDate = forecastEndDate;
+        this.actionItemUrl = actionItemUrl;
     }
 
     /** Restores the aggregation basis from an exported file. */
@@ -301,6 +323,20 @@ public class WbsItem {
         this.actualStartDate = actualStartDate;
         this.actualEndDate = actualEndDate;
         this.forecastEndDate = forecastEndDate;
+    }
+
+    /** {@code null} means 미입력; only {@code http}/{@code https} values ever get stored. */
+    public String getActionItemUrl() {
+        return actionItemUrl;
+    }
+
+    /**
+     * Sets the Action Item URL on a freshly constructed entry — creation and import, where the
+     * constructors cannot carry it. Alongside {@link #restoreProgressBasis} and
+     * {@link #restoreActualDates} for the same reason.
+     */
+    public void restoreActionItemUrl(String actionItemUrl) {
+        this.actionItemUrl = actionItemUrl;
     }
 
     public LocalDateTime getCreatedAt() {

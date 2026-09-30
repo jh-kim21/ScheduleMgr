@@ -225,14 +225,24 @@ function remove(cp: CheckpointDetail) {
         </div>
         <!-- 인라인 승인 입력 — 부모(WbsTree)가 이미 트리 안이라 여기서 또 오버레이를 띄우면
              레이어가 겹친다. -->
-        <div v-if="editable && approvingId === cp.id" class="approve-row">
+        <!--
+          Esc는 컨테이너에서 받는다 — 입력칸에만 두면 [확인]·[취소]에 포커스가 간 뒤(클릭하면
+          브라우저가 그렇게 한다) Esc가 아무 데도 닿지 않는다.
+
+          Enter는 올리지 않는다 — `<button>` 위에서 Enter는 이미 click을 일으키므로 컨테이너에도
+          핸들러가 있으면 같은 저장이 두 번 나간다.
+        -->
+        <div
+          v-if="editable && approvingId === cp.id"
+          class="approve-row"
+          @keydown.esc="cancelApprove"
+        >
           <input
             :ref="setApproverInput"
             v-model="approver"
             type="text"
             placeholder="승인자 (예: 김재학)"
             @keydown.enter="confirmApprove"
-            @keydown.esc="cancelApprove"
           />
           <button type="button" :disabled="!approver.trim()" @click="confirmApprove">확인</button>
           <button type="button" class="ghost" @click="cancelApprove">취소</button>
@@ -257,12 +267,16 @@ function remove(cp: CheckpointDetail) {
     >＋ 체크포인트 추가</button>
 
     <!--
-      두 글자 칸 어디서든 Enter로 저장되고 Esc로 닫힌다 — 승인 입력(위)에만 있던 핸들러라
-      비대칭이었다. `<form>`이 아니라 `<div>`라서(트리 행 안에 들어가므로 중첩 폼을 만들 수 없다)
-      브라우저의 기본 submit이 없고, 그래서 이 핸들러가 곧 Enter 저장의 전부다. 가중치 칸(`<select>`)도
-      마찬가지라 같은 핸들러를 달아 둔다 — 빠뜨리면 그 칸에서만 Enter·Esc가 죽는다.
+      두 글자 칸 어디서든 Enter로 저장된다. `<form>`이 아니라 `<div>`라서(트리 행 안에 들어가므로
+      중첩 폼을 만들 수 없다) 브라우저의 기본 submit이 없고, 그래서 이 핸들러가 곧 Enter 저장의
+      전부다. 가중치 칸(`<select>`)에도 같은 핸들러를 달아 둔다 — 빠뜨리면 그 칸에서만 Enter
+      저장이 죽는다.
+
+      Esc만 컨테이너에서 받는다 — 입력칸에만 두면 [추가]·[취소]에 포커스가 간 뒤(클릭하면
+      브라우저가 그렇게 한다) Esc가 아무 데도 닿지 않는다. Enter는 올리지 않는다: `<button>`
+      위에서 Enter는 이미 click을 일으키므로 컨테이너에도 핸들러가 있으면 같은 저장이 두 번 나간다.
     -->
-    <div v-if="editable && formOpen" class="cp-form">
+    <div v-if="editable && formOpen" class="cp-form" @keydown.esc="closeForm">
       <input
         ref="titleInput"
         v-model="draft.title"
@@ -270,7 +284,6 @@ function remove(cp: CheckpointDetail) {
         class="cp-title-input"
         placeholder="체크포인트 제목"
         @keydown.enter="isSubmittable(draft) && submit()"
-        @keydown.esc="closeForm"
       />
       <!-- `<select>`에는 placeholder가 없어 예전 `placeholder="가중치"`가 주던 접근 가능한 이름이
            사라진다 — `aria-label`로 대신한다. -->
@@ -279,7 +292,6 @@ function remove(cp: CheckpointDetail) {
         class="cp-weight-input"
         aria-label="가중치"
         @keydown.enter="isSubmittable(draft) && submit()"
-        @keydown.esc="closeForm"
       >
         <!-- 고를 수는 없지만 저장된 값은 그대로 보이고 그대로 저장돼야 한다(레거시 0·척도 밖). -->
         <option v-if="!isOnScale(draft.weight)" :value="draft.weight" disabled>
@@ -295,7 +307,6 @@ function remove(cp: CheckpointDetail) {
         class="cp-criteria-input"
         placeholder="완료 조건 (선택)"
         @keydown.enter="isSubmittable(draft) && submit()"
-        @keydown.esc="closeForm"
       />
       <button type="button" :disabled="!isSubmittable(draft)" @click="submit">
         {{ editingId === null ? '추가' : '저장' }}

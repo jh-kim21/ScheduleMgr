@@ -77,8 +77,10 @@ public class ExportService {
      * <p>7 — 업무 분야 tags: the project's tag list and each WBS entry's {@code tagIds}. Without
      * these a shared project would arrive with every 분야 chip gone and no list to re-create them
      * from.
+     * <p>8 — each WBS entry's {@code actionItemUrl}. A file below this simply has none, which reads
+     * as a project that never linked an external Action Item.
      */
-    private static final int FORMAT_VERSION = 7;
+    private static final int FORMAT_VERSION = 8;
 
     private final ProjectRepository projectRepository;
     private final ProjectMemberRepository memberRepository;
@@ -356,6 +358,7 @@ public class ExportService {
                     codes.get(item.getId()),
                     item.getName(),
                     item.getDescription(),
+                    item.getActionItemUrl(),
                     item.getStartDate(),
                     item.getEndDate(),
                     item.getProgress(),

@@ -17,6 +17,9 @@ export function nodeToFormInput(item: WbsNode): WbsItemInput {
   return {
     name: item.name,
     description: item.description ?? '',
+    // 노드가 들고 있던 값을 그대로 되돌려 보낸다 — 빠뜨리면 제목만 고친 저장이 URL을 조용히
+    // 지운다(결함 3과 정확히 같은 사고). `?? null`은 이 값을 싣지 않는 응답을 위한 폴백이다.
+    actionItemUrl: item.actionItemUrl ?? null,
     startDate: item.startDate,
     endDate: item.endDate,
     progress: item.progress,

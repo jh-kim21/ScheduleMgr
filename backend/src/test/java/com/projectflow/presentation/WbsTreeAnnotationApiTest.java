@@ -287,8 +287,8 @@ class WbsTreeAnnotationApiTest {
         String file = mockMvc.perform(get("/api/projects/" + projectId + "/export"))
                 .andReturn().getResponse().getContentAsString();
         assertThat(objectMapper.readTree(file).get("formatVersion").asInt())
-                .as("분야가 실리는 형식은 7이다")
-                .isEqualTo(7);
+                .as("분야는 형식 7에서 실리기 시작했다 — 그 뒤로 올라간 버전도 당연히 싣는다")
+                .isGreaterThanOrEqualTo(7);
 
         MvcResult imported = mockMvc.perform(post("/api/projects/import")
                         .contentType(MediaType.APPLICATION_JSON)

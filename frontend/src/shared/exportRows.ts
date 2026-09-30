@@ -47,7 +47,11 @@ export function wbsCsv(nodes: WbsNode[], referenceDate: string | null): CsvTable
         node.code,
         node.level,
         node.name,
+        // 줄바꿈이 든 설명은 `csv.ts`의 `escapeField`가 이미 따옴표로 감싼다 — 한 셀 안에 들어가고
+        // 행이 깨지지 않는다.
         node.description,
+        // 값이 없으면 `toField`가 빈 칸으로 적는다("null"이라 적지 않는다).
+        node.actionItemUrl,
         node.startDate,
         node.endDate,
         progressText(node.computedProgress),
@@ -73,6 +77,7 @@ export function wbsCsv(nodes: WbsNode[], referenceDate: string | null): CsvTable
       '레벨',
       '업무명',
       '설명',
+      'Action Item',
       '시작일',
       '종료일',
       '진척',

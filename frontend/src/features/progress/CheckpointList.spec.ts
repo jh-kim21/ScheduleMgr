@@ -581,6 +581,57 @@ describe('CheckpointList', () => {
       expect(wrapper.find('.cp-form').exists()).toBe(false)
       expect(addButton(wrapper)).toBeTruthy()
     })
+
+    /**
+     * Esc 핸들러가 입력칸에만 붙어 있으면 **버튼 위에서 죽는다** — 버튼을 클릭하면 브라우저가
+     * 거기에 포커스를 주고(Windows/Chrome), Tab으로 옮겨도 마찬가지다. 그래서 핸들러를
+     * `.approve-row`·`.cp-form` 컨테이너로 올렸고, 아래 두 건이 그것을 고정한다.
+     *
+     * 버튼에 `keydown`을 쏘는 것이 곧 검증이다 — `trigger`는 그 요소에서 이벤트를 만들고
+     * 버블링시키므로, 핸들러가 컨테이너에 없으면 이 테스트가 빨개진다.
+     */
+    it('승인 행의 [취소] 버튼에서 Esc를 눌러도 닫힌다 — 버튼에 포커스가 간 뒤 Esc가 죽던 자리다', async () => {
+      wrapper = renderList([checkpoint()], true)
+
+      await approveButtons(wrapper)[0].trigger('click')
+      expect(approverInput(wrapper).exists()).toBe(true)
+
+      await wrapper.find('.approve-row button.ghost').trigger('keydown.esc')
+
+      expect(wrapper.find('.approve-row').exists()).toBe(false)
+    })
+
+    it('추가 폼의 [추가] 버튼에서 Esc를 눌러도 닫힌다 — 같은 결함이 폼 쪽에도 있었다', async () => {
+      wrapper = renderList([checkpoint()], true)
+
+      await addButton(wrapper)!.trigger('click')
+      await titleInput(wrapper).setValue('코드 리뷰')
+
+      await formSubmitButton(wrapper).trigger('keydown.esc')
+
+      expect(wrapper.find('.cp-form').exists()).toBe(false)
+      expect(addButton(wrapper)).toBeTruthy()
+    })
+
+    /**
+     * Esc와 달리 **Enter는 컨테이너로 올리지 않았다** — 실제 브라우저에서 `<button>` 위의 Enter는
+     * 이미 click을 일으키므로, 컨테이너에도 핸들러가 있으면 같은 저장이 두 번 나간다.
+     *
+     * 이 테스트가 보는 것은 그 이중 호출 자체가 아니라 **컨테이너에 Enter 핸들러가 없다**는
+     * 사실이다: `trigger`는 이벤트만 쏘고 브라우저의 click 합성까지 흉내 내지 않으므로, 여기서
+     * 저장이 불린다면 그것은 오직 컨테이너 핸들러가 생겼다는 뜻이다(= 되돌리면 빨개진다).
+     */
+    it('추가 폼 컨테이너에는 Enter 핸들러가 없다 — 버튼 위 Enter로 저장이 두 번 나가지 않게', async () => {
+      mockedAddCheckpoint.mockResolvedValue({} as never)
+      wrapper = renderList([checkpoint()], true)
+
+      await addButton(wrapper)!.trigger('click')
+      await titleInput(wrapper).setValue('코드 리뷰')
+      await formSubmitButton(wrapper).trigger('keydown.enter')
+      await flushPromises()
+
+      expect(mockedAddCheckpoint).not.toHaveBeenCalled()
+    })
   })
 
   /**

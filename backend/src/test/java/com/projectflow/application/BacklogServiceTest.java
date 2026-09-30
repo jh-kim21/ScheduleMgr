@@ -394,7 +394,7 @@ class BacklogServiceTest {
                 .findFirst()
                 .orElseThrow();
         item.update(item.getName(), null, null, null, 0, WbsNodeType.SUMMARY,
-                item.getExecutionMode(), null, null, null, null, null, null);
+                item.getExecutionMode(), null, null, null, null, null, null, null);
     }
 
     private BacklogItemRepository backlogItemRepository() {

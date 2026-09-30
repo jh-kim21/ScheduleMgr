@@ -69,7 +69,7 @@ class ProgressVarianceRegressionTest {
         // B: 진행률 40, 기준선 기간의 절반이 지남 (elapsedShare = 50)
         WbsItem b = workPackage("B", 0, today.minusDays(4), today.plusDays(5), null, null);
         b.update("B", null, b.getStartDate(), b.getEndDate(), 40, WbsNodeType.WORK_PACKAGE,
-                null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null);
         // C: 산정 전 — Agile인데 집계 대상 Story/Bug가 하나도 없다. 아직 시작 전 (elapsedShare = 0)
         WbsItem c = workPackage("C", 0, today.plusDays(5), today.plusDays(15),
                 ExecutionMode.AGILE, null);
@@ -99,7 +99,7 @@ class ProgressVarianceRegressionTest {
         WbsItem a = workPackage("A", 80, today.minusDays(20), today.minusDays(10), null, null);
         WbsItem b = workPackage("B", 0, today.minusDays(4), today.plusDays(5), null, null);
         b.update("B", null, b.getStartDate(), b.getEndDate(), 40, WbsNodeType.WORK_PACKAGE,
-                null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null);
 
         addBaselineItem(a);
         addBaselineItem(b);
@@ -133,7 +133,7 @@ class ProgressVarianceRegressionTest {
         ReflectionTestUtils.setField(item, "id", ids.incrementAndGet());
         if (weight != null) {
             item.update(name, null, start, end, progress, WbsNodeType.WORK_PACKAGE, mode,
-                    weight, null, null, null, null, null);
+                    weight, null, null, null, null, null, null);
         }
         items.add(item);
         return item;

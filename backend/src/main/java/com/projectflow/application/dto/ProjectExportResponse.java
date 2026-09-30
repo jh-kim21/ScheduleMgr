@@ -98,6 +98,11 @@ public record ProjectExportResponse(
      *                      implies
      * @param tagIds        분야 attached to this entry, by {@code tags[].id} (formatVersion 7).
      *                      Absent in older files, which simply means no tags
+     * @param actionItemUrl external Action Item address (formatVersion 8); {@code null} in older
+     *                      files, which simply means none was recorded. Import refuses anything
+     *                      that is not {@code http}/{@code https} — a hand-edited file does not go
+     *                      through the request DTO's bean validation, and this value is rendered
+     *                      as a link
      */
     public record ExportedWbsItem(
             Long id,
@@ -105,6 +110,7 @@ public record ProjectExportResponse(
             String code,
             String name,
             String description,
+            String actionItemUrl,
             LocalDate startDate,
             LocalDate endDate,
             int progress,

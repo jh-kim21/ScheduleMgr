@@ -37,6 +37,7 @@ const emit = defineEmits<{
 const empty: WbsItemInput = {
   name: '',
   description: '',
+  actionItemUrl: null,
   startDate: null,
   endDate: null,
   progress: 0,
@@ -137,9 +138,24 @@ function onSubmit() {
           업무명
           <input v-model="form.name" type="text" required placeholder="업무명" />
         </label>
+      </div>
+
+      <!-- 설명은 자기 행이다 — 3줄짜리 textarea를 업무명 옆에 두면 두 칸의 높이가 크게 어긋난다. -->
+      <div class="row">
         <label class="grow">
           설명
-          <input v-model="form.description" type="text" placeholder="설명 (선택)" />
+          <!-- self-closing 하지 말고 `></textarea>`로 닫는다 — 태그 사이의 공백이 그대로
+               초기값이 되어, 비어 있어야 할 칸이 공백 한 칸을 들고 열린다. -->
+          <textarea v-model="form.description" rows="3" placeholder="설명 (선택)"></textarea>
+        </label>
+      </div>
+
+      <!-- 회의록·티켓·산출물 주소. 항목당 하나이고 라벨은 받지 않는다(지시서 §2-D).
+           `type="url"`은 편의일 뿐이라 서버 검증(http/https만)이 따로 있다. -->
+      <div class="row">
+        <label class="grow">
+          Action Item 주소
+          <input v-model="form.actionItemUrl" type="url" placeholder="https://… (선택)" />
         </label>
       </div>
 
@@ -342,16 +358,25 @@ label.grow {
   min-width: 0;
 }
 
+/* `textarea`를 빠뜨리지 마라 — `font: inherit`이 없으면 설명 칸만 브라우저 기본 고정폭
+   글꼴로 나와 옆의 업무명 칸과 다르게 보인다. 이 작업에서 가장 흔한 실수 자리다. */
 input,
-select {
+select,
+textarea {
   padding: 0.45rem 0.6rem;
   border: 1px solid var(--border-input);
   border-radius: 6px;
   font: inherit;
 }
 
+/* 세로로만 늘린다 — 가로로 늘리면 대화상자 폭을 넘어간다. */
+textarea {
+  resize: vertical;
+}
+
 input:disabled,
-select:disabled {
+select:disabled,
+textarea:disabled {
   background: var(--surface-sunken);
   color: var(--text-faint);
 }

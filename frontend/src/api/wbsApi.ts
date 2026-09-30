@@ -39,6 +39,14 @@ export interface WbsNode extends DelayInfo {
   level: number
   name: string
   description: string | null
+  /**
+   * 외부 Action Item(회의록·티켓·산출물) 주소. `null`도 미입력도 "없음"이다.
+   *
+   * 선택 필드인 것은 `actualStartDate` 계열과 같은 이유다 — 이 값을 싣지 않는 응답(규칙이
+   * 생기기 전에 찍힌 커밋의 `computed_payload`)과 테스트의 노드 팩토리가 그대로 통과해야 한다.
+   * 읽는 쪽은 언제나 `isSafeHttpUrl`을 거치므로 `undefined`도 안전하게 "링크 없음"이 된다.
+   */
+  actionItemUrl?: string | null
   endDate: string | null
   /** Whether the schedule and progress above were rolled up from children. */
   summary: boolean
@@ -114,6 +122,13 @@ export interface WbsTree {
 export interface WbsItemInput {
   name: string
   description: string | null
+  /**
+   * 외부 Action Item 주소. 빈 문자열과 `null` 둘 다 "없음"이고 서버가 `null`로 정규화한다.
+   *
+   * `WbsNode` 쪽과 달리 **선택이 아니다** — 폼은 지금 들고 있는 값을 언제나 명시적으로 되돌려
+   * 보내야 한다. 빠뜨리면 제목만 고친 저장이 URL을 조용히 지운다(결함 3과 같은 사고).
+   */
+  actionItemUrl: string | null
   startDate: string | null
   endDate: string | null
   progress: number

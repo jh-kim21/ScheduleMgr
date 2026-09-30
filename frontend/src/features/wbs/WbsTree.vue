@@ -3,9 +3,11 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { WbsMoveInput, WbsNode } from '../../api/wbsApi'
 import type { WorkPackageProgress } from '../../api/progressApi'
+import ModalDialog from '../../components/ModalDialog.vue'
 import CheckpointList from '../progress/CheckpointList.vue'
 import TagChip from './TagChip.vue'
 import { approvalBadge, supportsCheckpoints } from './checkpointRow'
+import { isTextEntry } from './treeKeyTarget'
 import { responsibleNames, responsibleTitle, type ResponsibleName } from './responsibleCell'
 import { tagCell, type TagCell } from './tagCell'
 import { actionHint, toolbarState } from './wbsToolbar'
@@ -48,6 +50,7 @@ import {
   progressBarWidth,
   progressText,
 } from '../../shared/progress'
+import { isSafeHttpUrl } from '../../shared/url'
 import {
   containsDescendant,
   findNode,
@@ -522,6 +525,17 @@ const ARROW_KEYS = ['ArrowDown', 'ArrowUp', 'ArrowRight', 'ArrowLeft']
 function onKeydown(event: KeyboardEvent) {
   if (!ARROW_KEYS.includes(event.key)) return
   /*
+   * 입력 중인 칸의 키에는 손대지 않는다 — 펼친 Work Package의 체크포인트 폼(`CheckpointList`)이
+   * 같은 `<tbody>` 안에 들어오므로 그 입력칸에서 누른 방향키가 여기까지 버블링한다. 판정은
+   * `treeKeyTarget.ts`에 순수 함수로 있다.
+   *
+   * **`event.altKey` 분기보다 반드시 위여야 한다** — 아래에 두면 타이핑 중에 누른 Alt+방향키가
+   * WBS 항목을 실제로 옮긴다. `event.target === body.value`로 좁히지도 않는다 — 그러면 행 안의
+   * 토글 버튼·링크에 포커스가 있을 때 방향키 탐색이 죽는다. 막아야 할 것은 "입력 중"이지
+   * "tbody가 아님"이 아니다.
+   */
+  if (isTextEntry(event.target)) return
+  /*
    * Alt+화살표는 드래그 앤 드롭의 키보드 대안이다(WCAG 2.5.7·2.1.1, `wbsMove.ts`) — 일반
    * 화살표(탐색)와 겹치지 않도록 수정자 하나를 붙였다. ↑/↓는 형제 사이 순서, →/←는 들여쓰기/
    * 내어쓰기다(오른쪽 = 더 깊이, 왼쪽 = 한 단계 위로 — 들여쓰기 방향과 같다).
@@ -681,6 +695,13 @@ const columnSettingsOpen = ref(false)
  * 도움말이 아니라 "왜 드래그가 안 되는지"에 대한 답이기 때문이다.
  */
 const helpOpen = ref(false)
+
+/**
+ * 설명 전문을 보여줄 항목. `null`이면 창이 닫혀 있다. 보기 전용이다 — 여기서 고치지 않는다
+ * (고치는 자리는 `WbsForm` 하나여야 한다. 쓰기 경로가 둘이 되면 검증·매핑을 두 벌 관리하게
+ * 된다). 커밋 조회(`readOnly`) 중에도 열린다 — 보는 것은 쓰기가 아니다.
+ */
+const descriptionNode = ref<WbsNode | null>(null)
 
 const visibleColumnKeys = computed(
   () => new Set(visibleColumns(columnPrefs.value).map((column) => column.key)),
@@ -1080,11 +1101,47 @@ function rowClass(row: WbsRow) {
                   :data-status="row.node.delayStatus"
                   :title="delayDescription(row.node)"
                 >{{ delayBadge(row.node) }}</span>
-                <span
+                <!--
+                  설명은 행에 펼치지 않는다 — VARCHAR(2000)이 한 행을 통째로 늘린다. 칩을
+                  누르면 아래 `ModalDialog`가 전문을 보여준다. `readOnly`(커밋 조회)에서도
+                  살아 있다 — 보는 것은 쓰기가 아니다. `@click.stop`이 없으면 설명을
+                  들여다보는 것만으로 행 선택이 바뀐다(행에 `@click="onRowClick"`이 걸려 있다).
+                -->
+                <button
                   v-if="row.node.description"
-                  class="desc cell-clip"
-                  :title="row.node.description"
-                >{{ row.node.description }}</span>
+                  type="button"
+                  class="desc-chip"
+                  :aria-label="`설명 보기 — ${row.node.name}`"
+                  @click.stop="descriptionNode = row.node"
+                >설명</button>
+                <!--
+                  Action Item 링크. 긴 URL이 좁은 트리 행을 밀어내지 않도록 아이콘만 그리고
+                  전문은 `title`에 둔다. `isSafeHttpUrl`이 **마지막 방어선**이다 — 규칙이 생기기
+                  전에 저장된 행이나 손으로 편집한 가져오기 파일에 `javascript:`가 남아 있을 수
+                  있고, 실제로 실행하는 것은 브라우저다. `rel="noopener noreferrer"`를 빼지 마라.
+                -->
+                <a
+                  v-if="isSafeHttpUrl(row.node.actionItemUrl)"
+                  class="action-link"
+                  :href="row.node.actionItemUrl!"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  :title="row.node.actionItemUrl!"
+                  :aria-label="`Action Item 열기 — ${row.node.name}`"
+                  @click.stop
+                >🔗</a>
+                <!--
+                  열 수 없는 주소는 링크 대신 평문으로 그린다(지시서 §2-D). 아예 그리지 않으면
+                  주소가 없는 행과 똑같이 보여, 값이 있다는 것조차 알 수 없어 고칠 수도 없다 —
+                  그런 값을 들고 있을 수 있는 행은 정확히 아무도 검증하지 않은 행(규칙이 생기기
+                  전에 저장됐거나 밖에서 들어온 것)이다. Vue가 이스케이프하므로 글자로 그리는
+                  것은 안전하다 — `href`가 아니다.
+                -->
+                <span
+                  v-else-if="row.node.actionItemUrl"
+                  class="action-link unsafe cell-clip"
+                  :title="`열 수 없는 주소입니다 — ${row.node.actionItemUrl}`"
+                >{{ row.node.actionItemUrl }}</span>
               </div>
             </td>
             <td v-if="shows('startDate')" class="date">{{ row.node.startDate ?? '-' }}</td>
@@ -1274,6 +1331,19 @@ function rowClass(row: WbsRow) {
       <p>키보드: 위로·아래로·들여쓰기·내어쓰기 = Alt+↑ · Alt+↓ · Alt+→ · Alt+←</p>
     </div>
     </div>
+
+    <!--
+      설명 전문. `ModalDialog`가 body로 teleport 하므로 표의 overflow에 걸려 잘리지 않는다 —
+      그래도 표를 감싼 가로 스크롤 컨테이너(`.table-scroll`)와 높이 패널(`.tree-pane`)
+      **바깥**에 둔다. 보기 전용이다(위 `descriptionNode` 주석 참고).
+    -->
+    <ModalDialog
+      v-if="descriptionNode"
+      :title="`설명 — ${descriptionNode.code} ${descriptionNode.name}`"
+      @close="descriptionNode = null"
+    >
+      <p class="desc-full">{{ descriptionNode.description }}</p>
+    </ModalDialog>
   </template>
 </template>
 
@@ -1689,9 +1759,71 @@ thead th.pinned-edge {
   font-weight: 600;
 }
 
-.desc {
-  font-size: 0.78rem;
+/*
+ * 설명 칩. 다른 칩(BacklogList `.chip`, CheckpointList `.cp-pending`)과 같은 계열이다.
+ * 타깃 24×24px(WCAG 2.5.5)은 패딩과 `min-height`만으로 채운다 — `::after`로 히트 영역을
+ * 넓히는 기법은 여기서 쓰지 마라(CLAUDE.md "히트 영역을 ::after로 넓힐 때": 기준 요소를 못
+ * 찾으면 뷰포트 전체를 덮어 모든 클릭을 먹는다). 최소치에 정확히 맞추지도 마라 — 시각 크기와
+ * 패딩은 서로 다른 값이라 한쪽만 바뀌어도 조용히 기준 아래로 떨어진다.
+ * hover·focus 링·`position: relative`는 컨트롤 층의 전역 `button {}`이 이미 준다.
+ */
+.desc-chip {
+  flex: none;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  background: var(--badge-neutral-bg);
+  color: var(--badge-neutral-fg);
+  font-size: 0.68rem;
+  line-height: 1.4;
+  min-height: 25px;
+  white-space: nowrap;
+}
+
+/*
+ * Action Item 링크 — `<a>`라 컨트롤 층의 `button` 기본값을 받지 못하므로 타깃 크기를 여기서
+ * 직접 채운다. 위 `.desc-chip`과 같은 이유로 `::after` 확장 기법은 쓰지 않는다.
+ *
+ * **상호작용 규칙은 전부 `a.action-link`로 좁힌다** — 아래 `.unsafe`가 같은 클래스를
+ * `<span>`으로 쓰기 때문이다. 클래스를 공유하는 것 자체는 옳다(같은 자리의 같은 값이다).
+ * 공유된 클래스에 상호작용 전용 규칙을 얹은 것이 RACI 화면을 통째로 못 쓰게 만든 원인이었고
+ * (`.letter`가 표의 `<button>`과 범례의 `<span>`에 함께 쓰였다), 그때의 수습도 선택자를
+ * `button.letter`로 좁히는 것이었다(CLAUDE.md "히트 영역을 ::after로 넓힐 때").
+ */
+a.action-link {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 25px;
+  min-height: 25px;
+  padding: 0 0.2rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  line-height: 1;
+  text-decoration: none;
+}
+
+a.action-link:hover,
+a.action-link:focus-visible {
+  background: var(--state-hover);
+}
+
+/*
+ * 열 수 없는 주소(평문). 누를 수 있는 것이 아니므로 타깃 크기·hover 같은 상호작용 규칙을
+ * 주지 않는다 — 위 주석 참고. 조용히 물러나 있되 보이기는 해야 한다. 폭은 전역 `.cell-clip`이
+ * 자르고(전문은 `title`에 있다), 22rem 은 설명 칸 기준이라 트리 행 안에서는 더 좁힌다
+ * (`.owner`·`.tags`가 같은 이유로 같은 방식을 쓴다).
+ */
+.action-link.unsafe {
+  font-size: 0.72rem;
   color: var(--text-faint);
+  max-width: 14rem;
+}
+
+.desc-full {
+  margin: 0;
+  white-space: pre-wrap; /* 줄바꿈을 살린다 — 이게 없으면 여러 줄 입력이 무의미하다 */
+  overflow-wrap: anywhere; /* 공백 없는 긴 문자열이 창을 넘어가지 않게 */
 }
 
 /* 색은 간트 차트의 지연 팔레트와 동일하게 유지한다. */
