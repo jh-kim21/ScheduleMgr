@@ -190,10 +190,10 @@ function onDensity(density: WbsDensity) {
   cursor: not-allowed;
 }
 
+/* 전역 `.dialog-actions`(style.css)가 flex·바닥 고정·배경·구분선을 준다. 이 대화상자만
+   버튼을 오른쪽으로 민다. */
 .dialog-actions {
-  display: flex;
   justify-content: flex-end;
-  gap: 0.5rem;
 }
 
 .dialog-actions button {

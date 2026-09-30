@@ -217,7 +217,10 @@ function onBackdropPointerDown(event: MouseEvent) {
           <h2>{{ title }}</h2>
           <button type="button" class="close" aria-label="닫기" @click="requestClose">✕</button>
         </header>
-        <div class="body">
+        <!-- `dialog-body`는 scoped 가 아닌 평범한 클래스다 — `style.css`가 "대화상자 안의
+             컨트롤"을 가리킬 hook 이 필요한데(아래 `scroll-margin-bottom`), scoped 이름은
+             컴파일 결과라 바깥에서 셀 수 없다. `:deep()`으로 뚫는 대신 이름을 하나 더 단다. -->
+        <div class="body dialog-body">
           <p v-if="props.error" class="error" role="alert">{{ props.error }}</p>
           <slot />
         </div>
@@ -242,7 +245,12 @@ function onBackdropPointerDown(event: MouseEvent) {
   animation: fade 120ms ease-out;
 }
 
+/* `--dialog-pad`는 `.body`(스크롤포트)의 패딩이자, 슬롯 안의 콘텐츠가 그 값을 알아야 할 때
+   읽는 곳이다 — 커스텀 프로퍼티는 상속되므로 scoped 경계를 넘어 슬롯 콘텐츠에 닿는다.
+   지금 이걸 읽는 것은 `WbsForm`의 바닥 고정 버튼 줄 하나이고, 거기서 이 값을 숫자로 베껴
+   두면 한쪽만 고쳐 어긋난다. */
 .panel {
+  --dialog-pad: 1.1rem;
   width: 100%;
   max-width: 34rem;
   max-height: calc(100vh - 6rem);
@@ -304,7 +312,7 @@ function onBackdropPointerDown(event: MouseEvent) {
 }
 
 .body {
-  padding: 1.1rem;
+  padding: var(--dialog-pad);
   overflow-y: auto;
 }
 

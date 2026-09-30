@@ -79,7 +79,7 @@ function downloadTemplate() {
         여기서 고른 항목의 맨 끝 하위로 붙습니다. 기존 항목은 건드리지 않습니다.
       </p>
 
-      <div class="actions">
+      <div class="dialog-actions">
         <button type="submit" :disabled="!file">가져오기</button>
         <button type="button" class="ghost" @click="downloadTemplate">양식 CSV 내려받기</button>
         <button type="button" class="ghost" @click="emit('cancel')">취소</button>
@@ -117,11 +117,6 @@ select {
   background: var(--surface-sunken);
   border-radius: 6px;
   padding: 0.5rem 0.65rem;
-}
-
-.actions {
-  display: flex;
-  gap: 0.5rem;
 }
 
 button {

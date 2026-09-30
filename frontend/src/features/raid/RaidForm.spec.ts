@@ -168,11 +168,11 @@ describe('RaidForm — 제출 중 상태', () => {
   })
 
   function submitButton() {
-    return document.body.querySelector<HTMLButtonElement>('.actions button[type="submit"]')!
+    return document.body.querySelector<HTMLButtonElement>('.dialog-actions button[type="submit"]')!
   }
 
   function cancelButton() {
-    return document.body.querySelector<HTMLButtonElement>('.actions button[type="button"]')!
+    return document.body.querySelector<HTMLButtonElement>('.dialog-actions button[type="button"]')!
   }
 
   function titleInput() {

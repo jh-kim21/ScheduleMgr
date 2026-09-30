@@ -347,7 +347,7 @@ function onShortcutSave(event: KeyboardEvent) {
       <!-- 저장 버튼이 비활성인 이유 — 제목 없이는 눌러도 왜 안 되는지 알 수 없었다. -->
       <p v-if="!submittable" class="field-hint">제목을 입력해야 저장할 수 있습니다.</p>
 
-      <div class="actions">
+      <div class="dialog-actions">
         <button type="submit" class="primary" :disabled="!submittable || submitting">
           {{ submitting ? (editing ? '저장 중…' : '추가 중…') : editing ? '저장' : '추가' }}
         </button>
@@ -503,11 +503,6 @@ textarea {
   margin: 0 0 0.6rem;
   font-size: 0.76rem;
   color: var(--warn-badge-fg);
-}
-
-.actions {
-  display: flex;
-  gap: 0.4rem;
 }
 
 /* 패딩·radius·border·배경·cursor는 전역 기본과 완전히 같은 값이라 지웠다. `.primary`와 그

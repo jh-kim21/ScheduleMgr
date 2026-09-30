@@ -664,9 +664,10 @@ button {
   font-size: 0.76rem;
 }
 
+/* 전역 `.dialog-actions`(style.css)가 flex·바닥 고정·배경·구분선을 준다. 여기 남은 것은
+   이 대화상자만의 윗 간격이다 — 전역의 `margin` 단축 중 `margin-top` 만 덮고, 막대가 `.body`
+   패딩을 덮게 하는 좌·우·아래 음수 마진은 건드리지 않는다. */
 .dialog-actions {
-  display: flex;
-  gap: 0.5rem;
   margin-top: 0.4rem;
 }
 

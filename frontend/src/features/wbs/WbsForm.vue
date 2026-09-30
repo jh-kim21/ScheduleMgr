@@ -328,7 +328,7 @@ function onSubmit() {
         하위 항목이 있어 Work Package로 되돌릴 수 없습니다. 하위 항목을 먼저 옮기거나 삭제하세요.
       </p>
 
-      <div class="actions">
+      <div class="dialog-actions">
         <button type="submit">{{ editing ? '저장' : '추가' }}</button>
         <button type="button" class="ghost" @click="emit('cancel')">취소</button>
       </div>
@@ -438,11 +438,6 @@ textarea:disabled {
   background: var(--warn-weak);
   border-radius: 6px;
   padding: 0.5rem 0.65rem;
-}
-
-.actions {
-  display: flex;
-  gap: 0.5rem;
 }
 
 button {

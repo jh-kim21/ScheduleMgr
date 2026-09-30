@@ -703,6 +703,102 @@ textarea:disabled {
   cursor: not-allowed;
 }
 
+/*
+ * 대화상자의 버튼 줄. 이 이름은 이미 이 저장소의 관용어였다 — 8개 파일이 각자 같은 flex 규칙을
+ * 베껴 두고 있었고(전역 정의는 없었다), 여기로 모으면서 **바닥 고정**을 함께 얹는다. 폼이
+ * 길어지면 `ModalDialog`의 `.body`(스크롤포트)를 넘쳐 [저장]·[취소]가 위로 밀려 사라진다.
+ *
+ * 음수 마진으로 `.body`의 패딩을 좌·우·아래에서 상쇄하고 같은 값을 자기 패딩으로 되돌려 받는다 —
+ * 상쇄하지 않으면 스크롤되는 내용이 막대 양옆과 아래의 홈으로 비쳐 지나가고, 스크롤이 없을 때는
+ * 막대 아래에 빈 띠가 남는다. 값은 `ModalDialog`가 `.panel`에 선언한 `--dialog-pad`를 읽는다 —
+ * 커스텀 프로퍼티는 상속되므로 scoped 경계를 넘어 슬롯 콘텐츠에 닿는다. 숫자를 여기 베껴 두면
+ * 한쪽만 고쳐 어긋난다. 폴백은 이 클래스가 대화상자 밖에서 쓰일 때를 위한 것이다.
+ *
+ * **`bottom`이 음수인 이유 — 스크롤 컨테이너 자신의 패딩을 빼야 한다.** sticky가 붙는 기준선은
+ * 스크롤포트의 **content box**라서, `.body`처럼 패딩을 가진 컨테이너 안에서는 막대가 그 패딩
+ * 안쪽에 주차되고 남는 틈으로 본문이 스쳐 지나간다. 그래서 컨테이너 패딩과 같은 크기의 음수
+ * 오프셋으로 그 들여쓰기를 되돌린다.
+ *
+ * 값을 세 번 바꿔 가며 실측했다(`--dialog-pad` = 1.1rem = 17.6px):
+ *
+ *     bottom:  1.1rem  →  바닥에서 35.2px 위   (틈이 넓다)
+ *     bottom:  0       →  바닥에서 17.6px 위   (틈이 좁아졌을 뿐 그대로 남는다)
+ *     bottom: -1.1rem  →  바닥에 정확히         (해결)
+ *
+ * 마지막 판정은 WBS 폼을 중간까지 스크롤한 상태에서 잰 값이다 — 막대 아래 틈 17.5977px,
+ * `.dialog-body`의 `paddingBottom` 17.6px, 그리고 막대 아래 6px 지점의 `elementFromPoint`가
+ * `P.hint muted`를 돌려줬다. 그 틈은 실제로 본문이 지나가는 자리였다.
+ *
+ * **다시 유도해서 되돌리지 마라.** 여기서 그럴듯한 모델을 두 번 세웠고 두 번 다 틀렸다 —
+ * 오프셋이 margin box 기준이니 음수 마진을 상쇄해야 한다(→ `1.1rem`), 아니 border box 기준이니
+ * `0`이면 맞는다(→ `0`). 둘 다 "틈이 사라진다"고 예측했지만 실제로는 좁아지기만 했다. 근거는
+ * 스펙 해석이 아니라 실측이다.
+ *
+ * **끝까지 스크롤한 상태에서는 어떤 값이든 똑같아 보인다** — 음수 마진 덕에 막대의 자연 위치가
+ * 이미 바닥이라 제약이 걸리지 않기 때문이다. 눈으로 가리려면 반드시 **중간까지** 스크롤한
+ * 상태를 봐야 하고, 틀린 값이 두 번 지나간 이유가 그것이다. `vite.config.ts`에 `css: true`가
+ * 없어 vitest 는 이 규칙을 볼 수조차 없으므로 테스트로는 못 잡는다.
+ *
+ * 진단 한 줄 — 그 대화상자를 중간까지 스크롤하고 콘솔에서
+ * `b=document.querySelector('.dialog-actions'), s=b.closest('.dialog-body')` 뒤
+ * `s.getBoundingClientRect().bottom - b.getBoundingClientRect().bottom` 이 0이 아니면 이 증상이다.
+ *
+ * **표 행의 조작 칸(`.actions`)과 섞지 마라.** 여러 화면에서 `class="actions"`는 행마다 하나씩
+ * 있는 버튼 칸이고(`BacklogList`·`CommitPanel`·`ProgressPanel`·`DependencyEditor`·`MemberEditor`·
+ * `ProjectList`·`RaidList`·`WbsTagEditor`), 그쪽까지 잡으면 표의 모든 행이 sticky가 된다.
+ * `RaciMatrix`의 `.letter`와 같은 사고다 — 공유해야 마땅한 클래스에 상호작용·레이아웃 전용
+ * 규칙을 얹는 것. 그래서 이름이 둘로 나뉘어 있고, 바닥에 붙는 것은 `dialog-actions` 뿐이다.
+ *
+ * **선택자는 클래스 단독이다.** `div.dialog-actions`로 좁히면 (0,1,1)이 되어 컴포넌트의 scoped
+ * 로컬과 동점이 되고, 어느 쪽이 이기는지가 번들러의 CSS 출력 순서에 달린다. 클래스 단독이라야
+ * 로컬이 특이도로 이긴다 — 로컬이 `margin-top` 같은 자기 간격을 계속 덮어쓸 수 있는 이유다.
+ */
+.dialog-actions {
+  display: flex;
+  gap: 0.5rem;
+  position: sticky;
+  bottom: calc(var(--dialog-pad, 1.1rem) * -1);
+  z-index: 1;
+  margin: 0 calc(var(--dialog-pad, 1.1rem) * -1) calc(var(--dialog-pad, 1.1rem) * -1);
+  padding: var(--dialog-pad, 1.1rem);
+  /* `--surface`가 아니라 `--surface-raised` — `.panel`의 배경과 같아야 막대가 패널의 일부로
+     읽힌다. 다르면 라이트·다크 양쪽에서 바닥에만 다른 색 띠가 생긴다. */
+  background: var(--surface-raised);
+  /* 제목 아래 구분선(`.head`의 border-bottom)과 같은 토큰이라 위아래가 한 쌍으로 읽힌다. */
+  border-top: 1px solid var(--border-soft);
+  /* `.panel`은 모서리가 둥근데 `overflow: hidden`이 아니다 — 배경을 가진 막대가 각진 바닥
+     모서리까지 칠하면 둥근 모서리 밖으로 네모난 귀가 삐져나온다(배경색이 패널과 같아 더
+     눈에 띈다). `- 1px`은 패널 테두리 두께로, 바깥 반지름이 아니라 안쪽 반지름에 맞춘다. */
+  border-bottom-left-radius: calc(var(--radius-lg) - 1px);
+  border-bottom-right-radius: calc(var(--radius-lg) - 1px);
+}
+
+/*
+ * 대화상자 안에서 포커스를 받는 것은 바닥에 고정된 `.dialog-actions` 뒤로 숨지 않아야 한다.
+ * Shift+Tab 으로 위 칸에 돌아가면 브라우저가 그 칸을 화면 안으로 스크롤해 주지만 sticky
+ * 오버레이는 고려하지 않아, 포커스 링이 막대 뒤에 그대로 가려진다 — WCAG 2.2 AA 2.4.11
+ * (Focus Not Obscured). 막대가 17개 대화상자 전부에 생겼으므로 이 규칙도 전역이어야 한다.
+ *
+ * `scroll-margin-bottom`은 "이 요소를 스크롤해 보일 때 아래로 이만큼 여유를 두라"는 뜻이라
+ * 레이아웃에는 아무 영향이 없다. 넉넉하게 잡는다 — 조금 더 스크롤되는 것은 눈에 띄지 않지만
+ * 모자라면 링이 그대로 가려진다. 막대 높이는 위아래 패딩(`--dialog-pad` 두 번)에 버튼 한 줄이고,
+ * 대화상자마다 로컬 `margin-top`이 더 붙기도 해서 고정 높이가 없다. 그래서 토큰에서 계산하되
+ * 버튼 한 줄보다 넉넉한 값을 더한다.
+ *
+ * **`button`이 들어가는 이유**: 입력칸만으로는 기준을 못 채운다. 스크롤되는 대화상자 본문 안에
+ * 포커스를 받는 버튼이 실제로 있다 — `WbsForm`의 분야 칩(`.tag-toggle`), `MemberEditor`·
+ * `WbsTagEditor`·`DependencyEditor`의 목록 행 버튼, `CommitCapacityDialog`의 표 행 삭제.
+ * `.dialog-actions` 자신의 버튼에도 걸리지만 그 막대는 늘 보이므로 아무 일도 하지 않는다.
+ *
+ * **`.dialog-body`로 한정한다.** bare 요소 선택자로 올리면 대화상자 밖의 모든 입력에 걸린다.
+ */
+.dialog-body input,
+.dialog-body select,
+.dialog-body textarea,
+.dialog-body button {
+  scroll-margin-bottom: calc(var(--dialog-pad, 1.1rem) * 2 + 3rem);
+}
+
 /* 이 층이 들여오는 transition을 전부 끈다 — 새로 추가하는 transition마다 여기 추가한다. */
 @media (prefers-reduced-motion: reduce) {
   button,

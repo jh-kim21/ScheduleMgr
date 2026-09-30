@@ -53,7 +53,7 @@ function onSubmit() {
         <input v-model="committedBy" type="text" placeholder="이름 (선택)" />
       </label>
 
-      <div class="actions">
+      <div class="dialog-actions">
         <button type="submit" :disabled="submitting">{{ submitting ? '커밋하는 중…' : '커밋' }}</button>
         <button type="button" class="ghost" :disabled="submitting" @click="emit('cancel')">취소</button>
       </div>
@@ -81,11 +81,6 @@ label {
   gap: 0.25rem;
   font-size: 0.85rem;
   color: var(--text-muted);
-}
-
-.actions {
-  display: flex;
-  gap: 0.5rem;
 }
 
 /* 강조색 채움 — 취소(.ghost)는 전역 계약과 완전히 같은 값이라 지웠고, 이 제출 버튼만 남긴다. */

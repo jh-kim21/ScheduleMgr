@@ -216,11 +216,6 @@ function onRemove(member: ProjectMember) {
   gap: 0.7rem;
 }
 
-.dialog-actions {
-  display: flex;
-  gap: 0.5rem;
-}
-
 label {
   display: flex;
   flex-direction: column;

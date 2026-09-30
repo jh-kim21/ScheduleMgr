@@ -17,11 +17,11 @@ describe('CommitForm — 제출 중 상태', () => {
   })
 
   function submitButton() {
-    return document.body.querySelector<HTMLButtonElement>('.actions button[type="submit"]')!
+    return document.body.querySelector<HTMLButtonElement>('.dialog-actions button[type="submit"]')!
   }
 
   function cancelButton() {
-    return document.body.querySelector<HTMLButtonElement>('.actions button.ghost')!
+    return document.body.querySelector<HTMLButtonElement>('.dialog-actions button.ghost')!
   }
 
   it('기본 상태에서는 버튼이 활성 상태고 문구가 "커밋"이다', () => {

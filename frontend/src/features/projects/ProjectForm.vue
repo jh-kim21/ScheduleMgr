@@ -99,7 +99,7 @@ function onSubmit() {
         </label>
       </div>
 
-      <div class="actions">
+      <div class="dialog-actions">
         <button type="submit" :disabled="submitting">
           {{ submitting ? (editing ? '저장 중…' : '추가 중…') : editing ? '저장' : '추가' }}
         </button>
@@ -128,11 +128,6 @@ label {
 .row {
   display: flex;
   gap: 0.75rem;
-}
-
-.actions {
-  display: flex;
-  gap: 0.5rem;
 }
 
 /* 강조색 채움 — 취소(.ghost)는 전역 계약과 완전히 같은 값이라 지웠고, 이 제출 버튼만 남긴다.

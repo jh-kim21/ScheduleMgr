@@ -303,7 +303,7 @@ function onSubmit() {
         </span>
       </label>
 
-      <div class="actions">
+      <div class="dialog-actions">
         <button
           type="submit"
           :disabled="(needsAcceptance && !form.acceptanceConfirmed) || submitting"
@@ -372,11 +372,6 @@ select:disabled {
 .hint.muted {
   color: var(--text-muted);
   background: var(--surface-sunken);
-}
-
-.actions {
-  display: flex;
-  gap: 0.5rem;
 }
 
 /* 강조색 채움 — 취소(.ghost)는 전역 계약과 완전히 같아 지웠다. :disabled도 전역이 특이도로

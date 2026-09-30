@@ -371,11 +371,6 @@ input[type='text'] {
   flex-basis: 100%;
 }
 
-.dialog-actions {
-  display: flex;
-  gap: 0.5rem;
-}
-
 button {
   padding: 0.45rem 0.9rem;
   border-radius: 6px;

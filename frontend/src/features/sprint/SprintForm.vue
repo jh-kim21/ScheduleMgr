@@ -88,7 +88,7 @@ function onSubmit() {
 
       <p v-if="backwards" class="hint">종료일이 시작일보다 앞설 수 없습니다.</p>
 
-      <div class="actions">
+      <div class="dialog-actions">
         <button type="submit" :disabled="backwards">{{ editing ? '저장' : '추가' }}</button>
         <button type="button" class="ghost" @click="emit('cancel')">취소</button>
       </div>
@@ -136,11 +136,6 @@ input {
   background: var(--warn-weak);
   border-radius: 6px;
   padding: 0.5rem 0.65rem;
-}
-
-.actions {
-  display: flex;
-  gap: 0.5rem;
 }
 
 button {
