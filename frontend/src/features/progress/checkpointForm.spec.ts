@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CheckpointDetail } from '../../api/progressApi'
+import { DEFAULT_WEIGHT } from '../../shared/weight'
 import {
   draftFrom,
   emptyDraft,
@@ -38,10 +39,10 @@ describe('draftFrom', () => {
     expect(draft.criteria).toBe('리뷰어 승인')
   })
 
-  it('weight: null 은 미입력(서버가 1로 계산)이므로 null 그대로 옮긴다 — 0으로 바뀌면 화면이 "가중치 0"으로 잘못 읽는다', () => {
+  it('weight: null 은 기본 등급(보통)으로 preselect 한다 — 드롭다운에는 빈 값이 없고, 계산이 이미 그 값으로 폴백하므로(백엔드 weightOf) 그대로 저장해도 결과가 달라지지 않는다. 그 덕에 null이 하나씩 사라진다', () => {
     const draft = draftFrom(baseCheckpoint({ weight: null }))
 
-    expect(draft.weight).toBeNull()
+    expect(draft.weight).toBe(DEFAULT_WEIGHT)
   })
 
   it('completionCriteria: null 은 입력칸에 넣어야 하므로 빈 문자열로 바꾼다', () => {
@@ -50,20 +51,30 @@ describe('draftFrom', () => {
     expect(draft.criteria).toBe('')
   })
 
-  it('weight: 0 은 null 로 뭉개지 않고 0 그대로 옮긴다 — 0과 미입력(서버가 1로 계산)은 다른 값이다', () => {
+  it('weight: 0 은 기본 등급으로 덮지 않고 0 그대로 옮긴다 — 0("진척에 기여하지 않음")은 등급 사다리 밖의 별도 뜻이고, 제목만 고치려는 저장이 이 값을 덮으면 커밋 da96ebe와 같은 사고다', () => {
     const draft = draftFrom(baseCheckpoint({ weight: 0 }))
 
     expect(draft.weight).toBe(0)
   })
+
+  it('척도 밖 값(30)도 그대로 옮긴다 — 구형 파일 가져오기·커밋 복원이 싣고 오는 정상 데이터라 등급으로 반올림하지 않는다', () => {
+    const draft = draftFrom(baseCheckpoint({ weight: 30 }))
+
+    expect(draft.weight).toBe(30)
+  })
 })
 
 describe('emptyDraft', () => {
-  it('빈 입력값을 준다 — 제목·완료조건은 빈 문자열, 가중치는 null(미입력)이지 0이 아니다', () => {
+  it('빈 입력값을 준다 — 제목·완료조건은 빈 문자열, 가중치는 기본 등급(보통)이다. 드롭다운에는 "고르지 않음" 칸이 없으므로 무엇 하나가 선택돼 있어야 한다', () => {
     const draft = emptyDraft()
 
     expect(draft.title).toBe('')
-    expect(draft.weight).toBeNull()
+    expect(draft.weight).toBe(DEFAULT_WEIGHT)
     expect(draft.criteria).toBe('')
+  })
+
+  it('기본값이 0이 아니다 — 0은 "집계 제외"라 새 체크포인트가 분모에 들어가지 않게 된다', () => {
+    expect(emptyDraft().weight).not.toBe(0)
   })
 })
 
@@ -95,6 +106,12 @@ describe('toCheckpointInput', () => {
     const input = toCheckpointInput(10, { title: '설계 리뷰', weight: 0, criteria: '' })
 
     expect(input.weight).toBe(0)
+  })
+
+  it('척도 밖 값(30)을 가까운 등급으로 반올림하지 않는다 — 드롭다운에서 고를 수 없다는 것과 저장된 값을 그대로 되돌려 보낼 수 없다는 것은 다른 말이다(지시서 §2-e)', () => {
+    const input = toCheckpointInput(10, { title: '설계 리뷰', weight: 30, criteria: '' })
+
+    expect(input.weight).toBe(30)
   })
 
   it('wbsItemId를 그대로 담아 어느 항목의 체크포인트인지 표시한다', () => {

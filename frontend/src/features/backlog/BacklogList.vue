@@ -9,6 +9,7 @@ import {
 } from '../../shared/backlog'
 import { executionModeLabel } from '../../shared/executionMode'
 import { useRowSelection } from '../../shared/useRowSelection'
+import { weightLabel } from '../../shared/weight'
 import type { BacklogRow } from './backlogFilter'
 
 const props = defineProps<{
@@ -96,7 +97,8 @@ function archiveTitle(item: BacklogItem): string {
           <th class="wbs" scope="col">귀속 Work Package</th>
           <th class="who" scope="col">담당</th>
           <th class="num" scope="col">SP</th>
-          <th class="num" scope="col">가중치</th>
+          <!-- 숫자가 아니라 등급 라벨이 들어가므로 우측 정렬(.num)을 떼어 둔다. -->
+          <th scope="col">가중치</th>
           <th class="status" scope="col">상태</th>
           <th scope="col"></th>
         </tr>
@@ -162,7 +164,9 @@ function archiveTitle(item: BacklogItem): string {
           </td>
           <td class="who">{{ row.item.assigneeName ?? '-' }}</td>
           <td class="num">{{ row.item.storyPoint ?? '-' }}</td>
-          <td class="num">{{ row.item.progressWeight ?? '-' }}</td>
+          <!-- 집계 대상(Story·Bug)이 아니면 가중치가 쓰이지 않으므로 값을 말하지 않는다. 대상이면
+               미입력도 `보통`으로 계산되므로(백엔드 `weightOf`) 라벨로 그대로 적는다. -->
+          <td>{{ row.item.aggregated ? weightLabel(row.item.progressWeight) : '-' }}</td>
           <td class="status">
             <span class="status-badge" :data-status="row.item.status">
               {{ BACKLOG_STATUS_LABELS[row.item.status] }}

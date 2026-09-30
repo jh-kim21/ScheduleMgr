@@ -82,8 +82,22 @@ function titleInput(wrapper: VueWrapper) {
   return wrapper.find<HTMLInputElement>('.cp-form input[type="text"]')
 }
 
-function weightInput(wrapper: VueWrapper) {
-  return wrapper.find<HTMLInputElement>('.cp-form input[type="number"]')
+/**
+ * 가중치 칸은 자유 입력 숫자가 아니라 다섯 등급 `<select>`다(지시서 §3-C-2). `input[type="number"]`로
+ * 찾던 예전 셀렉터는 이제 아무것도 집지 못하므로 클래스로 잡는다.
+ */
+function weightSelect(wrapper: VueWrapper) {
+  return wrapper.find<HTMLSelectElement>('.cp-form select.cp-weight-input')
+}
+
+function weightOptions(wrapper: VueWrapper) {
+  return weightSelect(wrapper).findAll<HTMLOptionElement>('option')
+}
+
+/** 지금 `<select>`가 고르고 있는 옵션의 글자. 잘린 라벨이 아니라 옵션 전체 문장이다. */
+function selectedWeightText(wrapper: VueWrapper) {
+  const select = weightSelect(wrapper).element
+  return weightOptions(wrapper).find((o) => o.element.value === select.value)?.text()
 }
 
 function criteriaInput(wrapper: VueWrapper) {
@@ -139,7 +153,7 @@ describe('CheckpointList', () => {
       wrapper = renderList([checkpoint({ title: '설계 리뷰', weight: 2, completionCriteria: '리뷰어 승인' })], false)
 
       expect(wrapper.text()).toContain('설계 리뷰')
-      expect(wrapper.text()).toContain('가중치 2')
+      expect(wrapper.text()).toContain('가중치 작음')
       expect(wrapper.text()).toContain('리뷰어 승인')
     })
 
@@ -182,7 +196,8 @@ describe('CheckpointList', () => {
 
       expect(wrapper.find('.cp-form').exists()).toBe(true)
       expect(titleInput(wrapper).element.value).toBe('')
-      expect(weightInput(wrapper).element.value).toBe('')
+      // 드롭다운에는 "고르지 않음" 칸이 없으므로 빈 값이 아니라 기본 등급(보통)이 골라져 있다.
+      expect(weightSelect(wrapper).element.value).toBe('3')
       expect(formSubmitButton(wrapper).text()).toBe('추가')
       expect(addButton(wrapper)).toBeUndefined()
     })
@@ -194,7 +209,7 @@ describe('CheckpointList', () => {
 
       expect(wrapper.find('.cp-form').exists()).toBe(true)
       expect(titleInput(wrapper).element.value).toBe('설계 리뷰')
-      expect(weightInput(wrapper).element.value).toBe('3')
+      expect(weightSelect(wrapper).element.value).toBe('3')
       expect(formSubmitButton(wrapper).text()).toBe('저장')
     })
 
@@ -247,16 +262,156 @@ describe('CheckpointList', () => {
       expect(wrapper.find('.cp-approved').element.tagName).toBe('SPAN')
     })
 
-    it('가중치 null은 1로, 0은 0 그대로 보여준다 — 서버가 미입력을 1로 폴백하므로 "균등"은 형제 중 하나라도 값이 있으면 거짓이었다. 0과 미입력은 여전히 다른 값이다', () => {
+    it('목록 행은 숫자가 아니라 등급 라벨로 읽힌다 — null은 "보통"(서버 weightOf가 실제로 그 값으로 폴백한다), 0은 "집계 제외(0)", 척도 밖 값은 숫자째로 드러낸다', () => {
       wrapper = renderList(
-        [checkpoint({ id: 1, weight: null }), checkpoint({ id: 2, weight: 0 })],
+        [
+          checkpoint({ id: 1, weight: null }),
+          checkpoint({ id: 2, weight: 0 }),
+          checkpoint({ id: 3, weight: 8 }),
+          checkpoint({ id: 4, weight: 30 }),
+        ],
         true,
       )
 
       const weights = wrapper.findAll('.cp-weight').map((el) => el.text())
-      expect(weights).toContain('가중치 1')
-      expect(weights).toContain('가중치 0')
+      expect(weights).toContain('가중치 보통')
+      expect(weights).toContain('가중치 집계 제외(0)')
+      expect(weights).toContain('가중치 아주 큼')
+      expect(weights).toContain('가중치 사용자 지정 30')
       expect(weights.join(' ')).not.toContain('균등')
+    })
+
+    it('미입력을 "가중치 1"로 적지 않는다 — 1은 이제 척도의 최하단(아주 작음)이라, 그렇게 적으면 실제 계산값(보통=3)과 어긋난다', () => {
+      wrapper = renderList([checkpoint({ weight: null })], true)
+
+      expect(wrapper.find('.cp-weight').text()).not.toBe('가중치 1')
+    })
+  })
+
+  /**
+   * 가중치 칸은 자유 입력 숫자에서 다섯 등급 드롭다운이 되었다(지시서 §2-b). 등급마다 판단 기준
+   * 문장이 붙는 것이 이 변경의 본체이므로 옵션 글자까지 본다 — 드롭다운만 만들고 기준을 빼면
+   * "무엇을 적어야 하나"가 그대로 남는다.
+   */
+  describe('editable: true — 가중치 등급 드롭다운', () => {
+    it('다섯 등급이 큰 것부터 있고, 각 옵션에 값과 판단 기준 문장이 함께 적힌다', async () => {
+      wrapper = renderList([checkpoint()], true)
+
+      await addButton(wrapper)!.trigger('click')
+
+      const texts = weightOptions(wrapper).map((o) => o.text())
+      expect(texts).toEqual([
+        '아주 큼 (8) — 이 업무의 절반 이상',
+        '큼 (5) — 큰 덩어리 하나',
+        '보통 (3) — 평범한 한 단계',
+        '작음 (2) — 짧게 끝나는 단계',
+        '아주 작음 (1) — 형식적 확인',
+      ])
+    })
+
+    it('추가 폼에서는 보통이 미리 골라져 있다 — 미입력도 서버가 보통으로 계산하므로 기본값이 왜곡을 만들지 않는다', async () => {
+      wrapper = renderList([checkpoint()], true)
+
+      await addButton(wrapper)!.trigger('click')
+
+      expect(selectedWeightText(wrapper)).toBe('보통 (3) — 평범한 한 단계')
+    })
+
+    it('placeholder가 없는 <select>라 aria-label로 접근 가능한 이름을 남긴다', async () => {
+      wrapper = renderList([checkpoint()], true)
+
+      await addButton(wrapper)!.trigger('click')
+
+      expect(weightSelect(wrapper).attributes('aria-label')).toBe('가중치')
+    })
+
+    it('미입력(null)이던 체크포인트를 열면 보통이 골라져 있고 비활성 옵션이 끼어들지 않는다 — 계산이 이미 그 값이라 그대로 저장해도 진척이 변하지 않는다', async () => {
+      wrapper = renderList([checkpoint({ weight: null })], true)
+
+      await editButton(wrapper)!.trigger('click')
+
+      expect(weightSelect(wrapper).element.value).toBe('3')
+      expect(weightOptions(wrapper)).toHaveLength(5)
+    })
+
+    it('등급을 골라 저장하면 그 숫자가 그대로 제출된다', async () => {
+      mockedUpdateCheckpoint.mockResolvedValueOnce({} as never)
+      wrapper = renderList([checkpoint({ id: 7, weight: 3 })], true)
+
+      await editButton(wrapper)!.trigger('click')
+      await weightSelect(wrapper).setValue('8')
+      await formSubmitButton(wrapper).trigger('click')
+      await flushPromises()
+
+      expect(mockedUpdateCheckpoint).toHaveBeenCalledWith(1, 7, expect.objectContaining({ weight: 8 }))
+    })
+  })
+
+  /**
+   * `<option disabled>`는 *고를 수 없다*는 뜻이지 *선택 상태로 둘 수 없다*는 뜻이 아니다
+   * (지시서 §7-3). 제목만 고치려고 연 편집이 저장할 때 가중치를 임의의 등급으로 덮으면 커밋
+   * `da96ebe`와 같은 사고다 — 소스 리뷰로는 놓치기 쉬워 제출값까지 본다.
+   */
+  describe('editable: true — 레거시 가중치 보존', () => {
+    it('0이 저장된 체크포인트는 "집계 제외(0)"가 비활성으로 선택돼 있다 — 새로 고를 수는 없지만 지금 값이 무엇인지는 보여야 한다', async () => {
+      wrapper = renderList([checkpoint({ weight: 0 })], true)
+
+      await editButton(wrapper)!.trigger('click')
+
+      expect(weightSelect(wrapper).element.value).toBe('0')
+      expect(selectedWeightText(wrapper)).toBe('집계 제외(0)')
+      expect(weightOptions(wrapper)[0].attributes('disabled')).toBeDefined()
+    })
+
+    it('0인 체크포인트의 제목만 고쳐 저장하면 가중치가 0 그대로 나간다', async () => {
+      mockedUpdateCheckpoint.mockResolvedValueOnce({} as never)
+      wrapper = renderList([checkpoint({ id: 7, title: '설계 리뷰', weight: 0 })], true)
+
+      await editButton(wrapper)!.trigger('click')
+      await titleInput(wrapper).setValue('설계 리뷰 v2')
+      await formSubmitButton(wrapper).trigger('click')
+      await flushPromises()
+
+      expect(mockedUpdateCheckpoint).toHaveBeenCalledWith(
+        1,
+        7,
+        expect.objectContaining({ title: '설계 리뷰 v2', weight: 0 }),
+      )
+    })
+
+    it('척도 밖 값(30)은 "사용자 지정 30"으로 비활성 선택된다 — 구형 파일 가져오기·커밋 복원이 싣고 오는 정상 데이터다', async () => {
+      wrapper = renderList([checkpoint({ weight: 30 })], true)
+
+      await editButton(wrapper)!.trigger('click')
+
+      expect(weightSelect(wrapper).element.value).toBe('30')
+      expect(selectedWeightText(wrapper)).toBe('사용자 지정 30')
+      expect(weightOptions(wrapper)[0].attributes('disabled')).toBeDefined()
+    })
+
+    it('30인 체크포인트의 제목만 고쳐 저장하면 가중치가 30 그대로 나간다 — 가까운 등급으로 반올림하지 않는다', async () => {
+      mockedUpdateCheckpoint.mockResolvedValueOnce({} as never)
+      wrapper = renderList([checkpoint({ id: 7, title: '설계 리뷰', weight: 30 })], true)
+
+      await editButton(wrapper)!.trigger('click')
+      await titleInput(wrapper).setValue('설계 리뷰 v2')
+      await formSubmitButton(wrapper).trigger('click')
+      await flushPromises()
+
+      expect(mockedUpdateCheckpoint).toHaveBeenCalledWith(
+        1,
+        7,
+        expect.objectContaining({ title: '설계 리뷰 v2', weight: 30 }),
+      )
+    })
+
+    it('척도 위의 값(3)에는 비활성 옵션이 붙지 않는다 — 레거시 옵션은 필요할 때만 생긴다', async () => {
+      wrapper = renderList([checkpoint({ weight: 3 })], true)
+
+      await editButton(wrapper)!.trigger('click')
+
+      expect(weightOptions(wrapper)).toHaveLength(5)
+      expect(weightOptions(wrapper).every((o) => o.attributes('disabled') === undefined)).toBe(true)
     })
   })
 
@@ -271,15 +426,30 @@ describe('CheckpointList', () => {
 
       await addButton(wrapper)!.trigger('click')
       await titleInput(wrapper).setValue('코드 리뷰')
-      await weightInput(wrapper).setValue(5)
+      await weightSelect(wrapper).setValue('5')
       await formSubmitButton(wrapper).trigger('click')
       await flushPromises()
 
       expect(mockedAddCheckpoint).toHaveBeenCalledTimes(1)
       expect(wrapper.find('.cp-form').exists()).toBe(true)
       expect(titleInput(wrapper).element.value).toBe('')
-      expect(weightInput(wrapper).element.value).toBe('')
+      // 가중치는 "비워지는" 것이 아니라 기본 등급으로 돌아간다 — 드롭다운에 빈 칸이 없다.
+      expect(weightSelect(wrapper).element.value).toBe('3')
       expect(formSubmitButton(wrapper).text()).toBe('추가')
+    })
+
+    it('추가 성공 — 직전에 고른 등급이 다음 건으로 이어지지 않는다: 연달아 넣을 때 앞 건의 5가 남아 있으면 고르지도 않은 비중이 박힌다', async () => {
+      mockedAddCheckpoint.mockResolvedValueOnce({} as never)
+      wrapper = renderList([checkpoint()], true)
+
+      await addButton(wrapper)!.trigger('click')
+      await titleInput(wrapper).setValue('코드 리뷰')
+      await weightSelect(wrapper).setValue('8')
+      await formSubmitButton(wrapper).trigger('click')
+      await flushPromises()
+
+      expect(mockedAddCheckpoint).toHaveBeenCalledWith(1, expect.objectContaining({ weight: 8 }))
+      expect(weightSelect(wrapper).element.value).toBe('3')
     })
 
     it('추가 성공 — 제목 칸으로 포커스가 돌아온다: 폼만 열어 두고 커서가 저장 버튼에 남으면 다음 건을 치려고 마우스를 다시 잡아야 한다', async () => {
@@ -385,6 +555,28 @@ describe('CheckpointList', () => {
       await addButton(wrapper)!.trigger('click')
       await titleInput(wrapper).setValue('코드 리뷰')
       await titleInput(wrapper).trigger('keydown.esc')
+
+      expect(wrapper.find('.cp-form').exists()).toBe(false)
+      expect(addButton(wrapper)).toBeTruthy()
+    })
+
+    it('가중치 <select>에서도 Enter로 저장된다 — 숫자 입력칸이 드롭다운이 되면서 핸들러를 빠뜨리기 쉬운 자리다(지시서 §7-8)', async () => {
+      mockedAddCheckpoint.mockResolvedValueOnce({} as never)
+      wrapper = renderList([checkpoint()], true)
+
+      await addButton(wrapper)!.trigger('click')
+      await titleInput(wrapper).setValue('코드 리뷰')
+      await weightSelect(wrapper).trigger('keydown.enter')
+      await flushPromises()
+
+      expect(mockedAddCheckpoint).toHaveBeenCalledTimes(1)
+    })
+
+    it('가중치 <select>에서도 Esc로 폼이 닫힌다 — 세 칸 어디서든 같아야 한다', async () => {
+      wrapper = renderList([checkpoint()], true)
+
+      await addButton(wrapper)!.trigger('click')
+      await weightSelect(wrapper).trigger('keydown.esc')
 
       expect(wrapper.find('.cp-form').exists()).toBe(false)
       expect(addButton(wrapper)).toBeTruthy()

@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
+import type { BacklogItem } from '../api/backlogApi'
 import type { RaciMatrix } from '../api/raciApi'
 import type { RaidItem } from '../api/raidApi'
 import type { WbsNode } from '../api/wbsApi'
-import { raciCsv, raciLegend, raidCsv, wbsCsv } from './exportRows'
+import { backlogCsv, raciCsv, raciLegend, raidCsv, wbsCsv } from './exportRows'
 
 /**
  * 결함 4: 화면은 상속된 A를 옅은 글자로 보여 주는데, CSV는 `cell.roles`만 읽어 빈 칸으로
@@ -154,6 +155,107 @@ describe('wbsCsv', () => {
     const table = wbsCsv([], null)
     expect(table.header).toContain('지연 상태')
     expect(table.header).not.toContain('지연 상태 (기준일 2026-03-01)')
+  })
+
+  /**
+   * CSV는 사람이 Excel에서 읽는 것이라 enum이 아니라 라벨을 쓴다(CLAUDE.md 내보내기 규칙).
+   * 열 이름도 화면(WBS 폼·진척 탭)과 같은 `규모`여야 한다 — 같은 값을 두 이름으로 부르면
+   * 파일을 받은 사람이 다른 값으로 읽는다.
+   */
+  describe('규모(WBS 형제 가중치)', () => {
+    const sizeOf = (node: WbsNode) => {
+      const table = wbsCsv([node], null)
+      return table.rows[0][table.header.indexOf('규모')]
+    }
+
+    it('열 이름이 "규모"다 — 옛 이름 "가중치"는 남기지 않는다', () => {
+      const table = wbsCsv([wbsNode()], null)
+      expect(table.header).toContain('규모')
+      expect(table.header).not.toContain('가중치')
+    })
+
+    it('미지정(null)은 빈 칸이 아니라 "미지정"이다 — 빈 칸이면 "값이 없다"와 "0"이 한 모양이 된다', () => {
+      expect(sizeOf(wbsNode({ weight: null }))).toBe('미지정')
+    })
+
+    it('WBS 형제의 미입력을 "보통"이라 적지 않는다 — 그 몫은 상수가 아니라 형제의 선언값에서 나온다(지시서 §2-c). 체크포인트·Backlog와 같은 라벨 함수를 돌려쓰면 여기서 거짓이 된다', () => {
+      expect(sizeOf(wbsNode({ weight: null }))).not.toBe('보통')
+    })
+
+    it('척도 위의 값은 등급 이름으로 적는다', () => {
+      expect(sizeOf(wbsNode({ weight: 8 }))).toBe('아주 큼')
+      expect(sizeOf(wbsNode({ weight: 3 }))).toBe('보통')
+      expect(sizeOf(wbsNode({ weight: 1 }))).toBe('아주 작음')
+    })
+
+    it('0과 척도 밖 값은 숫자째로 드러낸다 — 0("집계 제외")과 미지정은 다른 값이다', () => {
+      expect(sizeOf(wbsNode({ weight: 0 }))).toBe('집계 제외(0)')
+      expect(sizeOf(wbsNode({ weight: 30 }))).toBe('사용자 지정 30')
+    })
+  })
+})
+
+function backlogItem(overrides: Partial<BacklogItem> = {}): BacklogItem {
+  return {
+    id: 1,
+    wbsItemId: 10,
+    wbsCode: '1.1',
+    wbsName: '화면 설계',
+    wbsExecutionMode: 'AGILE',
+    parentId: null,
+    parentTitle: null,
+    depth: 0,
+    itemType: 'STORY',
+    title: 'WBS 계층 등록',
+    description: null,
+    priority: 'MEDIUM',
+    status: 'TODO',
+    assigneeMemberId: null,
+    assigneeName: null,
+    acceptanceCriteria: null,
+    storyPoint: 5,
+    progressWeight: null,
+    archivedAt: null,
+    archived: false,
+    blocked: false,
+    blockedReason: null,
+    doneAt: null,
+    openSprintName: null,
+    aggregated: true,
+    childCount: 0,
+    unlinked: false,
+    linkedToSummary: false,
+    danglingLink: false,
+    requiresExecutionModeChange: false,
+    readyForSprint: true,
+    ...overrides,
+  }
+}
+
+describe('backlogCsv', () => {
+  const weightOf = (item: BacklogItem) => {
+    const table = backlogCsv([item])
+    return table.rows[0][table.header.indexOf('진척 가중치')]
+  }
+
+  it('미입력(null)은 "보통"이다 — 서버가 실제로 그 값으로 계산하므로(weightOf) 표시와 계산이 어긋나지 않는다. WBS의 "미지정"과 다른 말인 것이 맞다', () => {
+    expect(weightOf(backlogItem({ progressWeight: null }))).toBe('보통')
+  })
+
+  it('척도 위의 값은 등급 이름, 0과 척도 밖 값은 숫자째로 적는다', () => {
+    expect(weightOf(backlogItem({ progressWeight: 5 }))).toBe('큼')
+    expect(weightOf(backlogItem({ progressWeight: 0 }))).toBe('집계 제외(0)')
+    expect(weightOf(backlogItem({ progressWeight: 30 }))).toBe('사용자 지정 30')
+  })
+
+  it('집계 대상이 아닌 유형(Epic·Task)은 가중치를 말하지 않는다 — 쓰이지 않는 값을 적으면 그 몫이 있는 것처럼 읽힌다', () => {
+    expect(weightOf(backlogItem({ itemType: 'EPIC', aggregated: false, progressWeight: 5 }))).toBe('')
+    expect(weightOf(backlogItem({ itemType: 'TASK', aggregated: false, progressWeight: null }))).toBe('')
+  })
+
+  it('Story Point는 가중치가 아니라 팀의 추정치라 숫자 그대로 나간다 — 같은 단위로 합산하지 말라고 못박은 별개 값이다', () => {
+    const table = backlogCsv([backlogItem({ storyPoint: 5, progressWeight: 5 })])
+    expect(table.rows[0][table.header.indexOf('Story Point')]).toBe(5)
   })
 })
 

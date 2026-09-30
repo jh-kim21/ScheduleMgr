@@ -15,6 +15,7 @@ import {
   varianceText,
   varianceTone,
 } from '../../shared/progress'
+import { wbsWeightLabel } from '../../shared/weight'
 import { useRowSelection } from '../../shared/useRowSelection'
 import { selectedProjectId } from '../../stores/projectSelection'
 import { readOnly } from '../../stores/commitView'
@@ -222,11 +223,11 @@ function snapshotSummary(metrics: string): string {
 
     <h2>Work Package별 진척</h2>
     <p class="notice subtle">
-      가중치는 같은 상위 아래 형제 Work Package 사이의 비중입니다. <strong>이 화면에서는 입력하지
-      않습니다</strong> — 비워 두면(미입력) 형제가 적은 가중치에서 leaf 하나당 비중을 뽑아, 그
-      항목이 거느린 가지 크기만큼 칩니다. 형제 중 누구도 적지 않았다면 그 가지는 예전처럼 하위
-      leaf 개수 가중 평균으로 집계됩니다 — <strong>0과 미입력은 다른 값</strong>입니다.
-      α(Hybrid의 Agile 비율)는 WBS 화면의 항목 수정 폼에서 고칩니다.
+      규모는 같은 상위 아래 형제 항목 사이의 상대적 크기입니다.
+      <strong>WBS 화면의 항목 수정 폼</strong>에서 다섯 등급 중 고릅니다 — 미지정으로 두면 등급을
+      적은 형제에서 leaf 하나당 비중을 뽑아, 그 항목이 거느린 가지 크기만큼 칩니다. 형제 중 누구도
+      적지 않았다면 그 가지는 예전처럼 하위 leaf 개수 가중 평균으로 집계됩니다 —
+      <strong>0과 미지정은 다른 값</strong>입니다. α(Hybrid의 Agile 비율)도 같은 폼에서 고칩니다.
     </p>
     <div class="table-scroll">
       <table class="wp">
@@ -235,7 +236,7 @@ function snapshotSummary(metrics: string): string {
             <th class="code" scope="col">WBS</th>
             <th scope="col">이름</th>
             <th class="mode" scope="col">실행 방식</th>
-            <th class="num" scope="col">가중치</th>
+            <th class="scale" scope="col">규모</th>
             <th class="num" scope="col">α</th>
             <th class="basis" scope="col">기준</th>
             <th class="pct" scope="col">진척</th>
@@ -259,7 +260,8 @@ function snapshotSummary(metrics: string): string {
                 </span>
               </td>
               <td class="mode">{{ executionModeLabel(wp.executionMode) }}</td>
-              <td class="num">{{ wp.weight ?? '-' }}</td>
+              <!-- 미지정은 `보통`이 아니다 — 그 몫은 형제의 선언값에서 나온다(`wbsWeightLabel`). -->
+              <td class="scale">{{ wbsWeightLabel(wp.weight) }}</td>
               <td class="num">
                 {{
                   wp.executionMode !== 'HYBRID'
@@ -528,6 +530,13 @@ input {
   width: 4.5rem;
   text-align: right;
   font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+/* 숫자가 아니라 등급 라벨이라 우측 정렬·tabular-nums 를 빼고, 이웃한 `.mode`·`.basis` 와 같은 결로 둔다. */
+.wp .scale {
+  width: 6.5rem;
+  font-size: 0.8rem;
   color: var(--text-muted);
 }
 

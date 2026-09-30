@@ -13,6 +13,7 @@ import {
   aggregatedType,
 } from '../../shared/backlog'
 import { executionModeLabel } from '../../shared/executionMode'
+import { DEFAULT_WEIGHT, WEIGHT_GRADES, isOnScale, weightForForm, weightLabel } from '../../shared/weight'
 import type { WorkPackageOption } from './useBacklog'
 
 const props = defineProps<{
@@ -47,7 +48,10 @@ const empty: BacklogItemInput = {
   assigneeMemberId: null,
   acceptanceCriteria: '',
   storyPoint: null,
-  progressWeight: null,
+  // 가중치는 다섯 등급 중 하나라 "고르지 않음" 칸이 없다 — 기본 등급(보통)으로 미리 골라 둔다.
+  // 서버도 미입력을 같은 값으로 계산하므로(`ProgressCalculator.weightOf`) 기본값이 왜곡을
+  // 만들지 않는다. `storyPoint`는 가중치가 아니라 팀의 추정치라 그대로 `null`이다.
+  progressWeight: DEFAULT_WEIGHT,
   acceptanceConfirmed: false,
 }
 
@@ -133,7 +137,9 @@ watch(
       form.assigneeMemberId = item.assigneeMemberId
       form.acceptanceCriteria = item.acceptanceCriteria ?? ''
       form.storyPoint = item.storyPoint
-      form.progressWeight = item.progressWeight
+      // 미입력(`null`)만 기본 등급으로 preselect 한다 — `0`과 척도 밖 값은 그대로 두어야
+      // 제목만 고치려는 저장이 가중치를 덮지 않는다(지시서 §2-e).
+      form.progressWeight = weightForForm(item.progressWeight)
       // 이미 완료인 항목을 다시 저장하는 것은 새 확인을 요구하지 않는다 (서버도 그렇게 본다).
       form.acceptanceConfirmed = item.status === 'DONE'
     } else {
@@ -250,9 +256,17 @@ function onSubmit() {
           Story Point
           <input v-model.number="form.storyPoint" type="number" min="0" placeholder="추정" />
         </label>
-        <label>
+        <label class="weight-field">
           진척 가중치
-          <input v-model.number="form.progressWeight" type="number" min="0" placeholder="비중" />
+          <select v-model.number="form.progressWeight">
+            <!-- 고를 수는 없지만 저장된 값은 그대로 보이고 그대로 저장돼야 한다(레거시 0·척도 밖). -->
+            <option v-if="!isOnScale(form.progressWeight)" :value="form.progressWeight" disabled>
+              {{ weightLabel(form.progressWeight) }}
+            </option>
+            <option v-for="grade in WEIGHT_GRADES" :key="grade.value" :value="grade.value">
+              {{ grade.label }} ({{ grade.value }}) — {{ grade.hint }}
+            </option>
+          </select>
         </label>
       </div>
 
@@ -317,6 +331,14 @@ label {
 
 label.grow {
   flex: 1;
+  min-width: 0;
+}
+
+/* 진척 가중치 옵션에는 등급 이름 옆에 판단 기준 문장이 붙으므로("보통 (3) — 평범한 한 단계")
+   내버려 두면 그 문장 길이만큼 칸이 벌어져 같은 줄의 「수용 조건」을 밀어낸다. 폭만 잡는다 —
+   테두리·패딩·radius·포커스 링은 전역 컨트롤 층이 주는 그대로다(CLAUDE.md 컨트롤 층). */
+label.weight-field {
+  flex: 0 1 13rem;
   min-width: 0;
 }
 

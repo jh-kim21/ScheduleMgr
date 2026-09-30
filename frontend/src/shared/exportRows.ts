@@ -17,6 +17,9 @@ import {
 import type { RaciRole } from './raci'
 import { RACI_LETTERS, RACI_ORDER, sortRoles } from './raci'
 import { RAID_LEVEL_LABELS, RAID_STATUS_LABELS, RAID_TYPE_LABELS, raidLinkLabel } from './raid'
+// 미입력의 뜻이 둘이라 라벨 함수도 둘이다 — WBS 형제는 `wbsWeightLabel`(`미지정`), 체크포인트·
+// Backlog는 `weightLabel`(`보통`). 섞으면 CSV가 없는 사실을 적게 된다(지시서 §2-c).
+import { wbsWeightLabel, weightLabel } from './weight'
 
 /**
  * Turns each screen's data into CSV header + rows.
@@ -49,7 +52,7 @@ export function wbsCsv(nodes: WbsNode[], referenceDate: string | null): CsvTable
         node.endDate,
         progressText(node.computedProgress),
         node.progressBasis ? PROGRESS_BASIS_LABELS[node.progressBasis] : '',
-        node.weight ?? '',
+        wbsWeightLabel(node.weight),
         NODE_TYPE_LABELS[node.nodeType],
         // 상위 항목은 자기 실행 방식을 쓰지 않으므로 하위 요약을 적는다 — 화면과 같은 값.
         node.children.length > 0
@@ -74,7 +77,8 @@ export function wbsCsv(nodes: WbsNode[], referenceDate: string | null): CsvTable
       '종료일',
       '진척',
       '집계 기준',
-      '가중치',
+      // 화면(WBS 폼·진척 탭)과 같은 말이어야 한다 — 같은 값을 두 이름으로 부르면 안 된다.
+      '규모',
       '구분',
       '실행 방식',
       // 판정 기준일을 머리글에 박아 둔다 — 며칠 뒤 이 파일을 열었을 때 무엇 기준인지 알아야 한다.
@@ -170,7 +174,9 @@ export function backlogCsv(items: BacklogItem[]): CsvTable {
       BACKLOG_STATUS_LABELS[item.status],
       item.assigneeName,
       item.storyPoint ?? '',
-      item.progressWeight ?? '',
+      // 집계 대상(Story·Bug)이 아니면 가중치가 쓰이지 않으므로 값을 말하지 않는다 — 화면 목록과
+      // 같은 규칙이다. Story Point는 가중치가 아니라 팀의 추정치라 숫자 그대로 나간다.
+      item.aggregated ? weightLabel(item.progressWeight) : '',
       item.aggregated ? 'O' : '',
       item.acceptanceCriteria,
       item.archived ? 'O' : '',

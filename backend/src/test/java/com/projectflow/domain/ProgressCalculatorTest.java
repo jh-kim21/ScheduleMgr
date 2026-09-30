@@ -139,6 +139,39 @@ class ProgressCalculatorTest {
         }
     }
 
+    /**
+     * {@code weightOf}의 상수 폴백. Agile·Waterfall 분모가 같은 함수를 쓰므로 한쪽씩 나눠 두지
+     * 않고 짝으로 묶는다 — 아래 둘은 서로의 대조군이다.
+     */
+    @Nested
+    @DisplayName("미입력 가중치 폴백 — 체크포인트·Backlog")
+    class MissingWeight {
+
+        @Test
+        @DisplayName("미입력 가중치는 보통(3)으로 센다 — 선언된 3과 구별되지 않는다")
+        void missingWeightCountsAsMedium() {
+            WbsItem wp = workPackage("개발", ExecutionMode.AGILE, null);
+            story(wp, null, true);     // 미입력 → 3
+            story(wp, 3, false);       // 명시 3
+
+            // 3 / (3 + 3) = 50%. 폴백이 1이면 1 / (1 + 3) = 25%라 이 테스트가 상수를 고정한다.
+            assertThat(percentOf(wp)).isEqualTo(50.0);
+        }
+
+        @Test
+        @DisplayName("전부 미입력이면 균등 — 폴백 상수를 무엇으로 두든 결과가 같다")
+        void allMissingWeightsStayEven() {
+            WbsItem wp = workPackage("인수", ExecutionMode.WATERFALL, null);
+            checkpoint(wp, null, true);
+            checkpoint(wp, null, false);
+            checkpoint(wp, null, false);
+
+            // 가중치는 상대값이라 1:1:1과 3:3:3이 같은 비율이다. 폴백을 1에서 3으로 옮겨도
+            // 전부 미입력인 기존 프로젝트의 숫자가 그대로인 근거가 이것이다 (지시서 §2-d).
+            assertThat(percentOf(wp)).isEqualTo(100.0 / 3);
+        }
+    }
+
     @Nested
     @DisplayName("상위 WBS 집계")
     class Rollup {

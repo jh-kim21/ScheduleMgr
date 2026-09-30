@@ -28,7 +28,8 @@ import java.util.Map;
  *
  * <p>A <em>partly</em> weighted branch is not a third policy: a child without a weight counts as the
  * leaf-per-unit share its siblings' declared weights imply, scaled by its own branch size
- * ({@link #unitPerLeaf}) — not a fixed 1 like the checkpoint, Backlog and baseline denominators use.
+ * ({@link #unitPerLeaf}) — not a fixed constant like the checkpoint, Backlog ({@link #weightOf},
+ * 보통 3) and baseline (1) denominators use.
  * Weights are relative values with no sum constraint, so a fixed fallback would make entering
  * {@code 10} or {@code 100} for the same ratio change the answer; the leaf-per-unit share keeps
  * that invariant. It used to be dropped from the average entirely, which let a single weighted
@@ -120,7 +121,7 @@ public final class ProgressCalculator {
         };
     }
 
-    /** 100 × Σ(완료 항목 가중치) / Σ(집계 대상 가중치). {@code null} 가중치는 균등(1)으로 본다. */
+    /** 100 × Σ(완료 항목 가중치) / Σ(집계 대상 가중치). {@code null} 가중치는 {@link #weightOf} 참조. */
     private static Double agileProgress(List<BacklogItem> items) {
         if (items == null || items.isEmpty()) {
             return null;
@@ -242,9 +243,22 @@ public final class ProgressCalculator {
         return total;
     }
 
-    /** 미입력 가중치는 균등(1)으로 본다 — "가중치를 아직 안 넣었다"는 "비중이 같다"의 흔한 표현이다. */
+    /**
+     * 체크포인트·Backlog의 미입력 가중치는 <b>보통(3)</b>으로 본다.
+     *
+     * <p>화면이 고르게 하는 척도가 1·2·3·5·8이라(프론트엔드 {@code shared/weight.ts}) 그 한가운데인
+     * 3이 "아직 고르지 않았다"의 자연스러운 뜻이다. 예전 폴백 1은 이제 <b>아주 작음</b>이라, 미지정인
+     * 형제들 사이에 기본값으로 추가한 항목 하나가 나머지의 3배 몫을 갖게 된다.
+     *
+     * <p>가중치는 상대값이라 <b>전부 미입력인 집합의 결과는 이 상수에 무관하다</b>(1:1:1 = 3:3:3).
+     * 달라지는 것은 일부만 선언된 혼합 집합뿐이다.
+     *
+     * <p><b>WBS 형제 가중치는 이 함수를 쓰지 않는다</b> — {@link #unitPerLeaf}(선언값이 암시하는
+     * leaf당 비중)이다. 그쪽 형제는 가지 크기가 제각각이라 상수 폴백 자체가 맞지 않는다. 화면에서
+     * 같은 등급 척도를 고르더라도 <b>미입력의 뜻은 다르다</b>: 여기선 3, 저기선 형제 크기 비례다.
+     */
     private static double weightOf(Integer weight) {
-        return weight == null ? 1 : weight;
+        return weight == null ? 3 : weight;
     }
 
     /**

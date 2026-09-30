@@ -17,6 +17,7 @@ const lastApprover = moduleRef('')
 <script setup lang="ts">
 import { nextTick, ref, type ComponentPublicInstance } from 'vue'
 import type { CheckpointDetail } from '../../api/progressApi'
+import { WEIGHT_GRADES, isOnScale, weightLabel } from '../../shared/weight'
 import { useProgress } from './useProgress'
 import {
   draftFrom,
@@ -89,16 +90,6 @@ function setApproverInput(el: Element | ComponentPublicInstance | null) {
   approverInput.value = el instanceof HTMLInputElement ? el : null
 }
 
-/**
- * `v-model.number`는 빈 칸을 `null`이 아니라 빈 문자열로, 편집 중인 "-"·"."는 `NaN`으로 남긴다.
- * 서버는 둘 다 받지 못하므로 여기서 걸러 `null`로 바꾼다 — `0`은 그대로 통과시킨다(0과 미입력은
- * 다른 값이다).
- */
-function normalizeWeight(value: number | string | null): number | null {
-  if (value === '' || value === null || Number.isNaN(value as number)) return null
-  return value as number
-}
-
 /** ＋ 체크포인트 추가 버튼. 목록이 비어 있어도 눌러 바로 첫 체크포인트를 만들 수 있다. */
 function openAddForm() {
   editingId.value = null
@@ -124,10 +115,10 @@ function closeForm() {
 async function submit() {
   if (!isSubmittable(draft.value)) return
   const wasAdding = editingId.value === null
-  const input = toCheckpointInput(props.wbsItemId, {
-    ...draft.value,
-    weight: normalizeWeight(draft.value.weight),
-  })
+  // 가중치는 손대지 않고 그대로 넘긴다 — `<select>`는 빈 문자열·`NaN`을 만들지 않으므로 예전의
+  // `normalizeWeight` 보정이 필요 없고, 레거시 값(`0`·척도 밖)은 비활성 옵션으로 선택된 채
+  // 그대로 되돌아가야 한다(지시서 §2-e).
+  const input = toCheckpointInput(props.wbsItemId, draft.value)
   const ok = wasAdding
     ? await addCheckpoint(props.projectId, input)
     : await updateCheckpoint(props.projectId, editingId.value!, input)
@@ -206,11 +197,11 @@ function remove(cp: CheckpointDetail) {
         <div class="row">
           <span class="cp-title">{{ cp.title }}</span>
           <!--
-            미입력(`null`)은 "균등"이 아니라 **1**이다 — `ProgressCalculator.weightOf`가 1로
-            폴백하므로 `[30, 30, 40, null]`에서 마지막 하나는 1/101을 갖는다. 예전 "균등" 표시는
-            형제 중 하나라도 값이 있으면 거짓이었다.
+            미입력(`null`)은 `보통`으로 적는다 — `ProgressCalculator.weightOf`가 실제로 그 값으로
+            폴백하므로 표시와 계산이 어긋나지 않는다. `0`과 척도 밖 값은 고를 수 없지만 저장돼 있을 수
+            있어 숫자째로 드러낸다. (WBS 형제 가중치는 `wbsWeightLabel`을 쓴다 — 거긴 미입력이 `미지정`이다.)
           -->
-          <span class="cp-weight">가중치 {{ cp.weight ?? 1 }}</span>
+          <span class="cp-weight">가중치 {{ weightLabel(cp.weight) }}</span>
           <span v-if="cp.completionCriteria" class="cp-criteria">{{ cp.completionCriteria }}</span>
           <span v-if="cp.approved" class="cp-approved">
             승인 완료 · {{ cp.approvedBy }} · {{ cp.approvedAt?.slice(0, 10) }}
@@ -268,8 +259,8 @@ function remove(cp: CheckpointDetail) {
     <!--
       두 글자 칸 어디서든 Enter로 저장되고 Esc로 닫힌다 — 승인 입력(위)에만 있던 핸들러라
       비대칭이었다. `<form>`이 아니라 `<div>`라서(트리 행 안에 들어가므로 중첩 폼을 만들 수 없다)
-      브라우저의 기본 submit이 없고, 그래서 이 핸들러가 곧 Enter 저장의 전부다. 가중치 칸은
-      `type="number"`라 Enter를 눌러도 브라우저 동작이 없어 같은 핸들러를 달아 둔다.
+      브라우저의 기본 submit이 없고, 그래서 이 핸들러가 곧 Enter 저장의 전부다. 가중치 칸(`<select>`)도
+      마찬가지라 같은 핸들러를 달아 둔다 — 빠뜨리면 그 칸에서만 Enter·Esc가 죽는다.
     -->
     <div v-if="editable && formOpen" class="cp-form">
       <input
@@ -281,15 +272,23 @@ function remove(cp: CheckpointDetail) {
         @keydown.enter="isSubmittable(draft) && submit()"
         @keydown.esc="closeForm"
       />
-      <input
+      <!-- `<select>`에는 placeholder가 없어 예전 `placeholder="가중치"`가 주던 접근 가능한 이름이
+           사라진다 — `aria-label`로 대신한다. -->
+      <select
         v-model.number="draft.weight"
-        type="number"
-        min="0"
         class="cp-weight-input"
-        placeholder="가중치"
+        aria-label="가중치"
         @keydown.enter="isSubmittable(draft) && submit()"
         @keydown.esc="closeForm"
-      />
+      >
+        <!-- 고를 수는 없지만 저장된 값은 그대로 보이고 그대로 저장돼야 한다(레거시 0·척도 밖). -->
+        <option v-if="!isOnScale(draft.weight)" :value="draft.weight" disabled>
+          {{ weightLabel(draft.weight) }}
+        </option>
+        <option v-for="grade in WEIGHT_GRADES" :key="grade.value" :value="grade.value">
+          {{ grade.label }} ({{ grade.value }}) — {{ grade.hint }}
+        </option>
+      </select>
       <input
         v-model="draft.criteria"
         type="text"
@@ -435,22 +434,27 @@ function remove(cp: CheckpointDetail) {
   flex-wrap: wrap;
 }
 
-.cp-form input {
+.cp-form input,
+.cp-form select {
   font-size: 0.82rem;
 }
 
 /* 폼은 [제목][가중치][완료조건][추가][취소] 다섯 칸이다. 글자 칸 둘이 남는 폭을 나눠 갖고,
- * 가중치는 숫자 한두 자리라 좁게 고정한다. 위치(`:first-child`)가 아니라 이름으로 잡는다 —
- * 칸 순서가 바뀌어도 폭이 엉키지 않는다. */
+ * 위치(`:first-child`)가 아니라 이름으로 잡는다 — 칸 순서가 바뀌어도 폭이 엉키지 않는다. */
 .cp-form .cp-title-input,
 .cp-form .cp-criteria-input {
   flex: 1;
   min-width: 8rem;
 }
 
+/* 가중치 칸은 등급 이름 옆에 판단 기준 문장이 함께 붙으므로("보통 (3) — 평범한 한 단계") 숫자
+ * 칸 시절의 5.5rem으로는 고른 값이 잘려 읽힌다. 좁은 트리 행 안에서는 줄어들 수 있게 두고
+ * (`.cp-form`이 `flex-wrap: wrap`이라 모자라면 다음 줄로 내려간다), 테두리·패딩·radius·포커스
+ * 링·최소 타깃은 전역 컨트롤 층이 주는 그대로 쓴다 — 폭만 여기서 정한다(CLAUDE.md 컨트롤 층). */
 .cp-form .cp-weight-input {
-  flex: 0 0 auto;
-  width: 5.5rem;
+  flex: 0 1 auto;
+  width: 14rem;
+  min-width: 8rem;
 }
 
 /* 컨테이너(.checkpoint-list)가 flex-column이라 align-items 기본값(stretch)을 그대로 두면 이

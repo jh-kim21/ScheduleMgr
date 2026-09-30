@@ -14,6 +14,7 @@ import {
   NODE_TYPE_LABELS,
   executionModeLabel,
 } from '../../shared/executionMode'
+import { WEIGHT_GRADES, isOnScale, wbsWeightLabel } from '../../shared/weight'
 import { nodeToFormInput } from './wbsFormMapping'
 
 const props = defineProps<{
@@ -201,6 +202,41 @@ function onSubmit() {
         </label>
       </div>
 
+      <!--
+        같은 진척 근거 묶음이지만 줄을 따로 쓴다 — 등급마다 판단 기준 문장이 붙어 가장 긴 옵션이
+        대화상자 폭(34rem)의 1/3을 넘는다. 위 줄에 세 번째로 끼우면 닫힌 셀렉트에서 기준 문장이
+        잘려 나가는데, 그 문장이 이 입력의 본체다(지시서 §2-b).
+
+        `form.weight`를 payload에서 빼면 안 된다 — 기존에 값이 있던 항목이 저장하는 순간 `null`로
+        덮인다(커밋 `da96ebe`와 같은 종류의 사고).
+
+        `v-model.number`가 아니라 `v-model`이다 — `.number` 수식자는 `미지정` 옵션을 `0`으로 바꿀
+        수 있고, `0`은 "집계 제외"라는 다른 뜻이다. `:value`에 숫자 리터럴을 바인딩하므로 문자열이
+        될 일이 없다.
+      -->
+      <div class="row">
+        <label class="grow">
+          규모
+          <select v-model="form.weight">
+            <!-- 미입력은 실체화하지 않는다 — 그 몫은 형제의 선언값에서 나온다(지시서 §2-c). -->
+            <option :value="null">미지정</option>
+            <!-- 고를 수는 없지만 저장된 값은 그대로 보이고 그대로 저장돼야 한다(레거시 0·척도 밖). -->
+            <option v-if="form.weight !== null && !isOnScale(form.weight)" :value="form.weight" disabled>
+              {{ wbsWeightLabel(form.weight) }}
+            </option>
+            <option v-for="grade in WEIGHT_GRADES" :key="grade.value" :value="grade.value">
+              {{ grade.label }} ({{ grade.value }}) — {{ grade.wbsHint }}
+            </option>
+          </select>
+        </label>
+      </div>
+
+      <p class="hint muted">
+        규모는 형제 항목 사이의 상대적 크기입니다. 미지정으로 두면 등급을 적은 형제에서 leaf 하나당
+        비중을 뽑아 이 항목의 가지 크기만큼 칩니다 — 형제 중 누구도 적지 않았다면 예전처럼 하위 leaf
+        개수로 집계합니다.
+      </p>
+
       <div class="row">
         <label>
           실적 시작일
@@ -248,17 +284,6 @@ function onSubmit() {
           전환 전에 붙어 있던 분야({{ form.tagIds?.length }}개)는 지우지 않고 보관 중이며, 구분을 Work
           Package로 되돌리면 다시 적용됩니다.
         </template>
-      </p>
-
-      <!--
-        입력칸은 없앴지만 값은 보관한다 — 저장된 값이 있는데 화면 어디에도 보이지 않으면 형제
-        사이의 집계가 왜 그 숫자인지 설명할 자리가 사라진다. 실행 방식의 "보관 중" 안내와 같은
-        태도다. `form.weight`를 payload에서 빼면 안 된다 — 기존에 값이 있던 항목이 저장하는 순간
-        `null`로 덮인다(커밋 `da96ebe`와 같은 종류의 사고).
-      -->
-      <p v-if="form.weight !== null && (form.weight as unknown) !== ''" class="hint muted">
-        이 항목에 저장된 가중치({{ form.weight }})는 지우지 않고 그대로 보관하며 집계에도 계속
-        쓰입니다. 가중치는 이 폼에서 다루지 않으므로 저장해도 값은 바뀌지 않습니다.
       </p>
 
       <p class="hint muted">
@@ -310,8 +335,11 @@ label {
   color: var(--text-muted);
 }
 
+/* `min-width: 0` 이 없으면 flex 항목이 min-content 밑으로 줄지 못한다 — 긴 옵션을 가진 `규모`
+   셀렉트가 대화상자 밖으로 밀고 나간다. */
 label.grow {
   flex: 1;
+  min-width: 0;
 }
 
 input,

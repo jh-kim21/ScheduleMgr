@@ -84,4 +84,17 @@ describe('nodeToFormInput', () => {
     expect(input.acceptanceStatus).toBe('PENDING')
     expect(input.nodeType).toBe('WORK_PACKAGE')
   })
+
+  /**
+   * 규모(`weight`)가 `<select>`로 돌아오면서 "미입력은 기본 등급으로 preselect 한다"는 유혹이
+   * 생겼는데, 그 규칙은 **체크포인트·Backlog 전용**(`weightForForm`)이다. WBS 형제의 미입력 몫은
+   * 상수가 아니라 `unitPerLeaf × leafCount`(형제 크기 비례)라, 여기서 `3`으로 채우면 제목만
+   * 고치려는 저장이 `null`을 `3`으로 박제하고 **형제 전원의 몫이 재계산된다**
+   * (`docs/tasks/weight-grade-scale.md` §2-c·§7-1). 이 줄이 그 리팩터링이 가장 먼저 닿는 곳이다.
+   */
+  it('가중치가 없으면 null 그대로 담는다 — 기본 등급으로 채우지 않는다', () => {
+    const input = nodeToFormInput(baseNode({ weight: null }))
+
+    expect(input.weight).toBeNull()
+  })
 })

@@ -2,7 +2,7 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../api/http'
-import { progressApi, type Progress } from '../../api/progressApi'
+import { progressApi, type Progress, type WorkPackageProgress } from '../../api/progressApi'
 import { selectedProjectId } from '../../stores/projectSelection'
 import ProgressPanel from './ProgressPanel.vue'
 
@@ -56,13 +56,50 @@ function baseProgress(overrides: Partial<Progress> = {}): Progress {
   }
 }
 
-async function renderPanel() {
-  mockedGet.mockResolvedValueOnce(baseProgress())
+function workPackage(overrides: Partial<WorkPackageProgress> = {}): WorkPackageProgress {
+  return {
+    wbsItemId: 1,
+    code: '1.1',
+    name: '설계',
+    executionMode: 'WATERFALL',
+    weight: null,
+    agileRatio: null,
+    acceptanceStatus: null,
+    percent: 50,
+    basis: 'WATERFALL',
+    note: null,
+    backlogTotal: 0,
+    backlogDone: 0,
+    checkpointTotal: 0,
+    checkpointApproved: 0,
+    acceptancePending: false,
+    checkpoints: [],
+    ...overrides,
+  }
+}
+
+/**
+ * `useProgress`의 캐시(`cacheKey`)는 모듈 스코프라 이 파일의 테스트들이 공유한다 — 같은 프로젝트
+ * id로 다시 마운트하면 `ensureLoaded`가 캐시 적중으로 **요청을 아예 보내지 않고** 앞 테스트가 읽어
+ * 둔 데이터를 그대로 보여 준다(그래서 `mockResolvedValueOnce`가 조용히 무시된다). 테스트마다 다른
+ * id를 줘서 매번 실제로 읽게 한다 — 캐시 키에 무엇이 들어가는지와 무관하게 확실하다.
+ */
+let nextProjectId = 1
+
+async function renderPanel(overrides: Partial<Progress> = {}) {
+  mockedGet.mockResolvedValueOnce(baseProgress(overrides))
   mockedSnapshots.mockResolvedValueOnce({ snapshots: [] })
-  selectedProjectId.value = 1
+  selectedProjectId.value = nextProjectId++
   const wrapper = mount(ProgressPanel, { attachTo: document.body })
   await flushPromises()
   return wrapper
+}
+
+/** 표의 `규모` 열을 위에서부터. 클래스로 잡는다 — 열 순서가 바뀌어도 빗나가지 않는다. */
+function scaleCells(): string[] {
+  return [...document.body.querySelectorAll('.progress-panel .wp tbody td.scale')].map(
+    (cell) => cell.textContent?.trim() ?? '',
+  )
 }
 
 function openBaselineButton(wrapper: VueWrapper) {
@@ -146,7 +183,7 @@ describe('ProgressPanel — 기준선 승인 대화상자', () => {
   })
 })
 
-describe('ProgressPanel — 가중치 폴백 안내 문구', () => {
+describe('ProgressPanel — 규모(가중치) 폴백 안내 문구', () => {
   let wrapper: VueWrapper | undefined
 
   afterEach(() => {
@@ -161,29 +198,79 @@ describe('ProgressPanel — 가중치 폴백 안내 문구', () => {
   /**
    * 이 문구는 계산식이 바뀔 때마다 두 번 뒤처졌다(`docs/tasks/progress-weight-leaf-scaling.md` §0) —
    * `ed102a6`이 "1로 계산되고"라고 썼고, `e2ced02`가 폴백을 평균으로 바꾸면서도 화면은 고치지 않아
-   * `main`에 거짓 문구가 남았다. 전문을 그대로 박으면 오타 하나 고칠 때마다 깨져서 다음 사람이
-   * 기대값만 갱신하고 넘어가게 되고, 반대로 존재 여부만 보면(문단 길이 등) 이번 같은 "말은 다른데
-   * 지워지지 않는" 거짓을 못 잡는다. 그래서 두 가지를 함께 본다 — 낡은 서술("1로 계산")이
-   * 없다는 것과, 현재 규칙의 핵심 낱말(leaf 하나당 단위, 가지 크기)이 있다는 것. 계산식이 또
-   * 바뀌면 이 중 하나는 반드시 깨진다.
+   * `main`에 거짓 문구가 남았다. **세 번째 뒤처짐**은 계산식이 아니라 입력 경로였다 —
+   * `docs/tasks/weight-grade-scale.md`가 WBS 폼에 `규모` 드롭다운을 되살리면서 "이 화면에서는
+   * 입력하지 않습니다"가 *어디에서도 입력할 수 없다*는 뜻으로 읽히게 됐다(WBS 폼에서는 고칠 수
+   * 있다). 전문을 그대로 박으면 오타 하나 고칠 때마다 깨져서 다음 사람이 기대값만 갱신하고
+   * 넘어가게 되고, 반대로 존재 여부만 보면(문단 길이 등) 이번 같은 "말은 다른데 지워지지 않는"
+   * 거짓을 못 잡는다. 그래서 두 가지를 함께 본다 — 낡은 서술("1로 계산"·"이 화면에서는 입력하지")이
+   * 없다는 것과, 현재 규칙의 핵심 낱말(leaf 하나당 단위, 가지 크기)이 있다는 것. 계산식이나 입력
+   * 경로가 또 바뀌면 이 중 하나는 반드시 깨진다.
    */
-  it('Work Package 가중치 안내가 낡은 "1로 계산" 서술을 담지 않고, 현재의 leaf당 단위 규칙을 말한다', async () => {
+  it('규모 안내가 낡은 "1로 계산"·"이 화면에서는 입력하지" 서술을 담지 않고, 현재의 leaf당 단위 규칙을 말한다', async () => {
     wrapper = await renderPanel()
 
     const notice = [...document.body.querySelectorAll('.progress-panel .notice.subtle')].find((p) =>
-      p.textContent?.includes('가중치는 같은 상위'),
+      p.textContent?.includes('규모는 같은 상위'),
     )
     expect(notice).not.toBeUndefined()
     const text = notice!.textContent ?? ''
 
     // 낡은 서술 — 이제 거짓이다.
     expect(text).not.toContain('1로 계산')
+    // 입력칸이 WBS 폼으로 돌아왔으므로 이 문장도 거짓이 됐다.
+    expect(text).not.toContain('이 화면에서는 입력하지')
     // 현재 규칙의 핵심 — leaf 하나당 단위를 뽑아 자기 가지 크기만큼 곱한다.
     expect(text).toContain('leaf 하나당 비중')
     expect(text).toContain('가지 크기만큼')
-    // 이 변경이 건드리지 않는 것 — 형제 전원 미입력이면 여전히 leaf 개수 가중 평균이고,
-    // 0과 미입력은 여전히 다른 값이다.
+    // 이 변경이 건드리지 않는 것 — 형제 전원 미지정이면 여전히 leaf 개수 가중 평균이고,
+    // 0과 미지정은 여전히 다른 값이다.
     expect(text).toContain('leaf 개수 가중')
-    expect(text).toContain('0과 미입력은 다른 값')
+    expect(text).toContain('0과 미지정은 다른 값')
+  })
+})
+
+describe('ProgressPanel — 규모 열', () => {
+  let wrapper: VueWrapper | undefined
+
+  afterEach(() => {
+    wrapper?.unmount()
+    wrapper = undefined
+    selectedProjectId.value = null
+    mockedGet.mockReset()
+    mockedSnapshots.mockReset()
+    mockedApproveBaseline.mockReset()
+  })
+
+  /**
+   * **어휘는 셋이 공유하지만 `null`의 뜻은 둘이다.** 체크포인트·Backlog는 미입력을 상수
+   * `DEFAULT_WEIGHT`(3)로 계산하므로 `보통`이라 적는 것이 사실에 맞지만, WBS 형제의 미입력 몫은
+   * `unitPerLeaf × leafCount`(형제 크기 비례)라 어떤 등급 이름으로도 적을 수 없다 — 그래서
+   * **`미지정`** 이다(`docs/tasks/weight-grade-scale.md` §2-c).
+   *
+   * 이 화면이 `wbsWeightLabel` 대신 `weightLabel`을 부르면 `null` 행이 조용히 `보통`으로 바뀌는데,
+   * `weight.spec.ts`의 `weightLabel(null) !== wbsWeightLabel(null)`은 *함수 둘이 다르다*만 고정할
+   * 뿐 **누가 어느 쪽을 부르는지**는 보지 않는다. 그 오용을 여기서 잡는다 — `3`(`보통`)을 대조군으로
+   * 함께 두어, 두 값이 같은 라벨로 뭉개지면 반드시 빨개지게 한다.
+   */
+  it('미지정·보통·집계 제외(0)를 각각 다른 라벨로 읽는다 — null은 보통이 아니다', async () => {
+    wrapper = await renderPanel({
+      workPackages: [
+        workPackage({ wbsItemId: 1, code: '1.1', name: '설계', weight: null }),
+        workPackage({ wbsItemId: 2, code: '1.2', name: '개발', weight: 3 }),
+        workPackage({ wbsItemId: 3, code: '1.3', name: '인수', weight: 0 }),
+      ],
+    })
+
+    expect(scaleCells()).toEqual(['미지정', '보통', '집계 제외(0)'])
+  })
+
+  /** 척도 밖 값도 숫자째로 드러낸다 — 구형 파일·커밋 복원이 싣고 오는 정상 데이터다(§2-e). */
+  it('척도 밖 값은 사용자 지정 N으로 읽는다', async () => {
+    wrapper = await renderPanel({
+      workPackages: [workPackage({ wbsItemId: 1, weight: 30 })],
+    })
+
+    expect(scaleCells()).toEqual(['사용자 지정 30'])
   })
 })
