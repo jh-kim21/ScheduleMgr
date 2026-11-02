@@ -7,6 +7,7 @@ import ProjectsView from '../views/ProjectsView.vue'
 import SprintView from '../views/SprintView.vue'
 import RaciView from '../views/RaciView.vue'
 import RaidView from '../views/RaidView.vue'
+import TodoView from '../views/TodoView.vue'
 import WbsView from '../views/WbsView.vue'
 
 export const router = createRouter({
@@ -22,6 +23,7 @@ export const router = createRouter({
     { path: '/gantt', name: 'gantt', component: GanttView },
     { path: '/raci', name: 'raci', component: RaciView },
     { path: '/raid', name: 'raid', component: RaidView },
+    { path: '/todo', name: 'todo', component: TodoView },
     // 대시보드는 다른 화면의 숫자를 모아 보여줄 뿐 자기 데이터를 갖지 않는다.
     // 진척은 그 숫자의 근거를 입력하는 곳이라 같은 화면의 탭으로 둔다.
     { path: '/dashboard', name: 'dashboard', component: DashboardView },

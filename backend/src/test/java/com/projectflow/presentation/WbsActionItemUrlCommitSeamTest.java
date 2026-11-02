@@ -127,13 +127,13 @@ class WbsActionItemUrlCommitSeamTest {
         }
 
         @Test
-        @DisplayName("대조군 — 지금 찍은 커밋(8)을 복원하면 주소가 살아 온다")
+        @DisplayName("대조군 — 지금 찍은 커밋(9)을 복원하면 주소가 살아 온다")
         void restoresCurrentCommitWithTheUrl() throws Exception {
             long projectId = createProject("새 커밋 복원");
             createItem(projectId, "설계 회의록", SAFE_URL);
             JsonNode commit = postCommit(projectId);
 
-            assertThat(commit.get("formatVersion").asInt()).isEqualTo(8);
+            assertThat(commit.get("formatVersion").asInt()).isEqualTo(9);
 
             MvcResult result = mockMvc.perform(
                             post("/api/projects/commits/" + commit.get("id").asLong() + "/restore"))
@@ -191,7 +191,7 @@ class WbsActionItemUrlCommitSeamTest {
             assertThat(find(tree, "화면 설계").get("actionItemUrl").isNull()).isTrue();
 
             JsonNode file = export(projectId);
-            assertThat(file.get("formatVersion").asInt()).isEqualTo(8);
+            assertThat(file.get("formatVersion").asInt()).isEqualTo(9);
             for (JsonNode item : file.get("wbsItems")) {
                 assertThat(item.get("actionItemUrl").isNull())
                         .as("파서가 채우지 않는 값이므로 내보내기에서도 비어 있어야 한다")

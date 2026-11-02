@@ -19,6 +19,7 @@ import com.projectflow.application.dto.ProjectMemberResponse;
 import com.projectflow.application.dto.ProjectResponse;
 import com.projectflow.application.dto.RaciMatrixResponse;
 import com.projectflow.application.dto.RaidLogResponse;
+import com.projectflow.application.dto.TodoListResponse;
 import com.projectflow.application.dto.SnapshotResponse;
 import com.projectflow.application.dto.SprintResponse;
 import com.projectflow.application.dto.WbsTreeResponse;
@@ -67,6 +68,7 @@ public class ProjectCommitService {
     private final ProjectMemberService memberService;
     private final RaciService raciService;
     private final RaidService raidService;
+    private final TodoService todoService;
     private final BacklogService backlogService;
     private final SprintService sprintService;
     private final ProgressService progressService;
@@ -84,6 +86,7 @@ public class ProjectCommitService {
                                  ProjectMemberService memberService,
                                  RaciService raciService,
                                  RaidService raidService,
+                                 TodoService todoService,
                                  BacklogService backlogService,
                                  SprintService sprintService,
                                  ProgressService progressService,
@@ -101,6 +104,7 @@ public class ProjectCommitService {
         this.memberService = memberService;
         this.raciService = raciService;
         this.raidService = raidService;
+        this.todoService = todoService;
         this.backlogService = backlogService;
         this.sprintService = sprintService;
         this.progressService = progressService;
@@ -226,7 +230,8 @@ public class ProjectCommitService {
                 original.checkpoints(),
                 original.baselines(),
                 original.snapshots(),
-                original.tags());
+                original.tags(),
+                original.todoItems());
         return importService.importProject(toImport);
     }
 
@@ -248,6 +253,7 @@ public class ProjectCommitService {
         List<ProjectMemberResponse> members = memberService.listMembers(projectId);
         RaciMatrixResponse raci = raciService.getMatrix(projectId);
         RaidLogResponse raid = raidService.getLog(projectId, asOf);
+        TodoListResponse todos = todoService.getList(projectId, asOf);
         BacklogResponse backlog = backlogService.getBacklog(projectId);
         SprintResponse sprints = sprintService.getSprints(projectId);
         ProgressResponse progress = progressService.getProgress(projectId, asOf);
@@ -255,7 +261,7 @@ public class ProjectCommitService {
         DashboardResponse dashboard = dashboardService.getDashboard(projectId, asOf);
 
         return new CommitComputedPayload(
-                asOf, wbs, gantt, members, raci, raid, backlog, sprints, progress, snapshots, dashboard);
+                asOf, wbs, gantt, members, raci, raid, backlog, sprints, progress, snapshots, dashboard, todos);
     }
 
     // ------------------------------------------------------------------ 조회 보조

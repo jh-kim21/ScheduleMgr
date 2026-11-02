@@ -15,6 +15,10 @@ import com.projectflow.application.dto.RaciMatrixResponse;
 import com.projectflow.application.dto.RaidLogResponse;
 import com.projectflow.application.dto.SnapshotResponse;
 import com.projectflow.application.dto.SprintResponse;
+import com.projectflow.application.dto.TodoItemResponse;
+import com.projectflow.application.dto.TodoListResponse;
+import com.projectflow.application.dto.ProjectExportResponse.ExportedTodoItem;
+import com.projectflow.domain.TodoPriority;
 import com.projectflow.application.dto.WbsTreeResponse;
 import com.projectflow.domain.CommitCapacityExceededException;
 import com.projectflow.domain.CommitNotFoundException;
@@ -40,6 +44,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -72,6 +77,7 @@ class ProjectCommitServiceTest {
     private ProjectMemberService memberService;
     private RaciService raciService;
     private RaidService raidService;
+    private TodoService todoService;
     private BacklogService backlogService;
     private SprintService sprintService;
     private ProgressService progressService;
@@ -89,6 +95,7 @@ class ProjectCommitServiceTest {
         memberService = mock(ProjectMemberService.class);
         raciService = mock(RaciService.class);
         raidService = mock(RaidService.class);
+        todoService = mock(TodoService.class);
         backlogService = mock(BacklogService.class);
         sprintService = mock(SprintService.class);
         progressService = mock(ProgressService.class);
@@ -109,6 +116,8 @@ class ProjectCommitServiceTest {
                 .thenReturn(new RaciMatrixResponse(List.of(), List.of(), List.of(), List.of()));
         when(raidService.getLog(eq(PROJECT_ID), any(LocalDate.class)))
                 .thenReturn(new RaidLogResponse(LocalDate.now(), List.of()));
+        when(todoService.getList(eq(PROJECT_ID), any(LocalDate.class)))
+                .thenReturn(new TodoListResponse(LocalDate.now(), List.of()));
         when(backlogService.getBacklog(PROJECT_ID)).thenReturn(new BacklogResponse(0, List.of()));
         when(sprintService.getSprints(PROJECT_ID)).thenReturn(new SprintResponse(null, List.of()));
         when(progressService.getProgress(eq(PROJECT_ID), any(LocalDate.class)))
@@ -124,7 +133,7 @@ class ProjectCommitServiceTest {
 
         service = new ProjectCommitService(fakeCommitRepository(), projectRepository, exportService,
                 importService, wbsService, ganttService, memberService, raciService, raidService,
-                backlogService, sprintService, progressService, progressBasisService, dashboardService,
+                todoService, backlogService, sprintService, progressService, progressBasisService, dashboardService,
                 objectMapper(), 1_073_741_824L);
     }
 
@@ -278,12 +287,59 @@ class ProjectCommitServiceTest {
         verify(importService, never()).importProject(any());
     }
 
+    // ------------------------------------------------------------------ TODO
+
+    @Test
+    @DisplayName("커밋 payload.todos는 TodoService를 커밋의 asOf로 불러 채운다")
+    void capturesTodosWithSameAsOf() {
+        LocalDate asOf = LocalDate.of(2026, 3, 1);
+        TodoItemResponse item = new TodoItemResponse(5L, "고객 회의 준비", TodoPriority.HIGH, null, null,
+                asOf.minusDays(2), null, false, null, true, 2, null, null);
+        when(todoService.getList(eq(PROJECT_ID), any(LocalDate.class)))
+                .thenReturn(new TodoListResponse(asOf, List.of(item)));
+
+        CommitCreateResponse created = service.createCommit(PROJECT_ID, blankRequest());
+
+        var payload = service.getCommit(PROJECT_ID, created.commit().version()).payload();
+        assertThat(payload.todos()).isNotNull();
+        assertThat(payload.todos().items()).singleElement().satisfies(todo -> {
+            assertThat(todo.title()).isEqualTo("고객 회의 준비");
+            assertThat(todo.overdue()).isTrue();
+        });
+        ArgumentCaptor<LocalDate> todoDate = ArgumentCaptor.forClass(LocalDate.class);
+        verify(todoService, atLeastOnce()).getList(eq(PROJECT_ID), todoDate.capture());
+        assertThat(todoDate.getValue()).isEqualTo(payload.asOf());
+    }
+
+    @Test
+    @DisplayName("복원은 raw_payload의 todoItems를 ImportService에 그대로 넘긴다")
+    void restoreKeepsTodoItems() {
+        ExportedTodoItem todo = new ExportedTodoItem(1L, "계약서 검토", TodoPriority.MEDIUM, null,
+                LocalDate.of(2026, 5, 1), "메모", null, null);
+        ProjectExportResponse base = minimalExport(9);
+        when(exportService.exportProject(PROJECT_ID)).thenReturn(new ProjectExportResponse(
+                base.formatVersion(), base.exportedAt(), base.project(), base.members(),
+                base.wbsItems(), base.dependencies(), base.raciAssignments(), base.raidItems(),
+                base.backlogItems(), base.sprints(), base.sprintItems(), base.checkpoints(),
+                base.baselines(), base.snapshots(), base.tags(), List.of(todo)));
+        long commitId = service.createCommit(PROJECT_ID, blankRequest()).commit().id();
+        when(importService.importProject(any())).thenReturn(new ProjectResponse(
+                99L, "x", null, ProjectStatus.PLANNED, null, null, null, null));
+
+        service.restore(commitId);
+
+        ArgumentCaptor<ProjectExportResponse> captor = ArgumentCaptor.forClass(ProjectExportResponse.class);
+        verify(importService).importProject(captor.capture());
+        assertThat(captor.getValue().todoItems()).singleElement()
+                .satisfies(restored -> assertThat(restored.title()).isEqualTo("계약서 검토"));
+    }
+
     // ------------------------------------------------------------------ 헬퍼
 
     private ProjectCommitService serviceWithLimit(long maxBytes) {
         return new ProjectCommitService(fakeCommitRepository(), projectRepository, exportService,
                 importService, wbsService, ganttService, memberService, raciService, raidService,
-                backlogService, sprintService, progressService, progressBasisService,
+                todoService, backlogService, sprintService, progressService, progressBasisService,
                 new DashboardService(projectRepository, progressService, ganttService, sprintService,
                         backlogService, raciService, raidService, new WorkloadService()),
                 objectMapper(), maxBytes);
@@ -310,7 +366,7 @@ class ProjectCommitServiceTest {
                 new ExportedProject(PROJECT_ID, "커밋 테스트", null, ProjectStatus.IN_PROGRESS,
                         LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31), null, null),
                 List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of(), List.of(), List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
     }
 
     private ProgressResponse emptyProgress() {

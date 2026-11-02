@@ -11,6 +11,7 @@ import com.projectflow.domain.RaidLevel;
 import com.projectflow.domain.RaidLinkTarget;
 import com.projectflow.domain.RaidStatus;
 import com.projectflow.domain.RaidType;
+import com.projectflow.domain.TodoPriority;
 import com.projectflow.domain.SprintItemOutcome;
 import com.projectflow.domain.SprintStatus;
 import com.projectflow.domain.WbsNodeType;
@@ -53,7 +54,8 @@ public record ProjectExportResponse(
         List<ExportedCheckpoint> checkpoints,
         List<ExportedBaseline> baselines,
         List<ExportedSnapshot> snapshots,
-        List<ExportedTag> tags
+        List<ExportedTag> tags,
+        List<ExportedTodoItem> todoItems
 ) {
     public record ExportedProject(
             Long id,
@@ -269,6 +271,18 @@ public record ProjectExportResponse(
      *                  둘 다 받아들인다
      * @param links     연결 대상들 (formatVersion 6부터)
      */
+    public record ExportedTodoItem(
+            Long id,
+            String title,
+            TodoPriority priority,
+            Long assigneeMemberId,
+            LocalDate dueDate,
+            String memo,
+            LocalDateTime completedAt,
+            LocalDateTime createdAt
+    ) {
+    }
+
     public record ExportedRaidItem(
             Long id,
             RaidType type,

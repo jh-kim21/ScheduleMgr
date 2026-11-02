@@ -41,6 +41,9 @@
 **팀은 하나를 전제합니다** (사용자 결정) — 그래서 팀 테이블이 없고, 실행 중인 Sprint도 하나뿐이며,
 속도 추세도 계열이 하나입니다.
 
+그 옆에 PM 잡무를 적는 프로젝트별 **TODO 목록**(`/todo`)을 붙였습니다 — 설계서에 없는 **8번째
+최상위 메뉴이고 사용자 결정**입니다(아래 "화면 구조"와 "TODO 설계상 알아둘 점").
+
 그 위에 **UI 상용화 정비**를 1~3단계까지 했습니다 — `style.css`에 컨트롤 층을 신설하고, 명암비를
 측정해 기준에 맞추고(라이트 16건·다크 7건 미달 → WCAG 예외 2건만 남김), 손으로 만든 대화상자 넷을
 `ModalDialog`로 흡수하면서 **중첩 지원**을 넣고, 27개 화면이 컨트롤 층을 쓰게 했습니다. 기능을
@@ -153,7 +156,7 @@ backend/
 
 frontend/
   src/api/            # REST API 클라이언트 (fetch 기반)
-  src/features/        # projects, dashboard, wbs, backlog, sprint, progress, gantt, raci, raid, members, commit
+  src/features/        # projects, dashboard, wbs, backlog, sprint, progress, gantt, raci, raid, todo, members, commit
                        #   progress/CheckpointList.vue: WbsForm(편집)과 ProgressPanel(읽기 전용)이 함께 쓴다
   src/views/           # 라우트별 화면. 메뉴 구조는 설계서 §2.2를 따른다 (아래 "화면 구조")
   src/shared/          # 여러 feature가 공유하는 도메인 개념 (delay 상태 라벨 등)
@@ -657,7 +660,7 @@ WBS의 이점이 사라지고 같은 업무의 세 일정을 눈으로 잇기 �
   비어 보였습니다. 상한을 아예 없애지 않은 이유는 아주 넓은 화면에서 헤더 메뉴가 양 끝으로 흩어지고
   시선 이동이 오히려 커지기 때문입니다.
 - **되돌릴 수 없는 동작에는 예외 없이 `confirm()`을 거칩니다.** 프로젝트·WBS 항목·구성원·분야·
-  RAID 항목·커밋·Backlog 항목·Sprint·Sprint 배정·체크포인트 삭제와 일정 재계산이 전부 여기
+  RAID 항목·TODO·커밋·Backlog 항목·Sprint·Sprint 배정·체크포인트 삭제와 일정 재계산이 전부 여기
   해당합니다. 한때 Backlog 항목 삭제·Sprint 배정 제거·체크포인트 삭제 셋만 빠져 있었는데, 규칙이
   없었던 게 아니라 **세 곳이 규칙에서 새어나간 것**이었습니다. **부작용이 있으면 문구에 담으세요** —
   구성원 삭제는 RACI 배정이 함께 지워지는 것을, 승인된 체크포인트 삭제는 그 Work Package의 진척
@@ -932,9 +935,9 @@ Story·Sprint에 걸려도 원본은 하나로 관리해야 하기 때문입니�
 ### 화면 구조 (설계서 §2.2)
 
 ```text
-프로젝트 | WBS | Agile | 간트 차트 | RACI | RAID | Dashboard
-                 ├─ Backlog                              ├─ 요약
-                 ├─ Sprint                               └─ 진척
+프로젝트 | WBS | Agile | 간트 차트 | RACI | RAID | TODO | Dashboard
+                 ├─ Backlog                                     ├─ 요약
+                 ├─ Sprint                                      └─ 진척
                  └─ Board
 ```
 
@@ -947,7 +950,7 @@ Story·Sprint에 걸려도 원본은 하나로 관리해야 하기 때문입니�
   `selectedSprintId`를 공유하므로 Sprint에서 고른 것이 Board에서 열립니다.
 - **진척은 Dashboard의 탭**입니다(`/dashboard?tab=progress`). 요약은 읽기 전용 집계이고 진척은 그
   숫자의 *근거를 입력하는* 곳(가중치·기준선·스냅샷)이라 한 화면의 두 면으로 두었습니다. 이렇게
-  해야 최상위 메뉴가 설계서의 일곱 개로 떨어집니다. 예전 `/progress`는 이 탭으로 리다이렉트하므로
+  해야 최상위 메뉴가 설계서의 일곱 개로 떨어집니다(그 뒤 TODO가 여덟 번째로 붙었습니다 — 아래). 예전 `/progress`는 이 탭으로 리다이렉트하므로
   기존 링크가 살아 있습니다. **체크포인트는 이 탭에 속하지 않습니다** — 정의·수정·삭제·승인이
   전부 **WBS 트리**에서 일어납니다(Work Package 행을 펼치면 그 자리에 나타납니다). 진척을 올리는
   행위는 각자의 작업 화면에서 하고(Agile은 Board/Backlog에서 Story·Bug를 완료로 전이, Waterfall은
@@ -968,6 +971,47 @@ Story·Sprint에 걸려도 원본은 하나로 관리해야 하기 때문입니�
     탭은 같은 컴포넌트 안이라 마운트가 다시 일어나지 않습니다. `useProgress`의 모든 변경이
     `markWbsChanged()`를 부르고 대시보드 캐시 키에 WBS 리비전이 들어 있어, 요약으로 돌아올 때
     `ensureLoaded`를 부르면 키가 달라져 있어 다시 읽습니다. 캐시가 유효하면 아무 일도 하지 않습니다.
+- **`TODO`는 설계서에 없는 8번째 최상위 메뉴입니다 — 사용자가 알고 고른 이탈입니다**
+  (`docs/tasks/pm-todo-list.md`). 설계서 §2.2는 일곱 개로 정했고, 진척을 Dashboard 탭으로
+  넣은 것도 그 숫자를 지키기 위해서였습니다. TODO만 탭이 아니라 메뉴인 것은 사용자 결정이며,
+  **설계서 §2.2 본문은 고치지 않았습니다**(설계 원본). Dashboard 탭으로 옮기는 것은 별도 결정이
+  필요합니다.
+
+### TODO 설계상 알아둘 점
+
+PM의 잡무("고객 회의 준비", "주간 보고 제출")를 적는 프로젝트별 할 일 목록입니다(`todo_items`, V25).
+산출물이 아니라 WBS에, 팀의 실행 항목이 아니라 Backlog에, 위험·이슈가 아니라 RAID에 맞지 않는
+일을 위한 자리입니다.
+
+- **WBS·Backlog·RAID와 연결하지 않습니다**(사용자 결정). 그래서 `detachTargets` 같은 삭제 시 분리
+  처리도, 다른 화면의 리비전도 필요 없습니다. 나중에 붙인다면 `raid_links` 패턴(대상 종류 + id,
+  삭제 시 분리)을 따르세요.
+- **완료는 `completed_at` 하나로만 표현합니다**(`completed = completedAt != null`). `done` 불리언을
+  따로 두면 두 값이 어긋날 수 있습니다. 상태를 여러 단계로 늘리지 마세요 — 단계가 필요하면
+  Backlog를 쓸 일입니다.
+- **완료 토글은 좁은 경로**(`PUT /todos/{id}/completion`)입니다. 행의 체크박스가 일반 `PUT`을
+  부르면 체크박스가 모르는 필드(메모·기한)가 덮입니다 — 커밋 `da96ebe`·진척 basis 엔드포인트와
+  같은 이유입니다. 그래서 `TodoItemRequest`는 `completed`를 받지 않습니다.
+  - **이미 완료된 항목에 다시 `true`를 보내도 `completed_at`을 덮어쓰지 않습니다.** 언제 끝냈는지가
+    오늘로 바뀌면 안 됩니다. `false`면 비웁니다.
+  - 체크박스는 확인 창 없이 즉시 저장합니다(다시 체크하면 되돌아갑니다). 삭제는 `confirm()`을
+    거칩니다.
+- **우선순위는 `HIGH`/`MEDIUM`/`LOW`이고 NOT NULL**입니다(폼 기본값 `MEDIUM`). 할 일에는 언제나
+  상대적인 급함이 있어 "미지정"을 두지 않았습니다.
+- **기한 초과는 RAID와 같은 규칙이지만 코드를 공유하지 않습니다**
+  ([`TodoAssessor`](backend/src/main/java/com/projectflow/domain/TodoAssessor.java)). 기준일은 서버의
+  `referenceDate`, 기한 당일은 아직 초과가 아니고, 완료된 항목은 초과가 아닙니다. `RaidAssessor`와
+  합치지 마세요 — RAID 판정을 바꿀 때 TODO가 함께 흔들리면 안 됩니다.
+- **담당자는 `project_members`를 가리키고 `ON DELETE SET NULL`입니다**(RAID 소유자와 같은 이유).
+  다른 프로젝트의 구성원은 400입니다. 구성원 삭제 확인 문구가 이 부작용을 알립니다.
+- **모든 변경 API가 `{ referenceDate, items }` 전체를 반환합니다**(RAID와 같은 이유).
+- **필터·정렬은 클라이언트 순수 함수**([`todoFilter.ts`](frontend/src/features/todo/todoFilter.ts))입니다.
+  기본 정렬은 미완료 → 우선순위 높은 순 → 기한 빠른 순(없으면 뒤) → id. 완료 항목은 기본으로
+  숨깁니다. **배너("기한 초과 N건")는 필터와 상관없이 전체를 셉니다**(RAID 배너와 같은 규칙).
+- **내보내기·커밋에 포함됩니다**(`formatVersion 9`, `todoItems`). 8 이하 파일은 빈 목록으로
+  읽습니다. 커밋 `computedPayload.todos`는 **TODO가 생기기 전 커밋에는 없습니다** — 화면은 빈
+  목록과 함께 "이 커밋에는 TODO 기록이 없습니다"를 띄웁니다. 빈 목록으로만 그리면 "그때 할 일이
+  없었다"로 읽힙니다.
 
 ### 대시보드 설계상 알아둘 점 (Step 7)
 
@@ -1120,6 +1164,10 @@ Story·Sprint에 걸려도 원본은 하나로 관리해야 하기 때문입니�
   담당자 열을 다시 읽습니다. **`raciCacheKeyFor` 자신에는 넣지 않습니다** — RACI의 모든 변경 API가
   매트릭스 전체를 반환하므로 그 화면은 이미 최신입니다. 간트·Progress에도 넣지 않습니다(담당자를
   보여주지 않습니다). 이 리비전이 없으면 RACI에서 담당자를 바꿔도 WBS가 옛 이름을 계속 보여줍니다.
+- **TODO 캐시 키(`todoCacheKeyFor`)는 `(프로젝트, 멤버 리비전, 로컬 날짜)`입니다.** 담당자 이름이
+  구성원에서 오고, 기한 초과가 날짜 기준이기 때문입니다. **WBS·Backlog·Sprint 리비전은 넣지
+  않습니다** — `raidCacheKeyFor`와 달리 연결이 없습니다. 반대로 TODO 변경은 다른 화면을 낡게
+  만들지 않으므로 `markTodoChanged()` 같은 리비전도 없습니다.
 - **업무 분야(Tag) 마스터 변경에는 별도 리비전을 두지 않습니다** — `markWbsChanged()`로 충분합니다.
   트리를 다시 읽으면 칩의 이름·색이 따라옵니다.
 - **로컬 날짜가 캐시 키에 들어갑니다** → 탭을 밤새 열어둬도 다음 날 지연 판정이 갱신됩니다. 이 날짜는
@@ -1176,6 +1224,10 @@ Story·Sprint에 걸려도 원본은 하나로 관리해야 하기 때문입니�
 | `GET` | `/api/projects/{projectId}/dashboard` | 대시보드 요약 (다른 조회들을 한 기준일로 모은 것, 읽기 전용) |
 | `GET` `POST` | `/api/projects/{projectId}/raid` | RAID 로그 조회 / 항목 추가 (`links`로 WBS·Sprint·Backlog에 복수 연결) |
 | `PUT` `DELETE` | `/api/projects/{projectId}/raid/{itemId}` | 항목 수정 / 삭제 |
+| `GET` `POST` | `/api/projects/{projectId}/todos` | TODO 목록 조회 / 추가 (`{ referenceDate, items }` 반환) |
+| `PUT` | `/api/projects/{projectId}/todos/{itemId}` | TODO 수정 (완료 여부는 받지 않음) |
+| `PUT` | `/api/projects/{projectId}/todos/{itemId}/completion` | 완료·완료 취소 (`{"completed": true}`) |
+| `DELETE` | `/api/projects/{projectId}/todos/{itemId}` | TODO 삭제 |
 | `GET` | `/api/projects/{projectId}/export` | 프로젝트 전체를 JSON 한 파일로 내려받기 (attachment) |
 | `POST` | `/api/projects/import` | 내보낸 파일로 **새 프로젝트** 생성 (본문 = export 응답 그대로) |
 | `GET` `POST` | `/api/projects/{projectId}/commits` | 커밋 목록(+용량) 조회 / 현재 시점 커밋 |

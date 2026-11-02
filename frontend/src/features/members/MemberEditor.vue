@@ -105,7 +105,7 @@ async function onSubmit() {
 }
 
 function onRemove(member: ProjectMember) {
-  if (!confirm(`${member.name} 구성원을 삭제하면 RACI 배정도 함께 지워집니다. 진행할까요?`)) return
+  if (!confirm(`${member.name} 구성원을 삭제하면 RACI 배정도 함께 지워지고, 담당 TODO는 담당자만 비워집니다. 진행할까요?`)) return
   emit('remove', member.id)
 }
 </script>

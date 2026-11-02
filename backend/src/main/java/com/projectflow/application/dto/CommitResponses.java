@@ -101,7 +101,8 @@ public final class CommitResponses {
             SprintResponse sprints,
             ProgressResponse progress,
             SnapshotResponse snapshots,
-            DashboardResponse dashboard
+            DashboardResponse dashboard,
+            TodoListResponse todos
     ) {
     }
 

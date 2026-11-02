@@ -217,3 +217,15 @@ export function dashboardCacheKeyFor(projectId: number): string {
 export function raidCacheKeyFor(projectId: number): string {
   return `${projectId}:${revision.value}:${backlogRev.value}:${sprintRev.value}:${memberRev.value}:${localToday()}`
 }
+
+/**
+ * TODO 목록은 구성원 리비전과 로컬 날짜만 키에 넣는다.
+ *
+ * {@link raidCacheKeyFor}와 달리 WBS·Backlog·Sprint 리비전은 넣지 않는다 — TODO는 어디에도
+ * 연결되지 않아(사용자 결정) 그쪽이 바뀌어도 이 화면의 내용이 낡지 않는다. 구성원은 담당자
+ * 이름(`assigneeName`)과 삭제(담당자만 비워짐)가 목록에 보이므로 들어간다. 날짜는 기한 초과가
+ * 날짜 기준이라 필요하다(화면에 표시하는 기준일은 항상 서버의 `referenceDate`).
+ */
+export function todoCacheKeyFor(projectId: number): string {
+  return `${projectId}:${memberRev.value}:${localToday()}`
+}

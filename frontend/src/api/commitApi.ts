@@ -8,6 +8,7 @@ import type { Progress, SnapshotList } from './progressApi'
 import type { RaciMatrix } from './raciApi'
 import type { RaidLog } from './raidApi'
 import type { SprintList } from './sprintApi'
+import type { TodoList } from './todoApi'
 import type { WbsTree } from './wbsApi'
 
 /**
@@ -30,6 +31,8 @@ export interface CommitPayload {
   progress: Progress
   snapshots: SnapshotList
   dashboard: Dashboard
+  /** TODO 탭이 생기기 전의 커밋에는 이 키가 없다 — 빈 목록이 아니라 "기록 없음"이다. */
+  todos?: TodoList | null
 }
 
 export interface CommitMeta {

@@ -28,6 +28,9 @@ import com.projectflow.domain.ProjectMemberRepository;
 import com.projectflow.domain.ProjectNotFoundException;
 import com.projectflow.domain.ProjectRepository;
 import com.projectflow.domain.RaciAssignmentRepository;
+import com.projectflow.domain.TodoItem;
+import com.projectflow.domain.TodoItemRepository;
+import com.projectflow.application.dto.ProjectExportResponse.ExportedTodoItem;
 import com.projectflow.domain.RaidItem;
 import com.projectflow.domain.RaidItemRepository;
 import com.projectflow.domain.RaidLink;
@@ -79,8 +82,9 @@ public class ExportService {
      * from.
      * <p>8 — each WBS entry's {@code actionItemUrl}. A file below this simply has none, which reads
      * as a project that never linked an external Action Item.
+     * <p>9 — the project's TODO list ({@code todoItems}). A file below this simply has none.
      */
-    private static final int FORMAT_VERSION = 8;
+    private static final int FORMAT_VERSION = 9;
 
     private final ProjectRepository projectRepository;
     private final ProjectMemberRepository memberRepository;
@@ -97,6 +101,7 @@ public class ExportService {
     private final ProgressSnapshotRepository snapshotRepository;
     private final WbsTagRepository tagRepository;
     private final WbsItemTagRepository itemTagRepository;
+    private final TodoItemRepository todoItemRepository;
 
     public ExportService(ProjectRepository projectRepository,
                           ProjectMemberRepository memberRepository,
@@ -112,7 +117,8 @@ public class ExportService {
                           BaselineRepository baselineRepository,
                           ProgressSnapshotRepository snapshotRepository,
                           WbsTagRepository tagRepository,
-                          WbsItemTagRepository itemTagRepository) {
+                          WbsItemTagRepository itemTagRepository,
+                          TodoItemRepository todoItemRepository) {
         this.projectRepository = projectRepository;
         this.memberRepository = memberRepository;
         this.wbsItemRepository = wbsItemRepository;
@@ -128,6 +134,7 @@ public class ExportService {
         this.snapshotRepository = snapshotRepository;
         this.tagRepository = tagRepository;
         this.itemTagRepository = itemTagRepository;
+        this.todoItemRepository = todoItemRepository;
     }
 
     /**
@@ -318,6 +325,18 @@ public class ExportService {
                 tags.stream()
                         .map(tag -> new ExportedTag(
                                 tag.getId(), tag.getName(), tag.getColor(), tag.getSortOrder()))
+                        .toList(),
+                todoItemRepository.findByProjectId(projectId).stream()
+                        .sorted(Comparator.comparing(TodoItem::getId))
+                        .map(todo -> new ExportedTodoItem(
+                                todo.getId(),
+                                todo.getTitle(),
+                                todo.getPriority(),
+                                todo.getAssigneeMemberId(),
+                                todo.getDueDate(),
+                                todo.getMemo(),
+                                todo.getCompletedAt(),
+                                todo.getCreatedAt()))
                         .toList()
         );
     }

@@ -19,6 +19,8 @@ import com.projectflow.domain.InvalidWbsTagException;
 import com.projectflow.domain.ProjectMemberNotFoundException;
 import com.projectflow.domain.ProjectNotFoundException;
 import com.projectflow.domain.RaidItemNotFoundException;
+import com.projectflow.domain.InvalidTodoItemException;
+import com.projectflow.domain.TodoItemNotFoundException;
 import com.projectflow.domain.SprintNotFoundException;
 import com.projectflow.domain.WbsImportException;
 import com.projectflow.domain.WbsItemNotFoundException;
@@ -47,6 +49,7 @@ public class GlobalExceptionHandler {
             WbsItemNotFoundException.class,
             ProjectMemberNotFoundException.class,
             RaidItemNotFoundException.class,
+            TodoItemNotFoundException.class,
             BacklogItemNotFoundException.class,
             SprintNotFoundException.class,
             CommitNotFoundException.class,
@@ -80,6 +83,7 @@ public class GlobalExceptionHandler {
             InvalidImportException.class,
             InvalidBacklogItemException.class,
             InvalidRaidLinkException.class,
+            InvalidTodoItemException.class,
             InvalidSprintException.class,
             WbsImportException.class,
             InvalidWbsTagException.class,

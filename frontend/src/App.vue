@@ -24,7 +24,7 @@ const inAgile = computed(() => AGILE_PATHS.includes(route.path))
 </script>
 
 <template>
-  <!-- 본문 바로가기(WCAG 2.4.1) — 첫 Tab에서 나타나 주 메뉴 7개+Agile 하위 줄을 건너뛰고
+  <!-- 본문 바로가기(WCAG 2.4.1) — 첫 Tab에서 나타나 주 메뉴 8개+Agile 하위 줄을 건너뛰고
        바로 <main>으로 간다. 평소에는 화면 밖으로 숨겨 두고 포커스를 받을 때만 보인다. -->
   <a href="#main-content" class="skip-link">본문 바로가기</a>
   <CommitBanner />
@@ -38,6 +38,7 @@ const inAgile = computed(() => AGILE_PATHS.includes(route.path))
         <RouterLink to="/gantt">간트 차트</RouterLink>
         <RouterLink to="/raci">RACI</RouterLink>
         <RouterLink to="/raid">RAID</RouterLink>
+        <RouterLink to="/todo">TODO</RouterLink>
         <RouterLink to="/dashboard">Dashboard</RouterLink>
       </nav>
       <button
@@ -109,7 +110,7 @@ const inAgile = computed(() => AGILE_PATHS.includes(route.path))
 }
 
 /*
- * flex-wrap: wrap — 메뉴 7개(간트·RACI·RAID 등) + 테마 토글이 좁은 화면(태블릿 768px 안팎)에서
+ * flex-wrap: wrap — 메뉴 8개(간트·RACI·RAID·TODO 등) + 테마 토글이 좁은 화면(태블릿 768px 안팎)에서
  * 한 줄에 다 안 들어가면 두 번째 줄로 접힌다. 항목이 한 줄에 다 들어가는 폭에서는 아무 효과가
  * 없으므로 넓은 화면의 모양은 그대로다 — flex 항목은 기본으로 자기 내용보다 줄어들지 않아서(
  * `min-width: auto`), wrap이 없으면 화면 전체가 가로로 밀려 스크롤이 생긴다.

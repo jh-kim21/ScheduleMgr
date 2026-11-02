@@ -33,6 +33,10 @@ import com.projectflow.domain.ProjectStatus;
 import com.projectflow.domain.RaciAssignment;
 import com.projectflow.domain.RaciAssignmentRepository;
 import com.projectflow.domain.RaciRole;
+import com.projectflow.application.dto.ProjectExportResponse.ExportedTodoItem;
+import com.projectflow.domain.TodoItem;
+import com.projectflow.domain.TodoItemRepository;
+import com.projectflow.domain.TodoPriority;
 import com.projectflow.domain.RaidItem;
 import com.projectflow.domain.RaidLink;
 import com.projectflow.domain.RaidLinkRepository;
@@ -85,6 +89,7 @@ class ImportServiceTest {
     private final List<WbsDependency> dependencies = new ArrayList<>();
     private final List<RaciAssignment> raciAssignments = new ArrayList<>();
     private final List<RaidItem> raidItems = new ArrayList<>();
+    private final List<TodoItem> todoItems = new ArrayList<>();
     private final List<RaidLink> raidLinks = new ArrayList<>();
     private final List<BacklogItem> backlogItems = new ArrayList<>();
     private final List<Sprint> sprints = new ArrayList<>();
@@ -105,7 +110,7 @@ class ImportServiceTest {
                 dependencyRepository(), raciAssignmentRepository(), raidItemRepository(),
                 raidLinkRepository(), backlogItemRepository(), sprintRepository(),
                 sprintItemRepository(), checkpointRepository(), baselineRepository(),
-                snapshotRepository(), tagRepository(), itemTagRepository());
+                snapshotRepository(), tagRepository(), itemTagRepository(), todoItemRepository());
     }
 
     @Nested
@@ -184,7 +189,7 @@ class ImportServiceTest {
         void toleratesMissingSections() {
             ProjectExportResponse bare = new ProjectExportResponse(
                     1, LocalDateTime.now(), project("맨몸 프로젝트"), null, null, null, null, null, null, null, null,
-                    null, null, null, null);
+                    null, null, null, null, null);
 
             service.importProject(bare);
 
@@ -218,7 +223,7 @@ class ImportServiceTest {
             ProjectExportResponse future = new ProjectExportResponse(
                     99, LocalDateTime.now(), project("미래"), List.of(), List.of(), List.of(),
                     List.of(), List.of(), List.of(), List.of(), List.of(),
-                    List.of(), List.of(), List.of(), List.of());
+                    List.of(), List.of(), List.of(), List.of(), List.of());
 
             assertThatThrownBy(() -> service.importProject(future))
                     .isInstanceOf(InvalidImportException.class)
@@ -331,7 +336,7 @@ class ImportServiceTest {
                     List.of(new ExportedSprint(60L, "Sprint 1", null,
                             LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 14),
                             SprintStatus.PLANNED, null)), List.of(),
-                    List.of(), List.of(), List.of(), List.of()));
+                    List.of(), List.of(), List.of(), List.of(), List.of()));
 
             Long newWbsId = byName("개발").getId();
             assertThat(raidLinks).hasSize(3);
@@ -351,7 +356,7 @@ class ImportServiceTest {
                     List.of(), List.of(wbs(1L, null, "개발")), List.of(), List.of(),
                     List.of(raidWithLinks(1L, "위험", null, List.of(
                             raidLink(1L, RaidLinkTarget.SPRINT, 999L)))),
-                    List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of())))
+                    List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of())))
                     .isInstanceOf(InvalidImportException.class)
                     .hasMessageContaining("연결 대상");
             assertThat(projects).isEmpty();
@@ -414,6 +419,79 @@ class ImportServiceTest {
         }
     }
 
+    @Nested
+    @DisplayName("TODO (formatVersion 9)")
+    class TodoItems {
+
+        private ProjectExportResponse todoFile(int formatVersion, List<ExportedMember> members,
+                                                List<ExportedTodoItem> todos) {
+            return new ProjectExportResponse(formatVersion, LocalDateTime.now(), project("AEGIS"),
+                    members, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                    List.of(), List.of(), List.of(), List.of(), List.of(), todos);
+        }
+
+        private ExportedTodoItem todo(Long id, String title, Long assigneeId, LocalDateTime completedAt) {
+            return new ExportedTodoItem(id, title, TodoPriority.HIGH, assigneeId,
+                    LocalDate.of(2026, 9, 15), "메모", completedAt, null);
+        }
+
+        @Test
+        @DisplayName("담당자를 새 구성원 id로 다시 매기고 나머지 값은 그대로 가져온다")
+        void remapsAssignee() {
+            LocalDateTime done = LocalDateTime.of(2026, 9, 1, 10, 0);
+            service.importProject(todoFile(9, List.of(member(7L, "김재학")), List.of(
+                    todo(1L, "고객 회의 준비", 7L, null),
+                    todo(2L, "주간 보고", null, done))));
+
+            Long projectId = projects.get(0).getId();
+            assertThat(todoItems).hasSize(2).allSatisfy(item ->
+                    assertThat(item.getProjectId()).isEqualTo(projectId));
+            TodoItem first = todoItems.stream()
+                    .filter(t -> t.getTitle().equals("고객 회의 준비")).findFirst().orElseThrow();
+            assertThat(first.getAssigneeMemberId()).isEqualTo(members.get(0).getId()).isNotEqualTo(7L);
+            assertThat(first.getPriority()).isEqualTo(TodoPriority.HIGH);
+            assertThat(first.getDueDate()).isEqualTo(LocalDate.of(2026, 9, 15));
+            assertThat(first.getMemo()).isEqualTo("메모");
+            assertThat(first.getCompletedAt()).isNull();
+            TodoItem second = todoItems.stream()
+                    .filter(t -> t.getTitle().equals("주간 보고")).findFirst().orElseThrow();
+            assertThat(second.getAssigneeMemberId()).isNull();
+            assertThat(second.getCompletedAt()).isEqualTo(done);
+        }
+
+        @Test
+        @DisplayName("todoItems 가 없는 formatVersion 8 파일도 그대로 가져온다")
+        void olderFileWithoutTodoItems() {
+            service.importProject(todoFile(8, List.of(), null));
+
+            assertThat(projects).hasSize(1);
+            assertThat(todoItems).isEmpty();
+        }
+
+        @Test
+        @DisplayName("파일에 없는 담당자를 가리키면 아무것도 만들지 않고 거부한다")
+        void refusesUnknownAssignee() {
+            assertThatThrownBy(() -> service.importProject(todoFile(9,
+                    List.of(member(7L, "김재학")),
+                    List.of(todo(1L, "유령 담당", 999L, null)))))
+                    .isInstanceOf(InvalidImportException.class)
+                    .hasMessageContaining("담당자");
+
+            assertThat(projects).isEmpty();
+            assertThat(members).isEmpty();
+            assertThat(todoItems).isEmpty();
+        }
+
+        @Test
+        @DisplayName("제목이 비어 있으면 거부한다")
+        void refusesBlankTitle() {
+            assertThatThrownBy(() -> service.importProject(todoFile(9, List.of(),
+                    List.of(todo(1L, "  ", null, null)))))
+                    .isInstanceOf(InvalidImportException.class);
+            assertThat(projects).isEmpty();
+        }
+    }
+
     private ProjectExportResponse file(List<ExportedMember> members,
                                         List<ExportedWbsItem> wbs,
                                         List<ExportedDependency> deps,
@@ -421,7 +499,7 @@ class ImportServiceTest {
                                         List<ExportedRaidItem> raid) {
         return new ProjectExportResponse(
                 1, LocalDateTime.now(), project("AEGIS"), members, wbs, deps, raci, raid, List.of(), List.of(), List.of(),
-                List.of(), List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(), List.of(), List.of());
     }
 
     @Nested
@@ -642,7 +720,7 @@ class ImportServiceTest {
                                                List<ExportedBacklogItem> backlog) {
         return new ProjectExportResponse(3, LocalDateTime.now(), project("AEGIS"), members, wbs,
                 List.of(), List.of(), List.of(), backlog, List.of(), List.of(),
-                List.of(), List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(), List.of(), List.of());
     }
 
     private ExportedBacklogItem backlog(Long id, Long wbsItemId, Long parentId,
@@ -667,7 +745,7 @@ class ImportServiceTest {
                                            List<ExportedTag> tags) {
         return new ProjectExportResponse(formatVersion, LocalDateTime.now(), project("AEGIS"),
                 List.of(), wbs, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of(), List.of(), List.of(), tags);
+                List.of(), List.of(), List.of(), tags, List.of());
     }
 
     private ExportedProject project(String name) {
@@ -1109,6 +1187,31 @@ class ImportServiceTest {
             @Override
             public void delete(RaciAssignment assignment) {
                 raciAssignments.remove(assignment);
+            }
+        };
+    }
+
+    private TodoItemRepository todoItemRepository() {
+        return new TodoItemRepository() {
+            @Override
+            public TodoItem save(TodoItem item) {
+                todoItems.add(withId(item));
+                return item;
+            }
+
+            @Override
+            public Optional<TodoItem> findById(Long id) {
+                return todoItems.stream().filter(i -> i.getId().equals(id)).findFirst();
+            }
+
+            @Override
+            public List<TodoItem> findByProjectId(Long projectId) {
+                return todoItems.stream().filter(i -> i.getProjectId().equals(projectId)).toList();
+            }
+
+            @Override
+            public void delete(TodoItem item) {
+                todoItems.remove(item);
             }
         };
     }

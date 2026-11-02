@@ -33,6 +33,9 @@ import com.projectflow.domain.ProjectMemberRepository;
 import com.projectflow.domain.ProjectRepository;
 import com.projectflow.domain.RaciAssignment;
 import com.projectflow.domain.RaciAssignmentRepository;
+import com.projectflow.application.dto.ProjectExportResponse.ExportedTodoItem;
+import com.projectflow.domain.TodoItem;
+import com.projectflow.domain.TodoItemRepository;
 import com.projectflow.domain.RaidItem;
 import com.projectflow.domain.RaidLink;
 import com.projectflow.domain.RaidLinkRepository;
@@ -102,7 +105,7 @@ public class ImportService {
      * no 업무 분야 section, which reads as a project that has not labelled anything yet, and one
      * below 8 has no {@code actionItemUrl} on its WBS entries, which reads as none recorded.
      */
-    private static final int SUPPORTED_FORMAT_VERSION = 8;
+    private static final int SUPPORTED_FORMAT_VERSION = 9;
 
     /**
      * Kept identical to the {@code @Pattern} on {@code WbsItemCreateRequest}/{@code UpdateRequest}
@@ -128,6 +131,7 @@ public class ImportService {
     private final WbsDependencyRepository dependencyRepository;
     private final RaciAssignmentRepository raciAssignmentRepository;
     private final RaidItemRepository raidItemRepository;
+    private final TodoItemRepository todoItemRepository;
     private final RaidLinkRepository raidLinkRepository;
     private final BacklogItemRepository backlogItemRepository;
     private final SprintRepository sprintRepository;
@@ -152,7 +156,8 @@ public class ImportService {
                           BaselineRepository baselineRepository,
                           ProgressSnapshotRepository snapshotRepository,
                           WbsTagRepository tagRepository,
-                          WbsItemTagRepository itemTagRepository) {
+                          WbsItemTagRepository itemTagRepository,
+                          TodoItemRepository todoItemRepository) {
         this.projectRepository = projectRepository;
         this.memberRepository = memberRepository;
         this.wbsItemRepository = wbsItemRepository;
@@ -168,6 +173,7 @@ public class ImportService {
         this.snapshotRepository = snapshotRepository;
         this.tagRepository = tagRepository;
         this.itemTagRepository = itemTagRepository;
+        this.todoItemRepository = todoItemRepository;
     }
 
     @Transactional
@@ -192,6 +198,7 @@ public class ImportService {
         insertDependencies(projectId, dependencies(file), wbsIds);
         insertRaciAssignments(projectId, raciAssignments(file), wbsIds, memberIds);
         Map<Long, Long> raidIds = insertRaidItems(projectId, raidItems(file), memberIds);
+        insertTodoItems(projectId, todoItems(file), memberIds);
         Map<Long, Long> backlogIds = insertBacklogItems(projectId, backlogItems(file), wbsIds, memberIds);
         Map<Long, Long> sprintIds = insertSprints(projectId, sprints(file), sprintItems(file), backlogIds);
         // Last: a link can point at a Sprint or a Backlog entry, so every target needs its new id
@@ -310,6 +317,17 @@ public class ImportService {
             validateRaidLinks(item, wbsIds, backlogIdsOf(file), sprintIdsOf(file));
         }
 
+        for (ExportedTodoItem todo : todoItems(file)) {
+            if (todo.title() == null || todo.title().isBlank()) {
+                throw new InvalidImportException("제목이 비어 있는 TODO 항목이 있습니다: id=" + todo.id());
+            }
+            if (todo.priority() == null) {
+                throw new InvalidImportException("우선순위가 비어 있는 TODO 항목이 있습니다: " + todo.title());
+            }
+            if (todo.assigneeMemberId() != null) {
+                requireKnown(memberIds, todo.assigneeMemberId(), "TODO 항목의 담당자");
+            }
+        }
         validateBacklog(file, wbsIds, memberIds);
         validateSprints(file);
     }
@@ -821,6 +839,26 @@ public class ImportService {
 
     private List<ExportedRaciAssignment> raciAssignments(ProjectExportResponse file) {
         return file.raciAssignments() == null ? List.of() : file.raciAssignments();
+    }
+
+    /** Absent in files below formatVersion 9 — a project with no TODO list. */
+    private List<ExportedTodoItem> todoItems(ProjectExportResponse file) {
+        return file.todoItems() == null ? List.of() : file.todoItems();
+    }
+
+    private void insertTodoItems(Long projectId, List<ExportedTodoItem> items,
+                                  Map<Long, Long> memberIds) {
+        for (ExportedTodoItem item : items) {
+            todoItemRepository.save(new TodoItem(
+                    projectId,
+                    item.title().trim(),
+                    item.priority(),
+                    item.assigneeMemberId() == null ? null : memberIds.get(item.assigneeMemberId()),
+                    item.dueDate(),
+                    item.memo(),
+                    item.completedAt()
+            ));
+        }
     }
 
     private List<ExportedRaidItem> raidItems(ProjectExportResponse file) {

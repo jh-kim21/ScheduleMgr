@@ -181,8 +181,8 @@ class WbsActionItemUrlApiTest {
 
             JsonNode file = export(projectId);
             assertThat(file.get("formatVersion").asInt())
-                    .as("actionItemUrl이 실리는 형식은 8이다")
-                    .isEqualTo(8);
+                    .as("actionItemUrl이 실리는 형식은 8 이상이고 지금은 9이다")
+                    .isEqualTo(9);
             assertThat(wbsItem(file, "회의록").get("actionItemUrl").asText()).isEqualTo(SAFE_URL);
             assertThat(wbsItem(file, "주소 없음").get("actionItemUrl").isNull()).isTrue();
 
