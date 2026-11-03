@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { InheritedRole, RaciIssue, RaciMatrix, RaciTask } from '../../api/raciApi'
 import { useRowSelection } from '../../shared/useRowSelection'
 import type { CellEntry } from './useRaci'
@@ -42,6 +42,40 @@ const selection = useRowSelection(
   () => props.data.tasks.map((task) => task.id),
   body,
 )
+
+/**
+ * 표를 화면 높이에 맞춘 세로 스크롤 상자로 만들어 머리글이 상자 위쪽에 붙게 한다(WbsTree와 같은
+ * 기법). 높이는 상수가 아니라 자기 `top` 측정값 — 위에 놓이는 배너·위반 줄이 화면 상태마다 다르다.
+ */
+const wrap = ref<HTMLElement | null>(null)
+const headRow = ref<HTMLElement | null>(null)
+const maxHeight = ref<string | null>(null)
+const headHeight = ref<number | null>(null)
+const BOTTOM_GAP = 16
+
+function measure() {
+  const el = wrap.value
+  if (!el) return
+  const available = window.innerHeight - el.getBoundingClientRect().top - BOTTOM_GAP
+  maxHeight.value = `${Math.max(320, available)}px`
+  if (headRow.value) headHeight.value = headRow.value.getBoundingClientRect().height
+}
+
+// .matrix-wrap 은 v-else 아래라 마운트 시점에 없을 수 있다 — 나타나는 시점에 잰다.
+watch(wrap, (el) => {
+  if (el) measure()
+})
+// 배정이 바뀌면 규칙 위반 줄이 생기거나 사라져 표의 top 이 움직인다.
+watch(
+  () => props.data,
+  () => nextTick(measure),
+)
+
+onMounted(() => {
+  measure()
+  window.addEventListener('resize', measure)
+})
+onUnmounted(() => window.removeEventListener('resize', measure))
 
 function cell(task: RaciTask, memberId: number) {
   return props.cellIndex.get(`${task.id}:${memberId}`)
@@ -116,10 +150,18 @@ function overriddenRoles(task: RaciTask): RaciRole[] {
     구성원이 없습니다. 프로젝트 화면에서 구성원을 먼저 등록해 주세요.
   </p>
 
-  <div v-else class="matrix-wrap">
+  <div
+    v-else
+    ref="wrap"
+    class="matrix-wrap"
+    :style="{
+      maxHeight: maxHeight ?? undefined,
+      '--head-h': headHeight ? headHeight + 'px' : undefined,
+    }"
+  >
     <table class="matrix">
       <thead>
-        <tr>
+        <tr ref="headRow">
           <th class="task-col" scope="col">업무</th>
           <th v-for="member in data.members" :key="member.id" class="member-col" scope="col">
             <span class="member-name">{{ member.name }}</span>
@@ -249,7 +291,9 @@ function overriddenRoles(task: RaciTask): RaciRole[] {
 }
 
 .matrix-wrap {
-  overflow-x: auto;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scroll-padding-top: var(--head-h, 0px);
   border: 1px solid var(--border);
   border-radius: 8px;
 }
@@ -268,9 +312,17 @@ function overriddenRoles(task: RaciTask): RaciRole[] {
   font-weight: 400;
 }
 
-thead th {
+/*
+ * border-collapse 에서는 경계선을 표가 그려 sticky 셀과 함께 움직이지 않는다 — box-shadow 로 대신한다.
+ * `.matrix th` 의 border-bottom 보다 이기도록 `.matrix` 를 붙인다.
+ */
+.matrix thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   background: var(--surface-alt);
-  border-bottom: 1px solid var(--border);
+  border-bottom: none;
+  box-shadow: inset 0 -1px 0 var(--border);
   font-weight: 600;
   color: var(--text-dim);
   font-size: 0.75rem;
@@ -288,11 +340,15 @@ thead th {
   background: var(--surface);
   min-width: 14rem;
   max-width: 20rem;
-  border-right: 1px solid var(--border);
+  /* border-right 는 collapse 표가 그려 가로 스크롤 때 따라오지 않으므로 box-shadow 로 둔다. */
+  box-shadow: inset -1px 0 0 var(--border);
 }
 
-thead .task-col {
+/* 왼쪽 위 모서리 칸: 가로·세로 양쪽 고정, 머리글 칸(2)과 본문 업무 칸(1) 둘 다의 위. */
+.matrix thead .task-col {
+  z-index: 3;
   background: var(--surface-alt);
+  box-shadow: inset 0 -1px 0 var(--border), inset -1px 0 0 var(--border);
 }
 
 tbody .task-col {
